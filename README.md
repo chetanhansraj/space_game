@@ -12,6 +12,7 @@ Real orbital mechanics, deterministic economy, one shared clock at 60× real tim
 | `docs/BIBLE.md` | Design reasoning — the world, markets, agents, player arc. Why things are the way they are. |
 | `docs/seed-data.md` | Locations, commodities, modules. The numbers everything descends from. |
 | `docs/DECISIONS.md` | Every call made on what the above left ambiguous, contradictory or unset. |
+| `docs/DESIGN-LANGUAGE.md` | The lunarark.com visual system, as tokens. What `web/` gets built against. |
 | `orbital/README.md` | The transfer service: accuracy, how to build a table, how to run it. |
 
 ## Layout

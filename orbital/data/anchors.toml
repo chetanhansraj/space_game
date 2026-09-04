@@ -9,11 +9,11 @@
 [anchors.luna_south]
 kind = "lunar_surface"
 body = "earth_moon_barycentre"
-lat_deg = -89.9
+lat_deg = -89.54
 lon_deg = 0.0
 dv_escape = 2570.0    # surface -> LLO (1870) -> Earth-Moon escape (700)
 dv_capture = 2570.0
-note = "Shackleton Depot, Ark Terminus. Lunar south pole."
+note = "Shackleton Depot, Ark Terminus. Shackleton Crater rim, the canonical Lunar Ark site."
 
 [anchors.luna_north]
 kind = "lunar_surface"
