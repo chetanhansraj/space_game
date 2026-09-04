@@ -41,6 +41,24 @@ ORBITAL_TABLE=orbital/data/transfers.sqlite .venv/bin/uvicorn orbital.api.app:ap
 
 Ephemeris kernels (JPL DE440) are fetched at build time into `orbital/kernels/` and are not committed — they are large and reproducible.
 
+## See it working
+
+Nothing is playable yet — `sim/` and `web/` are empty. Two demo scripts show
+the finished pieces actually running:
+
+```bash
+.venv/bin/python scripts/demo_market.py --ticks 40   # a live spot market
+.venv/bin/python scripts/demo_routes.py              # transfer costs and windows
+```
+
+`demo_market.py` runs miners, refineries and haulers against the real ledger
+and order books at Shackleton Depot, printing the book, the tape and a
+conservation check every few ticks. `demo_routes.py` prints the delta-v
+against transit-time curve for a route, and a bar chart of how the
+minimum-energy cost moves across a synodic cycle.
+
+Both are demo harnesses, not `sim/`. The agents are deliberately stupid.
+
 ## Status
 
 Pre-v1. The orbital service is built and returns validated numbers: it
