@@ -532,6 +532,78 @@ another migration.
 
 ---
 
+## First simulation findings
+
+`docs/seed-data.md` says its numbers "will be wrong after the first simulation
+run, and that is expected. Tune by simulation, not by argument." This is that
+run — 400 ticks of `scripts/demo_market.py`, seed 20260904. The agents are
+deliberately stupid, so treat these as signals about the *design*, not as
+balance conclusions.
+
+### F1 — The Authority is genuinely two-sided, on a long timescale
+
+The propellant book told a complete economic story with nobody steering it:
+
+| Ticks | What happened |
+|---|---|
+| 1–50 | Propellant scarce, price climbs to 3,150 — the Authority's ceiling — and pins there. It sells into the spike; its inventory drains 400 t → 113 t. |
+| 50–100 | Inventory exhausted. The ceiling stops being defended and the price comes off it: 3,150 → 2,707. |
+| 100–300 | Both haulers go bankrupt. Demand collapses. Refineries keep producing into it. Price falls 2,707 → 1,225. |
+| 300–400 | Price hits 1,080 — the Authority's *floor* — and stops dead. It starts buying. Inventory recovers 48 t → 396 t. |
+
+So the Authority round-tripped: seller at the ceiling, buyer at the floor,
+inventory 400 → 48 → 396. That is exactly what the bible asks of it, arriving
+without any special-casing. It answers the v1 question — *"can you watch this
+market for ten minutes and find it interesting?"* — more convincingly than any
+argument could.
+
+### F2 — Ice is a one-way valve, and this one needs a decision
+
+Authority ice inventory over the same run: 2,000 → 2,587 → 4,157 → 5,600 →
+7,682 t, climbing monotonically and showing no sign of stopping.
+
+The cause is structural, not a tuning issue. Ice settles near 250 against a
+240 floor and a 700 ceiling, so the market sits hard against the bid: the
+Authority buys constantly and its ask never fills. **A fixed spread anchored
+to a seed value only ever trades on whichever side the market has drifted
+to.** Whenever the settled price is far from the seed value, the Authority
+stops being a market maker and becomes a subsidy in one direction.
+
+Partly a demo artifact — there is no depletion here, so three miners dig at a
+constant rate forever, and the bible's "richness falls as it is worked" would
+throttle the oversupply. But not entirely: the same asymmetry will appear for
+any commodity whose real price settles far from its seed anchor.
+
+Three ways out, not yet chosen:
+
+1. **Leave it.** Accept that the Authority accumulates gluts. It has finite
+   credits (D33), so it self-limits eventually — it just does so by going
+   broke rather than by balancing.
+2. **Anchor the spread to a slow moving average of traded price** rather than
+   the seed value, so it straddles the actual market and recycles inventory.
+   Departs from the bible's fixed floor and ceiling.
+3. **Cap inventory per commodity.** It stops bidding once it holds more than
+   N lots. Simplest, keeps the fixed spread, and makes the floor visibly
+   thin under a sustained glut — which is itself good drama.
+
+### F3 — Bankruptcy is terminal, and nothing in the design says what happens next
+
+Both haulers went insolvent around tick 76 and stayed insolvent for the
+remaining 320 ticks: unable to pay docking fees, unable to buy propellant,
+present in the world but economically dead.
+
+The ledger handled it correctly — it refuses to let any account go negative,
+so the fee simply fails. But the bible has no answer for what happens to a
+firm that runs out of money. Without one, the agent population only ever
+shrinks, and a long-running world slowly empties.
+
+This needs a design decision before `sim/` ships bulk agents: liquidation and
+replacement, a credit line, a floor income, or something else. Flagging, not
+choosing — this one is properly a game-design question rather than an
+engineering one.
+
+---
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -549,5 +621,6 @@ Deliberately not decided, because these are yours.
 4. **"Heavy hulls only"** for hard burns — undefined threshold.
 5. **Starting cash against first-outpost cost** — 120,000 cr against
    2,565,000 cr, and see D14 on runway. `seed-data.md` already flags this.
-6. **Depletion curve shape, Ark Authority spread, agent counts, shock
+6. **What happens to a bankrupt firm** — see F3. Blocks bulk agents in `sim/`.
+7. **Depletion curve shape, Ark Authority spread, agent counts, shock
    frequency** — already listed as open in `seed-data.md`. Unchanged.

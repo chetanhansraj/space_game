@@ -67,6 +67,7 @@ class Demo:
         self.book = OrderBook(self.db, self.ledger, NODE)
         self.ark = ArkAuthority(self.db, self.ledger, self.book)
         self.tick = 0
+        self.bankrupt: set[str] = set()
 
     def build_world(self) -> None:
         t = self.time()
@@ -103,7 +104,7 @@ class Demo:
             dug = self.rng.randrange(8, 25) * TONNE
             with transaction(self.db):
                 self.ledger.extract(miner, "ICE", dug, t, memo="ice extraction")
-                self.ledger.burn(miner, 300, t, memo="site upkeep")
+            self._pay(miner, 300, "site upkeep")
             self._offer(miner, "ICE", ASK, self._near("ICE", ASK), dug)
 
         for refinery in ("refinery_a", "refinery_b"):
@@ -118,7 +119,7 @@ class Demo:
                     # 30 t/day water -> LOX/LH2, seed-data. Lossy on purpose.
                     self.ledger.extract(refinery, "PROP", converted * 3 // 4, t,
                                         memo="electrolysis output")
-                    self.ledger.burn(refinery, 2_000, t, memo="plant power")
+                self._pay(refinery, 2_000, "plant power")
                 self._offer(refinery, "PROP", ASK, self._near("PROP", ASK),
                             converted * 3 // 4)
 
@@ -130,13 +131,29 @@ class Demo:
                 with transaction(self.db):
                     self.ledger.consume(hauler, "PROP", (burned // TONNE) * TONNE,
                                         t, memo="transit burn")
-                    self.ledger.burn(hauler, 800, t, memo="docking fee")
+                self._pay(hauler, 800, "docking fee")
 
         if self.tick % 6 == 0:
             for symbol in ("ICE", "PROP"):
                 self.ark.quote(symbol, t, bid_lots=120, ask_lots=120)
 
         self.ledger.assert_conserved()
+
+    def _pay(self, who: str, amount: int, memo: str) -> None:
+        """Pay a cost into the sink, or go bankrupt trying.
+
+        An agent that cannot pay its upkeep is broke. That is an event in the
+        world, not an error: the ledger refuses to let any account go
+        negative, so the attempt simply fails and the agent is recorded as
+        insolvent. Getting this wrong is what made the first long run of this
+        demo crash at tick 76 rather than showing two haulers quietly running
+        out of money, which is far more interesting.
+        """
+        try:
+            with transaction(self.db):
+                self.ledger.burn(who, amount, self.time(), memo=memo)
+        except MarketError:
+            self.bankrupt.add(who)
 
     def _near(self, symbol: str, side: str) -> int:
         """Quote a little inside the current market, with some noise."""
@@ -171,6 +188,9 @@ class Demo:
 
         credits = self.ledger.credits_in_existence()
         burned = self.ledger.credits_destroyed()
+        if self.bankrupt:
+            print(f"\n {label('insolvent')} {R}{', '.join(sorted(self.bankrupt))}{X}"
+                  f"  {D}cannot meet upkeep{X}")
         print(f"\n {label('credits in world')} {W}{format_credits(credits - burned):>12}{X}"
               f"   {label('destroyed by sinks')} {A}{format_credits(burned):>11}{X}"
               f"   {label('conserved')} {G}✓{X}")
