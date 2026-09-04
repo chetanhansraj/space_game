@@ -1,0 +1,14 @@
+# Ephemeris kernels: large, and reproducible from scripts/fetch_kernels.py
+orbital/kernels/
+*.bsp
+
+# Generated transfer tables: build artifacts, not source
+orbital/data/transfers.sqlite
+orbital/data/.transfers-*
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+*.egg-info/

@@ -68,13 +68,17 @@ This is committed as foundation, not a later feature, because the cost of rigour
 
 Every shipment is a decision between fuel and time. Three classes, priced by physics:
 
-| Class | Fuel cost | Mars | Ceres | Availability |
+| Class | Propellant cost | Mars | Ceres | Availability |
 |---|---|---|---|---|
 | **Minimum-energy** | Baseline | Slowest | Slowest | Favourable geometry only |
-| **Standard torch** | 3–5× baseline | ~20 days | ~27 days | Any time |
-| **Hard burn** | 8–15× baseline | ~10 days | ~14 days | Any time; heavy hulls only |
+| **Standard torch** | ~9× baseline | ~20 days | ~27 days | Any time |
+| **Hard burn** | ~23× baseline | ~10 days | ~14 days | Any time; heavy hulls only |
 
-Fusion changes the numbers, not the principle. A ship sustaining a few hundredths of a gee crosses to Mars in about three weeks and to Ceres in about four, at a propellant cost measured in hundreds of km/s of delta-v. Nobody waits 259 days for anything. Chemical-era Hohmann figures do not apply to this setting.
+The transit times here are the design intent and are preserved exactly. The multipliers were recomputed from the implemented solver once a drive was specified, and they are larger than first guessed -- see `docs/DECISIONS.md` D2. "Cost" means propellant *mass*, not delta-v; the two differ exponentially.
+
+Fusion changes the numbers, not the principle. A twenty-day crossing to Mars costs a few hundred km/s of delta-v against roughly nine for a minimum-energy arc, which is affordable only because a fusion torch exhausts at 400 km/s. Nobody waits 259 days for anything. Chemical-era Hohmann figures do not apply to this setting.
+
+These are ballistic arcs, not continuous burns, and that choice is load-bearing: a constant-acceleration transfer barely notices where the planets are, and geometry setting price is the mechanic the entire merchant profession rests on. `docs/DECISIONS.md` D1.
 
 **Windows are prices, not gates.** With a torch you can always leave. What changes with geometry is what it costs: departing against an unfavourable alignment can multiply your propellant bill several times over, and propellant is your largest operating expense.
 
@@ -113,11 +117,13 @@ A standalone service, separate from the game backend, answering one question: wh
 
 **Accuracy target: arcminutes, not milliarcseconds.** What sells the physics is that geometry matters, that hard burns cost a fortune, and that the numbers are internally consistent. Nobody can perceive the difference between DE440 and a milliarcsecond solution, and chasing it costs weeks.
 
+*Built.* See `orbital/README.md`. The service returns a Pareto cost curve rather than three fixed classes, so trajectory-class definitions live in `sim/` and can be retuned without regenerating a table. It reproduces the launch energies of four real NASA Mars missions to between 0.0% and 5.6%.
+
 ---
 
+## 4. The commodities
 
-
-Eight tradeable classes at launch. Each has a mass per unit, a base value, and a volatility profile.
+Ten tradeable classes at launch. Each has a mass per unit, a base value, and a volatility profile. The table below covers the eight that trade in volume; `docs/seed-data.md` governs and adds two more -- regolith/silicates, which feeds the helium-3 chain, and rare earths, which is why Psyche and Pallas are worth reaching. See `docs/DECISIONS.md` D9.
 
 | Commodity | Produced at | Consumed by | Notes |
 |---|---|---|---|
@@ -221,7 +227,7 @@ The first hour must contain a real decision with a real consequence, resolvable 
 
 **Speculator.** Buy with your own money and carry the price risk yourself. This is where skill starts to matter and where players first lose everything.
 
-**Owner.** Buy a claim and stop being a middleman. The first outpost is small, automated and specific — an ice extractor on a rock you own, no crew, feeding propellant into the market while you sleep. Target cost is roughly two good months of trading, not billions. If the gap between merchant and owner is too wide, most players never cross it and half the game goes unseen.
+**Owner.** Buy a claim and stop being a middleman. The first outpost is small, automated and specific — an ice extractor on a rock you own, no crew, feeding water ice into the market while you sleep. Refining it into propellant means buying an electrolysis plant, and that is the next rung rather than this one: the 400-to-1,800 cr/t refining margin is what you climb toward. See `docs/DECISIONS.md` D11. Target cost is roughly two good months of trading, not billions. If the gap between merchant and owner is too wide, most players never cross it and half the game goes unseen.
 
 **Operator.** Larger ships, hired crew, multiple outposts, a shipping line. Vertical integration: refine your own ore instead of selling it raw, then manufacture instead of refining.
 
@@ -277,7 +283,7 @@ Stated explicitly, because the temptation will be constant:
 
 **v1 — one node, one loop.** `helium3.app` only. One lunar site, propellant and ice, a spot market, the Ark Authority, fifty bulk agents and five named ones. No ships, no travel, no other regions. **The test: can you watch this market for ten minutes, with zero other players, and find it interesting?** If not, nothing built on top of it will save it.
 
-**v2 — movement.** Ships, three lunar nodes, transit time, the contracts board. The moment there are two places with different prices, the game becomes trade, and that is the real product.
+**v2 — movement.** Ships, five lunar nodes (the three from v1 plus Selene Station and Ark Terminus), transit time, the contracts board. The moment there are two places with different prices, the game becomes trade, and that is the real product.
 
 **v3 — the frontier.** The Belt opens. Claims, depletion, distance, loss. Outposts become purchasable.
 

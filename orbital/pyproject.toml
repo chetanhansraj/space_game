@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orbital"
+version = "0.1.0"
+description = "Transfer costs between anchors. Standalone, no game concepts, no database."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "lamberthub>=1.0",
+    "jplephem>=2.20",
+    "pyerfa>=2.0",
+]
+
+[project.optional-dependencies]
+# The production ephemeris. Needs naif.jpl.nasa.gov at build time.
+kernel = ["skyfield>=1.49"]
+# DE421 as importable coefficients, for sealed build environments and CI.
+offline = ["de421>=2008.1"]
+serve = ["fastapi>=0.110", "uvicorn>=0.29"]
+dev = ["pytest>=8", "hypothesis>=6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = ["ignore::DeprecationWarning"]

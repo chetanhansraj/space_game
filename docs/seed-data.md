@@ -4,13 +4,17 @@ Three tables. Everything in the economy descends from these.
 
 **These are first-pass values, not balanced values.** They are internally consistent and physically anchored, which is enough to build against. They will be wrong after the first simulation run, and that is expected. Tune by simulation, not by argument.
 
+**Every rate on this page is per game day**, and every duration is game time. At the 60× clock a game day is 24 real minutes, so the distinction is worth a factor of sixty. One consequence worth seeing early: the *Kestrel*'s 400 cr/game-day upkeep is 24,000 cr per real day, which makes 120,000 cr of starting cash five real days of runway with no income. See `docs/DECISIONS.md` D14.
+
 ---
 
 ## 1. Locations
 
 ### Orbital elements
 
-Heliocentric Keplerian elements at epoch J2000, in the format Skyfield and standard propagators expect. Planetary elements are JPL's approximate-positions set with secular rates per Julian century, valid 1800–2050.
+Heliocentric Keplerian elements at epoch J2000. Planetary elements are JPL's approximate-positions set with secular rates per Julian century, valid 1800–2050.
+
+**These tables are illustrative. DE440 governs.** The orbital service reads planetary positions from the JPL kernel, not from here — the kernel is the committed source and is three orders of magnitude more accurate. The numbers below are for reading, not for computing against. See `docs/DECISIONS.md` D6.
 
 | Body | a (AU) | e | i (°) | L (°) | ϖ (°) | Ω (°) |
 |---|---|---|---|---|---|---|
@@ -24,7 +28,9 @@ Rates per Julian century:
 | Earth–Moon barycentre | 0.00000562 | −0.00004392 | −0.01294668 | 35999.37244981 | 0.32327364 | 0.0 |
 | Mars | 0.00001847 | 0.00007882 | −0.00813131 | 19140.30268499 | 0.44441088 | −0.29257343 |
 
-Asteroid elements are osculating and epoch-dependent. **Pull these fresh from the JPL Small-Body Database at build time rather than hardcoding them** — the values below are approximate and for scaffolding only.
+Asteroid elements are osculating and epoch-dependent. **Pull these fresh from the JPL Small-Body Database at build time rather than hardcoding them** — `orbital/scripts/fetch_sbdb.py` does this and stamps the epoch into the generated transfer table.
+
+Note that the table below is short of a **mean anomaly and an epoch**, which are the sixth and seventh numbers needed to place a body on its ellipse. Without them these elements cannot be propagated at all, so they are not usable even for scaffolding. Period is given instead, which is derivable from `a` and therefore carries no extra information. See `docs/DECISIONS.md` D5.
 
 | Body | a (AU) | e | i (°) | Ω (°) | ω (°) | Period (yr) | Character |
 |---|---|---|---|---|---|---|---|
@@ -38,7 +44,17 @@ Pallas at nearly 35° inclination is deliberate content: it is rich and almost n
 
 ### Nodes
 
-The Earth–Moon system is treated as a single point for interplanetary purposes. Lunar surface-to-orbit is a fixed budget that never changes: surface → low lunar orbit is 1.87 km/s, LLO → Earth escape is roughly 0.7 km/s.
+The Earth–Moon system is treated as a single point for interplanetary purposes. Lunar surface-to-orbit is a fixed budget that never changes: surface → low lunar orbit is 1.87 km/s, LLO → Earth escape is roughly 0.7 km/s. Surface → interplanetary space is therefore **2.57 km/s**.
+
+Surface-to-surface was missing, and all three v1 nodes are surface sites. It is a ballistic suborbital hop, derived in `docs/DECISIONS.md` D7 and implemented in `orbital/src/orbital/lunar.py`:
+
+| Route | Central angle | Δv | Transit (game time) |
+|---|---|---|---|
+| Shackleton → Peary Ridge | 178.5° | 3,360 m/s | 54 min |
+| Shackleton → Tranquillitatis | 98.4° | 3,119 m/s | 44 min |
+| Peary Ridge → Tranquillitatis | 80.1° | 2,973 m/s | 38 min |
+
+All three are cheaper than going up to orbit and back down (3,740 m/s), and converge on exactly twice lunar circular speed for an antipodal trip.
 
 | Node | Parent | Class | Produces | Consumes | Docking fee (cr) | Version |
 |---|---|---|---|---|---|---|
@@ -80,6 +96,8 @@ Volatility is the mean-reversion strength and shock sensitivity, not a price ban
 
 **Propellant is effectively a second currency.** It is the most traded good, it is consumed by the act of trading, and its price sets the cost of every route.
 
+**Fusion drive exhaust velocity is 400 km/s** (Isp ≈ 40,800 s). This is the constant that converts a route's delta-v into tonnes of propellant burned, so it sets the operating cost of everything that moves. It was solved for rather than picked: it is the value at which the bible's stated transit times produce sane propellant fractions — 51% of ship mass for a 20-day Mars hard burn, 19% for a 60-day standard crossing, 2.2% for a minimum-energy arc. See `docs/DECISIONS.md` D2.
+
 ---
 
 ## 3. Lunar base modules
@@ -118,12 +136,23 @@ Power positive means generation, negative means draw. Heat is thermal load requi
 
 ### The first outpost
 
-An automated ice extractor, uncrewed, feeding propellant into the market while the owner sleeps:
+An automated ice extractor, uncrewed, feeding water ice into the market while the owner sleeps:
 
-Ice miner + solar array ×3 + battery bank + radiator ×2 + cryo tank farm + comms relay
-= **2,700,000 cr**, no crew, no life support, no failure modes involving people.
+Ice miner + solar array ×3 + battery bank + radiator ×1 + cargo warehouse + comms relay
+= **2,565,000 cr**, no crew, no life support, no failure modes involving people.
 
-Check the budgets: power +150 generated against −149 drawn, heat −240 capacity against 128 load. It works, but with almost no power margin — one more module and it fails. That tension is the puzzle.
+Check the budgets:
+
+| Budget | Capacity | Load | Margin |
+|---|---|---|---|
+| Power | +150 kW | −113 kW | +37 kW |
+| Heat | 120 kW | 95 kW | +25 kW |
+
+It closes, but the heat margin is the tight one: 25 kW of headroom means the next warm module you add forces a second radiator, and that radiator's own 4 kW draw is what starts eating the power budget. Radiators really are the constraint everyone forgets.
+
+It sells **ice, not propellant** — there is no electrolysis plant in this build, and adding one (−280 kW, 1,800,000 cr) needs seven more solar arrays. Refining is the next rung: buy electrolysis, stop selling at 400 cr/t and start selling at 1,800.
+
+*The figures above are corrected. The original example did not close — its cost line implied two radiators and a battery (2,840,000 cr, not 2,700,000), its power line only worked with one radiator, and its heat load matched neither. See `docs/DECISIONS.md` D10.*
 
 ---
 

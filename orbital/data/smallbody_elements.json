@@ -1,0 +1,38 @@
+{
+  "_comment": "Heliocentric osculating Keplerian elements, ecliptic J2000 frame.",
+  "_provenance": "PLACEHOLDER VALUES. These are approximate elements at the J2000 epoch, adequate for scaffolding and tests but NOT for a live world. Replace by running scripts/fetch_sbdb.py, which pulls current osculating elements from the JPL Small-Body Database and rewrites this file with a real epoch and fetch timestamp. See docs/DECISIONS.md, D5.",
+  "source": "approximate-j2000-placeholder",
+  "fetched_at": null,
+  "bodies": {
+    "ceres": {
+      "name": "1 Ceres",
+      "a_au": 2.7653, "e": 0.07913, "i_deg": 10.5834,
+      "raan_deg": 80.3932, "argp_deg": 73.5976, "M0_deg": 9.6787,
+      "epoch_jd": 2451545.0
+    },
+    "vesta": {
+      "name": "4 Vesta",
+      "a_au": 2.3615, "e": 0.08891, "i_deg": 7.1404,
+      "raan_deg": 103.8514, "argp_deg": 149.8415, "M0_deg": 144.8563,
+      "epoch_jd": 2451545.0
+    },
+    "pallas": {
+      "name": "2 Pallas",
+      "a_au": 2.7727, "e": 0.22994, "i_deg": 34.8410,
+      "raan_deg": 173.0962, "argp_deg": 310.0488, "M0_deg": 78.2287,
+      "epoch_jd": 2451545.0
+    },
+    "psyche": {
+      "name": "16 Psyche",
+      "a_au": 2.9213, "e": 0.13907, "i_deg": 3.0954,
+      "raan_deg": 150.2470, "argp_deg": 227.5155, "M0_deg": 291.4526,
+      "epoch_jd": 2451545.0
+    },
+    "eros": {
+      "name": "433 Eros",
+      "a_au": 1.4581, "e": 0.22270, "i_deg": 10.8291,
+      "raan_deg": 304.4011, "argp_deg": 178.6183, "M0_deg": 208.5843,
+      "epoch_jd": 2451545.0
+    }
+  }
+}

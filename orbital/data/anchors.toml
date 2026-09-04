@@ -1,0 +1,83 @@
+# Anchors: physical locations the orbital service can cost transfers between.
+#
+# The game maps its nodes onto these. The service never learns a node name.
+# See docs/seed-data.md for which node sits on which anchor.
+#
+# Lunar delta-v budgets are from docs/seed-data.md. Mars and asteroid budgets
+# were not in the seed data and are set here -- see docs/DECISIONS.md, D16.
+
+[anchors.luna_south]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = -89.9
+lon_deg = 0.0
+dv_escape = 2570.0    # surface -> LLO (1870) -> Earth-Moon escape (700)
+dv_capture = 2570.0
+note = "Shackleton Depot, Ark Terminus. Lunar south pole."
+
+[anchors.luna_north]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = 88.6
+lon_deg = 33.0
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Peary Ridge. Lunar north pole."
+
+[anchors.luna_equatorial]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = 8.5
+lon_deg = 31.4
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Tranquillitatis Flats. Lunar equatorial regolith site."
+
+[anchors.luna_orbit]
+kind = "lunar_orbit"
+body = "earth_moon_barycentre"
+dv_escape = 700.0
+dv_capture = 700.0
+note = "Selene Station. Low lunar orbit. Also the Earth standing-order delivery point."
+
+[anchors.mars]
+kind = "ephemeris"
+body = "mars_barycentre"
+dv_escape = 5500.0    # surface -> low Mars orbit (~4100) -> escape (~1400)
+dv_capture = 1000.0   # aerocapture plus powered descent
+note = "Tharsis Yards, Hellas Agricultural. Arrival is cheap because Mars has an atmosphere; departure is not."
+
+[anchors.ceres]
+kind = "smallbody"
+body = "ceres"
+dv_escape = 510.0
+dv_capture = 510.0
+note = "Ceres Exchange. The Belt's capital. Escape velocity 510 m/s."
+
+[anchors.vesta]
+kind = "smallbody"
+body = "vesta"
+dv_escape = 360.0
+dv_capture = 360.0
+note = "Vesta Station."
+
+[anchors.psyche]
+kind = "smallbody"
+body = "psyche"
+dv_escape = 180.0
+dv_capture = 180.0
+note = "Psyche Works."
+
+[anchors.pallas]
+kind = "smallbody"
+body = "pallas"
+dv_escape = 320.0
+dv_capture = 320.0
+note = "Pallas Reach. 34.8 degree inclination makes the ARC expensive, not the well."
+
+[anchors.eros]
+kind = "smallbody"
+body = "eros"
+dv_escape = 10.0
+dv_capture = 10.0
+note = "Eros Claim Field. Near-Earth, negligible gravity well. The cheapest first claim."

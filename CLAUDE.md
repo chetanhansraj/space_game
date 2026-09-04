@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Project instructions for this repository. Read `docs/BIBLE.md` for the design reasoning. This file holds the rules that must not be broken while implementing it.
+Project instructions for this repository. Read `docs/BIBLE.md` for the design reasoning and `docs/DECISIONS.md` for the calls made on everything those documents left ambiguous, contradictory or unset. This file holds the rules that must not be broken while implementing it.
 
 ---
 
@@ -68,7 +68,8 @@ Enforced at signup. Alt accounts farming themselves is the classic killer of pla
 
 - **Money is integer credits.** Never floats. One credit is one gigajoule of delivered energy. Trade is commonly quoted in kcr and Mcr; store base units.
 - **Mass is kilograms** in the database, displayed in tonnes.
-- **All times are game time**, stored as UTC instants with the conversion in one place. Never scatter the 60× factor.
+- **All times are game time**, stored as UTC instants with the conversion in one place. Never scatter the 60× factor — it lives in `orbital/src/orbital/clock.py` and a test asserts no other module defines it. Every rate in `docs/seed-data.md` is per game day.
+- **Sky time is not game date.** Ephemerides are evaluated at a clock that starts at the real launch instant and runs 60×; the fictional 22nd-century calendar is a display offset and never enters a computation. See `docs/DECISIONS.md` D3.
 - **Every economic mutation is an append-only ledger entry.** Balances are derived, never edited. If you cannot reconstruct a player's balance from the ledger, the ledger is wrong.
 - **Migrations are forward-only.** The world is persistent and cannot be reset once live.
 
@@ -84,7 +85,7 @@ Enforced at signup. Alt accounts farming themselves is the classic killer of pla
 
 ## Working style
 
-- **Ask before inventing economic values.** If a number is missing from `docs/seed-data.md`, it is a design decision and not yours to guess. Flag it.
+- **Ask before inventing economic values.** If a number is missing from `docs/seed-data.md`, it is a design decision and not yours to guess. Flag it. Where a value has already been decided under delegated authority, it is recorded in `docs/DECISIONS.md` with its reasoning and marked if it was invented outright.
 - **The bible is an argument, not a spec.** Where it is vague, the tables in `docs/seed-data.md` govern. Where both are silent, ask.
 - **Prefer boring, inspectable code** in `sim/` and `market/`. Cleverness here costs more than it saves — these are the systems that will need debugging at 2am against a live economy.
 - Small commits. One decision per commit, with the reasoning in the message.
