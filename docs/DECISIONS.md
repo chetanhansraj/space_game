@@ -433,6 +433,105 @@ codex's Ark site should not be at different latitudes.
 
 ---
 
+## Market and ledger
+
+Implemented in `market/`. See `market/README.md`.
+
+### D30 — Conservation is structural, not tested
+
+Every economic event is a set of postings summing to zero per asset, and a
+transaction that does not balance is rejected before it is written. Value
+enters and leaves only through four named world accounts — `world:genesis`,
+`world:sink`, `world:extraction`, `world:consumption` — which sit on the same
+ledger as everyone else, so every credit ever created and destroyed is a
+query rather than an estimate.
+
+This matters more than it sounds. CLAUDE.md asks for property tests asserting
+conservation; a test can only catch a leak after someone writes one. Making
+the ledger reject unbalanced writes means the leak cannot be written in the
+first place, by present or future code. The property tests then check that
+nothing has subverted the structure, which is a much stronger position.
+
+No balance is stored anywhere. Balances are summed from postings on every
+read, because a cached balance is a second source of truth that eventually
+disagrees with the first and gives you no way to tell which is right.
+`UPDATE` and `DELETE` on the ledger are blocked by database triggers rather
+than by convention.
+
+### D31 — Orders are priced per lot and sized in whole lots
+
+Two CLAUDE.md rules conflict: money is integer credits, and mass is stored in
+kilograms. Regolith at 150 cr/tonne is 0.15 cr/kg, so one kilogram has no
+integer price and a market that quietly rounds it invents or destroys value on
+every fill.
+
+Resolved the way real commodity markets do. A lot is a tonne for bulk goods
+and a kilogram for platinum group metals and helium-3, matching the trade-unit
+column already in `docs/seed-data.md`. Quantities are still *stored* in
+kilograms as CLAUDE.md requires, constrained to whole multiples of the lot
+mass, so cost is an integer multiplication and the kg conversion is exact in
+both directions. **There is no float in the package and no rounding anywhere.**
+A calculation that cannot be done exactly in integers is refused.
+
+### D32 — Escrow is a ledger account per order
+
+A resting bid holds its credits and a resting ask holds its goods, from the
+moment the order is placed, in an account named for that order. Nothing can be
+promised twice; cancelling returns exactly what is left; and because escrow is
+ordinary accounts, it is covered by conservation like everything else. A
+property test asserts every closed order's escrow ends at exactly zero.
+
+### D33 — The Ark Authority quotes 60% / 175%, from a finite treasury
+*(`seed-data.md` listed the spread as an open value)*
+
+Bid at 60% of seed base value, ask at 175% — roughly a 3× spread, wide enough
+that any serious quote beats it, tight enough that day-one prices mean
+something.
+
+**The treasury is finite, and that is a correction to the bible.** "It will
+always buy at a floor and always sell at a ceiling" read literally means
+unlimited credits, which is a printing press wearing an institution's clothes
+and squarely against invariant 3. So the Authority is funded once from genesis
+in a single auditable transaction and trades against real holdings from then
+on. Drain it and the floor thins and then vanishes — a genuine economic event,
+and everyone who sold into it was paid with real money the whole way down.
+
+It gets no special case in the matching engine: it is an ordinary
+institutional account placing ordinary escrowed limit orders, so anyone
+quoting inside its spread is hit first by price priority. That is the
+mechanism by which "the training wheels dissolve on their own" actually works.
+`share_of_volume()` is the number to watch.
+
+### D34 — The resting order sets the price
+
+An aggressor that crosses the spread pays what is already on the book, not its
+own limit. A buyer whose limit was generous escrowed at that limit and gets
+the difference refunded on each fill. Standard exchange behaviour, and the
+alternative rewards aggression with a worse price for no reason.
+
+### D35 — Self-trading is skipped, not rejected
+
+One account per person is an invariant, so an account matching its own resting
+order can only be wash trading — manufacturing a price history to sell into.
+Skipping rather than rejecting can briefly leave a crossed book if one account
+holds both sides, which is harmless and clears the moment anyone else trades.
+A test covers exactly that.
+
+### D36 — SQLite, forward-only migrations
+
+Real transactions, no server, and inspectable from a shell at 2am against a
+live economy — which CLAUDE.md explicitly asks for. Every money movement
+happens inside one `BEGIN IMMEDIATE` transaction, so a failure mid-settlement
+leaves the world exactly as it was; a test raises an exception halfway through
+a transfer and asserts nothing moved. The SQL is kept plain enough to move to
+Postgres when concurrency demands it.
+
+Migrations only go forward. There is no downgrade path, because the world is
+persistent and cannot be reset once live. If a migration is wrong, the fix is
+another migration.
+
+---
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.

@@ -14,6 +14,7 @@ Real orbital mechanics, deterministic economy, one shared clock at 60× real tim
 | `docs/DECISIONS.md` | Every call made on what the above left ambiguous, contradictory or unset. |
 | `docs/DESIGN-LANGUAGE.md` | The lunarark.com visual system, as tokens. What `web/` gets built against. |
 | `orbital/README.md` | The transfer service: accuracy, how to build a table, how to run it. |
+| `market/README.md` | The ledger and order books: why conservation is structural. |
 
 ## Layout
 
@@ -30,8 +31,8 @@ web/       Client. Rendering only.
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -e 'orbital[offline,serve,dev]'
-.venv/bin/python -m pytest orbital/tests -q          # 117 tests
+.venv/bin/pip install -e './orbital[offline,serve,dev]' -e './market[dev]'
+.venv/bin/python -m pytest -q                        # 157 tests
 
 .venv/bin/python orbital/scripts/fetch_sbdb.py       # refresh asteroid elements
 .venv/bin/python orbital/scripts/build_table.py      # generate transfer table
@@ -47,7 +48,12 @@ reproduces the launch energies of four real NASA Mars missions to between
 0.0% and 5.6%, and two independent ephemerides agree to 15 arcseconds against
 an arcminute target.
 
-Nothing else is built yet. `sim/`, `market/`, `api/`, `voice/` and `web/` are
-empty.
+`market/` is built: an append-only double-entry ledger where conservation is
+structural rather than tested, escrowed limit order books with price-time
+priority, and the Ark Authority quoting a floor and ceiling from a finite
+treasury. A Hypothesis state machine checks after every step of every
+generated trade sequence that nothing was created or destroyed.
+
+`sim/`, `api/`, `voice/` and `web/` are empty.
 
 Roadmap is in `docs/BIBLE.md` §10. Short version: one lunar node and one market, then ships, then the Belt, then Mars industry, then the political layer.
