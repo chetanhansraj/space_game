@@ -29,11 +29,37 @@ web/       Client. Rendering only.
 
 ## Running locally
 
+Python 3.11 or 3.12. **Not 3.13+ yet** — `lamberthub` needs `numba`, which
+lags new Python releases. The `market/` package has no such constraint.
+
+macOS and Linux:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e './orbital[offline,serve,dev]' -e './market[dev]'
+.venv/bin/python -m pytest -q                        # 157 tests
+```
+
+Windows, **Git Bash** — forward slashes, but the Windows `Scripts` folder.
+Backslashes are escape characters in bash and will silently mangle the path:
+
 ```bash
 python -m venv .venv
-.venv/bin/pip install -e './orbital[offline,serve,dev]' -e './market[dev]'
-.venv/bin/python -m pytest -q                        # 157 tests
+.venv/Scripts/python -m pip install -e "./orbital[offline,serve,dev]" -e "./market[dev]"
+.venv/Scripts/python -m pytest -q
+```
 
+Windows, **PowerShell**:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install -e ".\orbital[offline,serve,dev]" -e ".\market[dev]"
+.venv\Scripts\python -m pytest -q
+```
+
+Then, to generate and serve a transfer table (paths below are the Unix form):
+
+```bash
 .venv/bin/python orbital/scripts/fetch_sbdb.py       # refresh asteroid elements
 .venv/bin/python orbital/scripts/build_table.py      # generate transfer table
 ORBITAL_TABLE=orbital/data/transfers.sqlite .venv/bin/uvicorn orbital.api.app:app
@@ -50,6 +76,10 @@ the finished pieces actually running:
 .venv/bin/python scripts/demo_market.py --ticks 40   # a live spot market
 .venv/bin/python scripts/demo_routes.py              # transfer costs and windows
 ```
+
+On Windows substitute `.venv/Scripts/python` (Git Bash) or
+`.venv\Scripts\python` (PowerShell). `demo_market.py` needs only the
+`market` package, so it runs even if the orbital install failed.
 
 `demo_market.py` runs miners, refineries and haulers against the real ledger
 and order books at Shackleton Depot, printing the book, the tape and a
