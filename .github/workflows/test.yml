@@ -21,7 +21,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e './orbital[offline,dev]' -e './market[dev]'
+          pip install -e './orbital[offline,dev]' -e './market[dev]' -e './sim[dev]'
 
       - name: Test
         run: pytest -q

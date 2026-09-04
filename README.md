@@ -15,6 +15,7 @@ Real orbital mechanics, deterministic economy, one shared clock at 60× real tim
 | `docs/DESIGN-LANGUAGE.md` | The lunarark.com visual system, as tokens. What `web/` gets built against. |
 | `orbital/README.md` | The transfer service: accuracy, how to build a table, how to run it. |
 | `market/README.md` | The ledger and order books: why conservation is structural. |
+| `sim/README.md` | The world tick: price formation, the macro loop, the v1 roster. |
 
 ## Layout
 
@@ -37,7 +38,7 @@ macOS and Linux:
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e './orbital[offline,serve,dev]' -e './market[dev]'
-.venv/bin/python -m pytest -q                        # 157 tests
+.venv/bin/python -m pytest -q                        # 188 tests
 ```
 
 Windows, **Git Bash** — forward slashes, but the Windows `Scripts` folder.
@@ -102,6 +103,11 @@ priority, and the Ark Authority quoting a floor and ceiling from a finite
 treasury. A Hypothesis state machine checks after every step of every
 generated trade sequence that nothing was created or destroyed.
 
-`sim/`, `api/`, `voice/` and `web/` are empty.
+`sim/` is built: the world tick, 50 bulk agents across three lunar nodes,
+exponential depletion, solar flares and rig failures, and price formation from
+inventory pressure. Shackleton ice settles near 650 and Peary ice near 333 —
+two prices for one good, which is what v1 exists to produce.
+
+`api/`, `voice/` and `web/` are empty.
 
 Roadmap is in `docs/BIBLE.md` §10. Short version: one lunar node and one market, then ships, then the Belt, then Mars industry, then the political layer.

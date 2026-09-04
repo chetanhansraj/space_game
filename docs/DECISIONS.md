@@ -604,6 +604,163 @@ engineering one.
 
 ---
 
+## Failure and re-entry
+
+### D37 — A bankrupt firm is liquidated, and its owner becomes crew
+
+*Answers F3. Decided by Chetan; this supersedes the "the Ark capitalises a
+replacement" proposal, which was worse — it removed the person from the world
+and made the institution a charity.*
+
+Three separate mechanisms, because bankruptcy means different things to a
+player, to an agent, and to the assets:
+
+**1. The estate is auctioned.** A firm that cannot meet its obligations is
+wound up. Its cargo, and later its ships and claims, are sold into the live
+order book at whatever the market will pay — no special-case pricing, no
+institutional bailout. Proceeds settle debts in order; anything left over is
+written off. Banks, rival firms and players bid like anyone else, so a
+bankruptcy is a *buying opportunity* for whoever has capital and nerve, which
+is how it works in the real economy and is more interesting than a reset.
+
+**2. The owner becomes crew, and earns their way back.** This is the part that
+matters. Losing your ship does not end your run: you take a berth on someone
+else's, draw a wage, and rebuild. The arc has a floor, not a cliff.
+
+That single change makes the whole risk curve playable. A player can take a
+genuinely dangerous position — a leveraged bet on volatiles, a Belt run with
+too little margin — knowing that the downside is *demotion*, not deletion.
+Games where ruin is terminal teach people not to gamble, and this economy is
+uninteresting if nobody gambles.
+
+It also creates a labour market, which the bible half-implies without ever
+saying: crew wages already appear in the sinks list, and "hired crew" appears
+in the Operator arc. This closes the loop by making wages someone's income.
+
+**Accounting consequence, and it needs care.** The bible lists crew wages as a
+*sink* — money leaving the world. That is only true for crew who are not
+modelled. So: wages paid to unmodelled bulk crew are a sink and drain to
+``world:sink``; wages paid to a player or a named agent are an ordinary
+transfer between accounts. Both are real money from an employer who earned it
+selling cargo, so invariant 3 holds either way, but they post differently and
+conflating them would quietly break invariant 7.
+
+**3. Agent population regenerates from success, not from charity.** In v1
+there are no ships and no players, so the crew route does not yet exist. The
+agent population still has to stay non-decreasing or a long-running world
+empties itself.
+
+Rather than minting capital for new entrants, **a prosperous firm spins off a
+competitor out of its own balance sheet** once it exceeds a wealth threshold.
+No credits are created, and it is self-balancing in a pleasing way:
+concentration produces new entrants, new entrants produce competition,
+competition erodes concentration. Wealth that would otherwise pool into a
+single dominant agent gets recycled into the thing that constrains it.
+
+**Sequencing.** Part 1 and part 3 ship with `sim/` in v1. Part 2 needs ships
+and crew, so it lands with v3 — but the design is fixed now, because it
+changes how risk should be tuned everywhere before then.
+
+---
+
+## Simulation
+
+Implemented in `sim/`. All three were listed as open values in
+`docs/seed-data.md`.
+
+### D38 — Depletion is exponential in cumulative mass
+
+`richness(x) = exp(-x / scale)`, with `scale` the mass that drops output to
+1/e. Exponential rather than hyperbolic because the tail is the point: a
+hyperbolic curve leaves a worked-out rock limping along at 10% forever, which
+keeps marginal supply on the market and blunts exactly the pressure meant to
+push players outward.
+
+Scale is set so a rig at nameplate halves its yield after ~173 game days,
+which is the bible's own "a rock that has been mined for six months yields
+less per hour than it did on day one". Lunar ice deposits are 3,000 t;
+regolith 100,000 t. Below 5% richness a site is abandoned.
+
+### D39 — Two shocks in v1, at these frequencies
+
+Solar flares halt surface work: ~1 per 30 game days (about two per real day),
+lasting 6–18 game hours. Rig failures: ~1 per firm per 60 game days, 12–48
+game hours, 25,000 cr to repair. Both are named explicitly in the bible;
+convoy loss, claim expiry, policy changes and cartel formation all need
+systems that do not exist yet.
+
+Every roll is a pure function of (world seed, tick, stream name), so a shock
+is replayable without simulating the ticks before it.
+
+### D40 — The money supply is Earth's faucet against the sinks
+
+Nothing in the design documents states this, and it is the most consequential
+number in the game.
+
+**Credits enter the world in exactly one place**: Earth's standing order,
+buying helium-3 at its seed anchor. **They leave in exactly one place**: the
+sinks. Genesis funding aside, those two flows *are* the money supply, and the
+ratio between them decides whether the economy inflates, deflates, or holds.
+
+Earth's bid also denominates everything else. Helium-3's seed value is what
+Earth pays; every other commodity is priced against it through the energy
+anchor. Earth is not one participant among many — it is the unit of account.
+
+Because seed-data gives no upkeep figures for installations (its only anchor
+is the Kestrel at 400 cr/game-day), the per-firm upkeep in `sim/seed_world.py`
+is invented, and scaled by an explicit dial to hold the ratio near 1.0. That
+dial is a tuning parameter, not a discovered constant, and it is the first
+thing to revisit whenever the roster changes.
+
+---
+
+## Simulation findings, second run
+
+### F4 — The first world was quietly deflationary
+
+Measured over 360 ticks: Earth injected 566,000 cr per game day against
+942,000 cr of sinks. **A ratio of 0.52** — the economy draining itself, with
+the firms' 66 million in capital exhausted in roughly 145 game days, or about
+two and a half real days.
+
+Nothing would have looked wrong. Prices were stable and near their anchors,
+no firm was insolvent, conservation held on every tick. The world was simply
+running down, and it would have taken days of watching to notice.
+
+Scaling upkeep to a 0.98 ratio fixes it for this roster. The general lesson is
+D40: **this ratio needs a permanent readout**, because it is invisible in
+every other metric and it decides whether the world has a future.
+
+### F5 — Three bugs that only an integration test could find
+
+Recorded because each was invisible to unit tests and each looked like an
+economic fact until traced.
+
+**Agents stacked orders instead of refreshing them.** A resting bid escrows
+its credits, so a firm re-bidding its full shortfall every hour escrowed the
+same purchase again and again. The helium-3 separators bled 201,066 cr an
+hour against an expected 6,667, and were wound up with 5.8 million credits
+still on their balance sheet — almost all of it locked behind orders they had
+already placed. Agents now cancel before they quote.
+
+**A reference price with no anchor ratchets without limit.** With the last
+trade as the sole reference, a market where most firms are short walks upward
+forever: each deficit buyer bids above the last print, that print becomes the
+next reference. Ice reached 1,670 against a 400 anchor and was still climbing.
+The fix was already specified and unused — seed-data says volatility *is* the
+mean-reversion strength, so the reference is now the last trade blended back
+toward the seed anchor, weighted inversely to volatility.
+
+**Rounding production to trading lots silently deletes whole industries.** A
+separator yields 0.6 kg of helium-3 from 400 tonnes of regolith, which is
+0.025 kg an hour. Rounded to a 1 kg lot every tick, that is zero, forever —
+so the world's only source of credits produced nothing and nothing else was
+visibly wrong. Mass is stored in kilograms and only *orders* need whole lots,
+so production no longer rounds, and the sub-kilogram remainder is carried
+between ticks rather than discarded.
+
+---
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -621,6 +778,5 @@ Deliberately not decided, because these are yours.
 4. **"Heavy hulls only"** for hard burns — undefined threshold.
 5. **Starting cash against first-outpost cost** — 120,000 cr against
    2,565,000 cr, and see D14 on runway. `seed-data.md` already flags this.
-6. **What happens to a bankrupt firm** — see F3. Blocks bulk agents in `sim/`.
-7. **Depletion curve shape, Ark Authority spread, agent counts, shock
+6. **Depletion curve shape, Ark Authority spread, agent counts, shock
    frequency** — already listed as open in `seed-data.md`. Unchanged.
