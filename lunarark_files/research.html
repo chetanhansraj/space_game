@@ -1,0 +1,1765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lunar Ark — Research Library | The Codex</title>
+  <meta name="description" content="The Lunar Ark Research Library — 763 entries across 25 lunar settlement systems. Browse the open codex by cluster, system, or research status. CC-BY-SA.">
+  <meta property="og:title" content="Lunar Ark — Research Library | The Codex">
+  <meta property="og:description" content="The Lunar Ark Research Library — 763 entries across 25 lunar settlement systems. Browse the open codex by cluster, system, or research status. CC-BY-SA.">
+  <meta property="og:image" content="https://lunarark.com/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:alt" content="Lunar Ark — an open engineering codex for a settlement at the Moon's south pole">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="https://lunarark.com/research.html">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lunar Ark — Research Library | The Codex">
+  <meta name="twitter:description" content="The Lunar Ark Research Library — 763 entries across 25 lunar settlement systems. Browse the open codex by cluster, system, or research status. CC-BY-SA.">
+  <meta name="twitter:image" content="https://lunarark.com/og-image.jpg">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;500;600;700&family=Space+Mono&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+  <style>
+    :root {
+      --deep-bg: #030014;
+      --glass-bg: rgba(15, 23, 42, 0.6);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --accent-purple: #8b5cf6;
+      --accent-cyan: #06b6d4;
+      --accent-indigo: #6366f1;
+    }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
+    }
+
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.3); border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.5); }
+
+    body {
+      background-color: var(--deep-bg);
+      color: #e2e8f0;
+      font-family: 'Rajdhani', sans-serif;
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3, .brand-font { font-family: 'Orbitron', sans-serif; letter-spacing: 0.1em; }
+    .mono-font { font-family: 'Space Mono', monospace; }
+
+    /* Cluster sidebar — rotate chevron when expanded */
+    details.cluster-group > summary::-webkit-details-marker { display: none; }
+    details.cluster-group[open] .cluster-chevron { transform: rotate(180deg); }
+    details.cluster-group > summary { user-select: none; }
+
+    /* Shimmer Card Effect */
+    .shimmer-card {
+      background-color: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    
+    .shimmer-card:hover {
+      border-color: rgba(139, 92, 246, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .shimmer-card::before {
+      content: "";
+      position: absolute;
+      height: 100%; width: 100%;
+      left: 0; top: 0;
+      background: radial-gradient(
+        600px circle at var(--mouse-x) var(--mouse-y), 
+        rgba(139, 92, 246, 0.1),
+        transparent 40%
+      );
+      z-index: 1;
+      opacity: 0;
+      transition: opacity 0.5s;
+      pointer-events: none;
+    }
+    .shimmer-card:hover::before { opacity: 1; }
+    .shimmer-content { position: relative; z-index: 2; }
+
+    /* System Card */
+    .system-card {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .system-card:hover {
+      border-color: rgba(139, 92, 246, 0.6);
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.1) 100%);
+      transform: translateY(-4px) scale(1.02);
+      box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2), 0 0 60px rgba(99, 102, 241, 0.1);
+    }
+
+    /* Sidebar Item */
+    .sidebar-item {
+      transition: all 0.2s ease;
+      border-left: 3px solid transparent;
+    }
+
+    .sidebar-item:hover {
+      background: rgba(99, 102, 241, 0.1);
+      border-left-color: var(--accent-purple);
+    }
+
+    .sidebar-item.active {
+      background: rgba(99, 102, 241, 0.2);
+      border-left-color: var(--accent-cyan);
+    }
+
+    /* Breadcrumb */
+    .breadcrumb-item {
+      transition: all 0.2s ease;
+    }
+    .breadcrumb-item:hover {
+      color: var(--accent-cyan);
+    }
+
+    /* Status Indicators */
+    .status-complete { color: #22c55e; }
+    .status-in-progress { color: #f97316; }
+    .status-deep-research { color: #3b82f6; }
+    .status-pending { color: #6b7280; }
+
+    /* Pulse Ring Animation */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.8); opacity: 1; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+
+    .pulse-ring::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      animation: pulse-ring 2s ease-out infinite;
+    }
+
+    /* Neural Background */
+    .neural-bg {
+      background-image: 
+        radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
+    }
+
+    /* Image Container */
+    .node-image {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .node-image::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(3, 0, 20, 0.9) 0%, rgba(3, 0, 20, 0.3) 50%, transparent 100%);
+    }
+
+    /* Search Highlight */
+    .search-highlight {
+      background: rgba(6, 182, 212, 0.3);
+      border-radius: 2px;
+      padding: 0 2px;
+    }
+
+    /* Confidence Bar */
+    .confidence-bar {
+      background: linear-gradient(90deg, #22c55e 0%, #06b6d4 50%, #8b5cf6 100%);
+    }
+
+    /* Markdown Styling */
+    .prose-ark h2, .prose-ark strong {
+      color: #a5b4fc;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .prose-ark p {
+      color: #94a3b8;
+      line-height: 1.8;
+      margin-bottom: 1rem;
+    }
+
+    .prose-ark ul, .prose-ark ol {
+      color: #94a3b8;
+      margin-left: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .prose-ark li {
+      margin-bottom: 0.5rem;
+    }
+
+    /* Glow Effects */
+    .glow-purple { box-shadow: 0 0 30px rgba(139, 92, 246, 0.3); }
+    .glow-cyan { box-shadow: 0 0 30px rgba(6, 182, 212, 0.3); }
+
+    /* Loading Skeleton */
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.5s infinite;
+    }
+
+    @keyframes skeleton-loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Sidebar Toggle for Mobile */
+    .sidebar-overlay {
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+    }
+
+    /* Stats Card */
+    .stat-card {
+      background: linear-gradient(135deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.2) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Floating Action Button */
+    .fab {
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+      transition: all 0.3s ease;
+    }
+    .fab:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 30px rgba(124, 58, 237, 0.6);
+    }
+  </style>
+  <link rel="canonical" href="https://lunarark.com/research.html">
+  <meta property="og:site_name" content="Lunar Ark">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://lunarark.com/#organization", "name": "Lunar Ark", "alternateName": ["Lunar Ark Codex", "The Lunar Ark"], "url": "https://lunarark.com", "logo": {"@type": "ImageObject", "url": "https://lunarark.com/logo-nav.png"}, "email": "contribute@lunarark.com", "description": "An open engineering encyclopedia for a permanent lunar settlement at the Moon's south pole — 763 entries decomposed to component level, licensed CC-BY-SA 4.0.", "founder": {"@type": "Person", "name": "Chetan Hansraj"}, "foundingDate": "2018", "location": {"@type": "Place", "name": "Mumbai, India"}, "knowsAbout": ["lunar settlement", "space systems engineering", "Shackleton Crater", "in-situ resource utilisation", "long-term data preservation", "planetary defence"]}, {"@type": "WebSite", "@id": "https://lunarark.com/#website", "url": "https://lunarark.com", "name": "Lunar Ark", "alternateName": "Lunar Ark Codex", "publisher": {"@id": "https://lunarark.com/#organization"}, "inLanguage": "en", "license": "https://creativecommons.org/licenses/by-sa/4.0/", "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://lunarark.com/codex?q={search_term_string}"}, "query-input": "required name=search_term_string"}}]}</script>
+</head>
+
+<body class="min-h-screen neural-bg">
+
+  <!-- NAVBAR -->
+  <nav class="fixed top-0 w-full z-50 border-b border-white/5 bg-black/80 backdrop-blur-xl">
+    <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+      <a href="index.html" class="flex items-center gap-3">
+        <img src="/logo-nav.png" alt="Lunar Ark" class="h-9 w-auto" style="max-width:210px;">
+      </a>
+      
+      <div class="hidden md:flex items-center gap-8 text-xs font-bold tracking-widest text-gray-400 brand-font">
+        <a href="index.html" class="hover:text-white transition">CODEX</a>
+        <a href="sanctuary.html" class="hover:text-purple-400 transition">SANCTUARY</a>
+        <a href="research.html" class="text-cyan-400 border-b border-cyan-400 pb-0.5">RESEARCH</a>
+        <a href="simulation.html" class="hover:text-purple-400 transition">SIMULATION</a>
+        <a href="intel.html" class="hover:text-purple-400 transition">INTEL</a>
+      </div>
+
+      <!-- Mobile controls: sidebar toggle (existing) + site-nav hamburger (new) -->
+      <div class="md:hidden flex items-center gap-2">
+        <button id="mobile-menu-btn" class="p-2 rounded-lg bg-white/5 border border-white/10" aria-label="Toggle sidebar">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h18M3 12h18M3 20h18"></path></svg>
+        </button>
+        <button id="mobile-nav-toggle" class="p-2 rounded-lg bg-white/5 border border-white/10" aria-label="Open site menu" onclick="document.getElementById('mobile-nav-overlay').classList.remove('hidden')">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"></path></svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Mobile nav overlay (cyber register) -->
+  <div id="mobile-nav-overlay" class="hidden fixed inset-0 z-[100] md:hidden" style="background:rgba(3,0,20,0.97);backdrop-filter:blur(20px);">
+    <button onclick="document.getElementById('mobile-nav-overlay').classList.add('hidden')" class="absolute top-5 right-5 p-2 rounded-lg bg-white/5 border border-white/10 text-white" aria-label="Close menu">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+    </button>
+    <nav class="container mx-auto px-6 pt-24 pb-12 flex flex-col gap-1 brand-font tracking-widest">
+      <a href="index.html" class="text-gray-300 text-2xl py-4 border-b border-white/10 hover:text-white transition">CODEX</a>
+      <a href="sanctuary.html" class="text-gray-300 text-2xl py-4 border-b border-white/10 hover:text-purple-400 transition">SANCTUARY</a>
+      <a href="research.html" class="text-cyan-400 text-2xl py-4 border-b border-white/10 font-black">· RESEARCH</a>
+      <a href="simulation.html" class="text-gray-300 text-2xl py-4 border-b border-white/10 hover:text-purple-400 transition">SIMULATION</a>
+      <a href="intel.html" class="text-gray-300 text-2xl py-4 border-b border-white/10 hover:text-purple-400 transition">INTEL</a>
+      <div class="text-[10px] text-gray-600 mt-8 mono-font tracking-widest">contribute@lunarark.com · CC-BY-SA 4.0</div>
+    </nav>
+  </div>
+
+  <!-- MAIN LAYOUT -->
+  <div class="flex pt-16 min-h-screen">
+    
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="fixed md:sticky top-16 left-0 w-80 h-[calc(100vh-4rem)] bg-black/70 backdrop-blur-xl border-r border-white/5 flex flex-col z-40 transform -translate-x-full md:translate-x-0 transition-transform">
+      
+      <!-- Sidebar Header -->
+      <div class="p-5 border-b border-white/10 bg-gradient-to-r from-indigo-900/20 to-purple-900/20">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
+            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+          </div>
+          <div>
+            <h2 class="text-white font-bold text-sm brand-font tracking-wider">AI RESEARCH</h2>
+            <div class="text-[10px] text-purple-400/70 mono-font">KNOWLEDGE SYSTEM</div>
+          </div>
+        </div>
+        
+        <!-- ARCHIVIST status — driven by /api/health, never hardcoded -->
+        <a href="status.html" id="archivist-badge" title="View full system status"
+           class="flex items-center gap-2 px-3 py-1.5 rounded-lg w-fit transition-colors"
+           style="background:rgba(100,116,139,0.10);border:1px solid rgba(100,116,139,0.25);">
+          <span id="archivist-dot" class="w-2 h-2 rounded-full" style="background:#64748b;"></span>
+          <span id="archivist-label" class="text-[10px] font-bold uppercase tracking-wider" style="color:#94a3b8;">Checking…</span>
+        </a>
+      </div>
+
+      <!-- Search & Filters -->
+      <div class="p-4 space-y-3 border-b border-white/5">
+        <div class="relative">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          <input 
+            type="text" 
+            id="search-input"
+            placeholder="Search systems..." 
+            class="w-full bg-black/40 border border-white/10 rounded-lg py-2 pl-9 pr-3 text-sm text-white placeholder-gray-500 focus:border-purple-500/50 focus:outline-none transition"
+          >
+        </div>
+
+        <select id="status-filter" class="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-400 focus:border-purple-500/50 focus:outline-none">
+          <option value="all">All Status</option>
+          <option value="complete">✓ Complete</option>
+          <option value="in-progress">◔ In Progress</option>
+          <option value="deep-research">◉ Deep Research</option>
+          <option value="pending">○ Pending</option>
+        </select>
+      </div>
+
+      <!-- Navigation Tree -->
+      <div class="flex-1 overflow-y-auto p-3" id="nav-tree">
+        <!-- Populated by JavaScript -->
+        <div class="text-center py-8 text-gray-500">
+          <div class="w-8 h-8 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-3"></div>
+          <div class="text-sm">Loading systems...</div>
+        </div>
+      </div>
+
+      <!-- Sidebar Footer -->
+      <div class="p-4 border-t border-white/5 bg-black/30">
+        <button onclick="goToRoot()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-300 text-sm font-bold uppercase tracking-widest hover:border-purple-500/40 hover:bg-purple-500/20 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+          Return to Root
+        </button>
+      </div>
+    </aside>
+
+    <!-- Sidebar Overlay for Mobile -->
+    <div id="sidebar-overlay" class="fixed inset-0 sidebar-overlay z-30 hidden md:hidden" onclick="toggleSidebar()"></div>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 min-h-screen">
+      
+      <!-- Hero Header - Compact -->
+      <div id="hero-section" class="relative overflow-hidden">
+        <!-- Background Image -->
+        <div id="hero-image" class="absolute inset-0 bg-cover bg-center opacity-30" style="background-image: linear-gradient(135deg, #1e1b4b 0%, #0f0f23 100%);"></div>
+        <div class="absolute inset-0 bg-gradient-to-b from-[#030014]/50 to-[#030014]"></div>
+        
+        <div class="relative z-10 container mx-auto px-6 py-8">
+          
+          <!-- Breadcrumbs -->
+          <nav id="breadcrumbs" class="flex items-center gap-2 text-xs mb-4 flex-wrap">
+            <button onclick="goToRoot()" class="breadcrumb-item text-gray-500 hover:text-cyan-400 font-bold uppercase tracking-widest transition flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+              ROOT
+            </button>
+          </nav>
+
+          <!-- Title Row -->
+          <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+            <div class="flex items-center gap-4">
+              <!-- Status Badge -->
+              <div id="status-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-400 text-[10px] font-black uppercase tracking-widest">
+                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                Complete
+              </div>
+              
+              <!-- Title -->
+              <h1 id="current-title" class="text-2xl md:text-4xl font-black brand-font text-white leading-tight">
+                LUNAR ARK PROJECT
+              </h1>
+            </div>
+
+            <!-- Inline Stats -->
+            <div class="flex items-center gap-3 text-xs">
+              <div class="flex items-center gap-4 px-4 py-2.5 rounded-lg bg-black/30 border border-white/5">
+                <span class="text-gray-500">NODES</span>
+                <span id="stat-nodes" class="text-cyan-400 mono-font font-bold">771</span>
+                <span class="text-gray-700">|</span>
+                <span class="text-gray-500">DEPTH</span>
+                <span id="stat-depth" class="text-purple-400 mono-font font-bold">L4</span>
+                <span class="text-gray-700">|</span>
+                <span class="text-gray-500">MAPPED</span>
+                <span id="stat-research" class="text-green-400 mono-font font-bold">100%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Meta Row -->
+          <div class="flex flex-wrap items-center gap-6 text-sm text-gray-500">
+            <span id="children-count" class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+              <span class="mono-font">0 Subsystems</span>
+            </span>
+            <span id="last-updated" class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <span class="mono-font">Updated: --</span>
+            </span>
+            
+            <!-- Confidence inline -->
+            <span class="flex items-center gap-2">
+              <span class="text-gray-500">Confidence:</span>
+              <div class="w-20 h-1.5 bg-black/40 rounded-full overflow-hidden">
+                <div id="confidence-bar" class="h-full confidence-bar rounded-full transition-all duration-700" style="width: 99%"></div>
+              </div>
+              <span id="confidence-value" class="text-cyan-400 mono-font font-bold">99%</span>
+            </span>
+
+            <!-- Back Button -->
+            <button onclick="goBack()" id="back-btn" class="hidden items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:border-cyan-500/50 text-gray-400 hover:text-white text-xs font-bold transition ml-auto">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subsystems Grid -->
+      <section id="subsystems-section" class="container mx-auto px-6 py-8">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-lg font-bold brand-font text-white uppercase tracking-widest flex items-center gap-3">
+            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            Subsystems
+            <span id="subsystem-count" class="text-sm mono-font text-gray-500 font-normal">(0)</span>
+          </h2>
+        </div>
+
+        <div id="subsystems-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <!-- Populated by JavaScript -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="no-subsystems" class="hidden text-center py-12">
+          <div class="w-14 h-14 mx-auto mb-4 rounded-full bg-purple-500/10 border border-purple-500/30 flex items-center justify-center">
+            <svg class="w-7 h-7 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+          </div>
+          <h3 class="text-base font-bold text-white mb-2">Leaf Node Reached</h3>
+          <p class="text-gray-500 text-sm">This is the deepest level of the hierarchy.</p>
+        </div>
+      </section>
+
+      <!-- Node Detail Section (populated dynamically from full node JSON) -->
+      <section id="node-detail-section" class="container mx-auto px-6 pb-12">
+        <div class="max-w-5xl space-y-4" id="node-detail-content">
+          <div class="text-center py-16 text-gray-500">
+            <div class="w-10 h-10 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-sm">Loading node data...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Search Results Modal -->
+      <div id="search-results-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeSearchResults()"></div>
+        <div class="absolute inset-4 md:inset-10 lg:inset-20 flex items-start justify-center pt-20 pointer-events-none">
+          <div class="bg-[#0a0a1a] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[70vh] overflow-hidden pointer-events-auto shadow-2xl shadow-purple-900/20">
+            <div class="p-4 border-b border-white/10 flex items-center justify-between">
+              <h3 class="text-white font-bold">Search Results</h3>
+              <button onclick="closeSearchResults()" class="p-2 rounded-lg hover:bg-white/10 transition">
+                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+            <div id="search-results-list" class="p-4 overflow-y-auto max-h-[60vh] space-y-2">
+              <!-- Populated by search -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Mobile FAB for Sidebar -->
+  <button id="sidebar-fab" class="fixed bottom-6 right-6 w-14 h-14 fab rounded-full flex items-center justify-center md:hidden z-50" onclick="toggleSidebar()">
+    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
+  </button>
+
+  <script>
+    // ═══════════════════════════════════════════════════════════════════════════
+    // RESEARCH HIERARCHY DATA
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    let RESEARCH_DATA = null;
+    let currentNode = null;
+    let navPath = [];
+    let allFlattenedNodes = [];
+
+    // Load the data from hierarchy.json
+    async function loadResearchData() {
+      console.log('[ARK] Loading research hierarchy...');
+      
+      // Try multiple sources in order of preference
+      const sources = [
+        '/api/hierarchy',     // API endpoint (preferred)
+        'OUTPUT/hierarchy.json',                    // Direct file
+        'hierarchy.json',                           // Legacy path
+      ];
+      
+      for (const source of sources) {
+        try {
+          console.log(`[ARK] Trying: ${source}`);
+          const res = await fetch(source);
+          if (res.ok) {
+            RESEARCH_DATA = await res.json();
+            console.log(`[ARK] ✓ Loaded from ${source}`);
+            break;
+          }
+        } catch (e) {
+          console.log(`[ARK] ✗ Failed: ${source}`);
+        }
+      }
+
+      // Final fallback with embedded minimal data
+      if (!RESEARCH_DATA) {
+        console.log('[ARK] Using embedded fallback data');
+        RESEARCH_DATA = {
+          name: "Lunar Ark Project",
+          description: "**Introduction to the Lunar Ark Project**\n\nThe Lunar Ark Project is a visionary concept that involves creating a self-sustaining, robotic repository of Earth's biodiversity, culture, and knowledge on the lunar surface. The primary objective of this project is to safeguard the collective heritage of humanity and the natural world against global catastrophes.\n\n**Key Objectives:**\n\n1. **Preservation of Biodiversity**: By storing cryogenically frozen biological samples, including DNA, tissues, and seeds.\n2. **Cultural and Knowledge Archive**: Storing a comprehensive digital archive of human culture, history, and scientific knowledge.\n3. **Planetary Insurance**: Providing a backup of essential information and biological resources.",
+          image: "images/lunar-ark.png",
+          researchStatus: "complete",
+          confidenceScore: 0.99,
+          lastUpdated: "2025-12-27",
+          children: [
+            {
+              name: "Energy Systems",
+              description: "The Energy Systems component is critical for sustainable operation of the Lunar Ark, including solar power generation, energy storage, and power distribution.",
+              researchStatus: "complete",
+              confidenceScore: 0.99,
+              lastUpdated: "2025-12-27",
+              children: []
+            },
+            {
+              name: "Life Support Systems",
+              description: "Comprehensive life support infrastructure for maintaining a habitable environment within the Lunar Ark.",
+              researchStatus: "complete",
+              confidenceScore: 0.98,
+              lastUpdated: "2025-12-27",
+              children: []
+            },
+            {
+              name: "Data Storage & Management",
+              description: "Advanced data storage systems for preserving humanity's knowledge and cultural heritage.",
+              researchStatus: "complete",
+              confidenceScore: 0.97,
+              lastUpdated: "2025-12-27",
+              children: []
+            }
+          ]
+        };
+      }
+
+      // Flatten the hierarchy for search
+      flattenHierarchy(RESEARCH_DATA, []);
+
+      // Read the deep-link BEFORE the initial render. navigateTo() now keeps the
+      // address bar in step, so the opening navigation to the root would
+      // otherwise erase ?node= from the URL before we ever got to look at it.
+      let deepLinkId = null;
+      try {
+        deepLinkId = new URLSearchParams(window.location.search).get('node');
+      } catch (_) { }
+
+      // Initialize the view. Suppress the URL sync for this first hop so a
+      // deep-linked visitor never sees the address flicker back to the root.
+      __suppressUrlSync = true;
+      navigateTo(RESEARCH_DATA);
+      __suppressUrlSync = false;
+      buildNavTree();
+      updateStats();
+
+      // If a ?node=<id> deep-link is present, jump to that node
+      try {
+        if (deepLinkId) {
+          const found = allFlattenedNodes.find(item =>
+            item.node.id === deepLinkId || item.node.name === deepLinkId
+          );
+          if (found) {
+            console.log(`[ARK] Deep-link: navigating to ${deepLinkId}`);
+            navigateTo(found.node);
+          } else {
+            console.log(`[ARK] Deep-link node not found: ${deepLinkId}`);
+          }
+        }
+      } catch (e) {
+        console.warn('[ARK] Deep-link parse error:', e);
+      }
+
+      console.log(`[ARK] Research system initialized: ${allFlattenedNodes.length} nodes loaded`);
+    }
+
+    // Flatten hierarchy for search
+    function flattenHierarchy(node, path) {
+      const currentPath = [...path, node];
+      allFlattenedNodes.push({ node, path: currentPath });
+      if (node.children) {
+        node.children.forEach(child => flattenHierarchy(child, currentPath));
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NAVIGATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function navigateTo(node) {
+      currentNode = node;
+      
+      // Find and set the path
+      const found = allFlattenedNodes.find(item => item.node.name === node.name);
+      if (found) {
+        navPath = found.path;
+      } else {
+        navPath = [node];
+      }
+
+      updateUI();
+      syncUrl(node);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Keep the address bar in step with what is on screen. Without this the URL
+    // never changed as you explored, so nothing you were looking at could be
+    // shared, bookmarked, or reached with the browser's back button.
+    let __suppressUrlSync = false;
+    function syncUrl(node) {
+      if (__suppressUrlSync || !node || !node.id) return;
+      const url = node.id === 'L0-ARK'
+        ? 'research.html'
+        : `research.html?node=${encodeURIComponent(node.id)}`;
+      try {
+        history.pushState({ nodeId: node.id }, '', url);
+      } catch (_) { /* file:// and some embedded views disallow pushState */ }
+    }
+
+    window.addEventListener('popstate', (ev) => {
+      const id = (ev.state && ev.state.nodeId)
+        || new URLSearchParams(location.search).get('node');
+      if (!id) { goToRoot(); return; }
+      const found = allFlattenedNodes.find(i => i.node.id === id);
+      if (found) {
+        __suppressUrlSync = true;      // this navigation came FROM the URL
+        navigateTo(found.node);
+        __suppressUrlSync = false;
+      }
+    });
+
+    function goToRoot() {
+      if (RESEARCH_DATA) {
+        navigateTo(RESEARCH_DATA);
+      }
+    }
+
+    function goBack() {
+      if (navPath.length > 1) {
+        const parentNode = navPath[navPath.length - 2];
+        navigateTo(parentNode);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // UI UPDATE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function updateUI() {
+      if (!currentNode) return;
+
+      // Update title
+      document.getElementById('current-title').textContent = currentNode.name.toUpperCase();
+
+      // Update status badge
+      const statusBadge = document.getElementById('status-badge');
+      const status = currentNode.researchStatus || 'pending';
+      const statusConfig = {
+        'complete': { text: 'Research Complete', color: 'green' },
+        'in-progress': { text: 'In Progress', color: 'orange' },
+        'deep-research': { text: 'Deep Research', color: 'blue' },
+        'pending': { text: 'Pending', color: 'gray' }
+      };
+      const config = statusConfig[status] || statusConfig.pending;
+      statusBadge.className = `inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-${config.color}-500/10 border border-${config.color}-500/30 text-${config.color}-400 text-[10px] font-black uppercase tracking-widest mb-4`;
+      statusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-${config.color}-500"></span>${config.text}`;
+
+      // Update children count
+      const childCount = currentNode.children?.length || 0;
+      document.getElementById('children-count').querySelector('span').textContent = `${childCount} Subsystems`;
+
+      // Update last updated
+      document.getElementById('last-updated').querySelector('span').textContent = `Updated: ${currentNode.lastUpdated || 'N/A'}`;
+
+      // Update confidence
+      const confidence = (currentNode.confidenceScore || 0.95) * 100;
+      document.getElementById('confidence-value').textContent = `${confidence.toFixed(0)}%`;
+      document.getElementById('confidence-bar').style.width = `${confidence}%`;
+
+      // Update breadcrumbs
+      updateBreadcrumbs();
+
+      // Update subsystems grid
+      updateSubsystems();
+
+      // Update documentation
+      updateDocumentation();
+
+      // Update hero image — explicit > L1 hero map > gradient fallback
+      const heroEl = document.getElementById('hero-image');
+      const l1Hero = (currentNode.id && L1_HERO_IMAGES[currentNode.id]) || null;
+      if (currentNode.image) {
+        heroEl.style.backgroundImage = `url('${currentNode.image}')`;
+      } else if (l1Hero) {
+        heroEl.style.backgroundImage = `url('${l1Hero}')`;
+      } else {
+        heroEl.style.backgroundImage = 'linear-gradient(135deg, #1e1b4b 0%, #0f0f23 100%)';
+      }
+
+      // Show/hide back button
+      document.getElementById('back-btn').classList.toggle('hidden', navPath.length <= 1);
+      document.getElementById('back-btn').classList.toggle('flex', navPath.length > 1);
+
+      // Update active sidebar item
+      document.querySelectorAll('.sidebar-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.name === currentNode.name);
+      });
+    }
+
+    function updateBreadcrumbs() {
+      const container = document.getElementById('breadcrumbs');
+      container.innerHTML = navPath.map((node, i) => {
+        const isLast = i === navPath.length - 1;
+        return `
+          <button onclick="navigateToIndex(${i})" class="breadcrumb-item ${isLast ? 'text-cyan-400' : 'text-gray-400'} font-bold uppercase tracking-widest transition text-xs">
+            ${i === 0 ? '<svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>' : ''}
+            ${node.name.length > 20 ? node.name.substring(0, 20) + '...' : node.name}
+          </button>
+          ${!isLast ? '<svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>' : ''}
+        `;
+      }).join('');
+    }
+
+    function navigateToIndex(index) {
+      if (index >= 0 && index < navPath.length) {
+        navigateTo(navPath[index]);
+      }
+    }
+
+    function updateSubsystems() {
+      const grid = document.getElementById('subsystems-grid');
+      const noSubsystems = document.getElementById('no-subsystems');
+      const countEl = document.getElementById('subsystem-count');
+      
+      const children = currentNode.children || [];
+      countEl.textContent = `(${children.length})`;
+
+      if (children.length === 0) {
+        grid.classList.add('hidden');
+        noSubsystems.classList.remove('hidden');
+        return;
+      }
+
+      grid.classList.remove('hidden');
+      noSubsystems.classList.add('hidden');
+
+      grid.innerHTML = children.map(child => {
+        const status = child.researchStatus || 'pending';
+        const statusIcon = getStatusIcon(status);
+        const statusColor = getStatusColor(status);
+        const childCount = child.children?.length || 0;
+        
+        return `
+          <div onclick="navigateTo(findNodeByName('${child.name.replace(/'/g, "\\'")}'))" class="system-card rounded-xl p-4 cursor-pointer group">
+            <div class="flex items-start gap-3">
+              <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500/20 to-indigo-500/20 border border-purple-500/30 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                ${statusIcon}
+              </div>
+              <div class="flex-1 min-w-0">
+                <h3 class="text-white font-bold text-sm mb-1 group-hover:text-purple-300 transition line-clamp-2 leading-tight">${child.name}</h3>
+                <p class="text-gray-500 text-xs line-clamp-2 leading-relaxed">${getShortDescription(child.description)}</p>
+              </div>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+              <span class="text-[10px] px-2 py-0.5 rounded bg-${statusColor}-500/10 text-${statusColor}-400 uppercase font-bold tracking-wider">${status.replace('-', ' ')}</span>
+              ${childCount > 0 ? `<span class="text-[10px] text-gray-500 mono-font">${childCount} subsystems →</span>` : '<span class="text-[10px] text-gray-600">leaf node</span>'}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function getStatusIcon(status) {
+      const icons = {
+        'complete': '<svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+        'in-progress': '<svg class="w-5 h-5 text-orange-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+        'deep-research': '<svg class="w-5 h-5 text-blue-400 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>',
+        'pending': '<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
+      };
+      return icons[status] || icons.pending;
+    }
+
+    function getStatusColor(status) {
+      const colors = {
+        'complete': 'green',
+        'in-progress': 'orange',
+        'deep-research': 'blue',
+        'pending': 'gray'
+      };
+      return colors[status] || 'gray';
+    }
+
+    function getShortDescription(desc) {
+      if (!desc) return 'No description available.';
+      // Remove markdown formatting and get first sentence
+      const clean = desc.replace(/\*\*/g, '').replace(/\n/g, ' ');
+      const firstSentence = clean.split('.')[0];
+      return firstSentence.length > 100 ? firstSentence.substring(0, 100) + '...' : firstSentence + '.';
+    }
+
+    function findNodeByName(name) {
+      const found = allFlattenedNodes.find(item => item.node.name === name);
+      return found ? found.node : null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NODE DETAIL: Full JSON fetch + structured rendering
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    let fullNodeCache = {};
+
+    async function updateDocumentation() {
+      const container = document.getElementById('node-detail-content');
+      const nodeId = currentNode.id;
+      await loadNarratives();
+
+      // Root node (L0-ARK) has no file — render from hierarchy data
+      if (!nodeId || nodeId === 'L0-ARK') {
+        container.innerHTML = renderRootOverview();
+        return;
+      }
+
+      // Show loading
+      container.innerHTML = `<div class="text-center py-12 text-gray-500"><div class="w-8 h-8 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-3"></div><p class="text-sm">Loading ${currentNode.name}...</p></div>`;
+
+      // Check cache
+      if (fullNodeCache[nodeId]) {
+        renderFullNode(fullNodeCache[nodeId], container);
+        return;
+      }
+
+      // Fetch full node JSON
+      const sources = [
+        `/api/node/${nodeId}`,
+        `OUTPUT/nodes/${nodeId}.json`,
+      ];
+
+      let nodeData = null;
+      for (const src of sources) {
+        try {
+          const res = await fetch(src);
+          if (res.ok) {
+            nodeData = await res.json();
+            break;
+          }
+        } catch(e) {}
+      }
+
+      if (!nodeData) {
+        container.innerHTML = `<div class="shimmer-card rounded-2xl p-8"><p class="text-gray-400">${currentNode.description || 'Node data not available. Start the server: python serve.py'}</p></div>`;
+        return;
+      }
+
+      fullNodeCache[nodeId] = nodeData;
+      renderFullNode(nodeData, container);
+    }
+
+    function renderFullNode(n, container) {
+      const sections = [];
+
+      // 0. NARRATIVE — one readable paragraph before the spec sheet begins.
+      sections.push(renderNarrative(n));
+
+      // 1. OVERVIEW
+      sections.push(renderOverview(n));
+
+      // 2. ENGINEERING PRINCIPLES
+      const principles = n.knowledge?.content?.principles || [];
+      if (principles.length > 0) {
+        sections.push(renderSection('Engineering Principles', 'atom', 'purple',
+          `<div class="grid gap-3">${principles.map((p, i) =>
+            `<div class="flex gap-3 items-start"><span class="w-6 h-6 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-xs text-purple-400 flex-shrink-0 mt-0.5">${i+1}</span><p class="text-gray-300 text-sm leading-relaxed">${esc(p)}</p></div>`
+          ).join('')}</div>`
+        ));
+      }
+
+      // 3. IMPLEMENTATIONS & HERITAGE
+      const impls = n.knowledge?.content?.typical_implementations || [];
+      if (impls.length > 0) {
+        sections.push(renderSection('Implementations & Heritage', 'rocket', 'cyan',
+          `<div class="grid sm:grid-cols-2 gap-3">${impls.map(impl =>
+            `<div class="bg-black/30 border border-white/5 rounded-lg px-4 py-3"><p class="text-cyan-300 text-sm font-semibold">${esc(impl)}</p></div>`
+          ).join('')}</div>`
+        ));
+      }
+
+      // 4. LUNAR CHALLENGES
+      const lunar = n.knowledge?.content?.lunar_considerations || [];
+      if (lunar.length > 0) {
+        sections.push(renderSection('Lunar Environment Challenges', 'moon', 'amber',
+          `<div class="space-y-2">${lunar.map(l =>
+            `<div class="flex gap-3 items-start"><span class="text-amber-400 mt-1 flex-shrink-0">&#9888;</span><p class="text-gray-300 text-sm leading-relaxed">${esc(l)}</p></div>`
+          ).join('')}</div>`
+        ));
+      }
+
+      // 5. SPECIFICATIONS
+      const specHtml = renderSpecifications(n);
+      if (specHtml) {
+        sections.push(renderSection('Specifications', 'gauge', 'emerald', specHtml));
+      }
+
+      // 6. MATERIALS
+      const materials = n.specifications?.physical?.materials || [];
+      if (materials.length > 0) {
+        sections.push(renderSection('Materials', 'layers', 'slate',
+          `<div class="flex flex-wrap gap-2">${materials.map(m =>
+            `<span class="px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-600/30 text-slate-300 text-xs font-medium">${esc(m)}</span>`
+          ).join('')}</div>`
+        ));
+      }
+
+      // 7. INTERFACES
+      const ifaceHtml = renderInterfaces(n);
+      if (ifaceHtml) {
+        sections.push(renderSection('System Interfaces', 'network', 'indigo', ifaceHtml));
+      }
+
+      // 8. TRACEABILITY
+      const traceHtml = renderTraceability(n);
+      if (traceHtml) {
+        sections.push(renderSection('Traceability & Requirements', 'link', 'violet', traceHtml));
+      }
+
+      // 9. DESIGN NOTES
+      const notesHtml = renderNotes(n);
+      if (notesHtml) {
+        sections.push(renderSection('Design Notes', 'notebook', 'gray', notesHtml));
+      }
+
+      // 10. RESEARCH STATUS
+      sections.push(renderResearchStatus(n));
+
+      // 11. RESEARCH FINDINGS (from Perplexity/Gemini)
+      const findings = n.knowledge?.content?.research_findings || [];
+      if (findings.length > 0) {
+        sections.push(renderSection('Research Findings', 'search', 'teal',
+          `<div class="space-y-4">${findings.map(f =>
+            `<div class="bg-teal-900/10 border border-teal-500/20 rounded-lg p-4">
+              <div class="text-teal-400 text-xs font-bold uppercase tracking-wider mb-2">${esc(f.query || '')}</div>
+              <p class="text-gray-300 text-sm leading-relaxed">${esc(f.finding || '')}</p>
+              ${f.timestamp ? `<div class="text-gray-600 text-[10px] mt-2 mono-font">${f.timestamp}</div>` : ''}
+            </div>`
+          ).join('')}</div>`
+        ));
+      }
+
+      // 12. PERMALINK — the stable, citable address for this entry. Without
+      // this the 763 server-rendered /entry/ pages are unreachable from the
+      // graph UI, and neither researchers nor crawlers can get to them.
+      sections.push(renderPermalink(n));
+
+      container.innerHTML = sections.join('');
+    }
+
+    // ── Narrative lead ──
+    // Written from each node's own data by narrate_nodes.py and served from
+    // OUTPUT/narratives.json. Loaded once, then read synchronously on render;
+    // if the file is missing the panel simply starts at the overview as before.
+    let NARRATIVES = null;
+    async function loadNarratives() {
+      if (NARRATIVES) return NARRATIVES;
+      try {
+        const r = await fetch('/OUTPUT/narratives.json', { signal: AbortSignal.timeout(8000) });
+        NARRATIVES = r.ok ? await r.json() : {};
+      } catch (_) { NARRATIVES = {}; }
+      return NARRATIVES;
+    }
+
+    function renderNarrative(n) {
+      const rec = NARRATIVES && NARRATIVES[n.id];
+      if (!rec || !rec.text) return '';
+      const sysCode = (n.id || '').split('-')[1] || '';
+      const img = sysCode ? `images/systems/l1-${sysCode.toLowerCase()}.jpg` : '';
+      return `
+        <div class="shimmer-card rounded-2xl overflow-hidden">
+          ${img ? `<div class="relative h-32 sm:h-40 overflow-hidden">
+            <div class="absolute inset-0 bg-cover bg-center" style="background-image:url('${img}')"></div>
+            <div class="absolute inset-0" style="background:linear-gradient(to top,rgba(3,0,20,.96) 8%,rgba(3,0,20,.5) 55%,rgba(3,0,20,.15) 100%);"></div>
+          </div>` : ''}
+          <div class="shimmer-content p-5 sm:p-6 ${img ? '-mt-6 relative' : ''}">
+            <p class="text-gray-200 text-[15px] sm:text-base leading-[1.75]">${esc(rec.text)}</p>
+          </div>
+        </div>`;
+    }
+
+    // ── Permalink / citation block ──
+    function renderPermalink(n) {
+      const id = n.id || '';
+      if (!id) return '';
+      const url = `${location.origin}/entry/${encodeURIComponent(id)}`;
+      const name = esc(n.name || id);
+      const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      const citation = `Lunar Ark Codex. "${(n.name || id).replace(/"/g, "'")}" (${id}). Retrieved ${today}, from ${url}`;
+      return `
+        <div class="shimmer-card rounded-2xl overflow-hidden">
+          <div class="shimmer-content p-5 sm:p-6">
+            <div class="flex items-center gap-2 mb-3">
+              <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.708-2.831a4 4 0 005.656 0l4-4a4 4 0 10-5.656-5.656l-1.1 1.1"/></svg>
+              <h3 class="text-[11px] mono-font tracking-[0.2em] text-cyan-400 uppercase font-bold">Permalink &amp; citation</h3>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 mb-4">
+              <a href="/entry/${encodeURIComponent(id)}"
+                 class="flex-1 min-w-0 bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-cyan-300 text-[13px] mono-font hover:border-cyan-500/40 transition truncate"
+                 title="Open the full page for ${name}">${esc(url)}</a>
+              <button onclick="copyPermalink('${esc(url)}', this)"
+                      class="flex-shrink-0 px-4 py-3 rounded-lg border border-white/15 text-gray-300 text-xs font-bold uppercase tracking-widest hover:border-cyan-500/40 hover:text-cyan-300 transition brand-font">
+                Copy link
+              </button>
+            </div>
+            <p class="text-[11px] text-gray-500 leading-relaxed mono-font break-words mb-3">${esc(citation)}</p>
+            <p class="text-[10px] text-gray-600">
+              Licensed <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="license noopener" class="text-cyan-500/70 underline hover:text-cyan-400">CC-BY-SA 4.0</a> —
+              reuse with attribution, share alike.
+            </p>
+          </div>
+        </div>`;
+    }
+
+    function copyPermalink(url, btn) {
+      const done = () => {
+        const original = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.classList.add('text-cyan-300');
+        setTimeout(() => { btn.textContent = original; btn.classList.remove('text-cyan-300'); }, 1800);
+      };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done));
+      } else {
+        fallbackCopy(url, done);
+      }
+    }
+
+    function fallbackCopy(text, done) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch (_) { }
+      ta.remove();
+    }
+
+    // ── Section Builder ──
+    function renderSection(title, icon, color, content) {
+      const iconSvgs = {
+        atom: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>',
+        rocket: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.58-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/>',
+        moon: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>',
+        gauge: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>',
+        layers: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>',
+        network: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>',
+        link: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>',
+        notebook: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>',
+        search: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>',
+      };
+      const svgPath = iconSvgs[icon] || iconSvgs.atom;
+      return `
+        <div class="shimmer-card rounded-2xl overflow-hidden">
+          <div class="shimmer-content">
+            <div class="bg-gradient-to-r from-${color}-900/20 to-${color}-800/10 px-5 py-4 border-b border-white/5 flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-${color}-500/20 border border-${color}-500/30 flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-${color}-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">${svgPath}</svg>
+              </div>
+              <h3 class="text-sm font-bold brand-font text-white uppercase tracking-wider">${title}</h3>
+            </div>
+            <div class="p-5">${content}</div>
+          </div>
+        </div>`;
+    }
+
+    // ── Overview ──
+    function renderOverview(n) {
+      const desc = n.description || {};
+      const summary = typeof desc === 'string' ? desc : (desc.summary || '');
+      const purpose = typeof desc === 'string' ? '' : (desc.purpose || '');
+      const context = typeof desc === 'string' ? '' : (desc.context || '');
+      const techName = n.name_technical || '';
+      const cat = n.classification?.category?.replace(/_/g, ' ') || '';
+      const crit = n.classification?.criticality || '';
+      const critColor = {critical:'red', essential:'amber', important:'blue', supporting:'gray'}[crit] || 'gray';
+
+      return `
+        <div class="shimmer-card rounded-2xl overflow-hidden">
+          <div class="shimmer-content">
+            <div class="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 px-5 py-4 border-b border-white/5">
+              <div class="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h2 class="text-lg font-bold brand-font text-white">${esc(n.name || n.id)}</h2>
+                  ${techName ? `<p class="text-xs text-purple-300/70 mono-font mt-0.5">${esc(techName)}</p>` : ''}
+                </div>
+                <div class="flex items-center gap-2">
+                  ${cat ? `<span class="text-[10px] px-2 py-1 rounded bg-indigo-500/10 text-indigo-300 uppercase tracking-wider font-bold">${esc(cat)}</span>` : ''}
+                  ${crit ? `<span class="text-[10px] px-2 py-1 rounded bg-${critColor}-500/10 text-${critColor}-400 uppercase tracking-wider font-bold">${esc(crit)}</span>` : ''}
+                  <span class="text-[10px] px-2 py-1 rounded bg-white/5 text-gray-400 mono-font">${esc(n.id)}</span>
+                </div>
+              </div>
+            </div>
+            <div class="p-5 space-y-4">
+              ${summary ? `<p class="text-gray-200 leading-relaxed">${esc(summary)}</p>` : ''}
+              ${purpose ? `<div><span class="text-[10px] text-cyan-400 uppercase tracking-wider font-bold">Purpose</span><p class="text-gray-400 text-sm leading-relaxed mt-1">${esc(purpose)}</p></div>` : ''}
+              ${context ? `<div><span class="text-[10px] text-purple-400 uppercase tracking-wider font-bold">Context</span><p class="text-gray-400 text-sm leading-relaxed mt-1">${esc(context)}</p></div>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderRootOverview() {
+      return `<div class="shimmer-card rounded-2xl overflow-hidden"><div class="shimmer-content p-8">
+        <h2 class="text-2xl font-bold brand-font text-white mb-4">LUNAR ARK PROJECT</h2>
+        <p class="text-gray-300 leading-relaxed mb-4">100-year autonomous preservation vault on the Moon, safeguarding Earth's biological and cultural heritage against existential threats.</p>
+        <p class="text-gray-400 text-sm">Select a system from the sidebar or subsystem cards above to explore the full technical details.</p>
+        <div class="mt-6 flex gap-4 text-xs">
+          <div class="stat-card rounded-lg px-4 py-3"><span class="text-gray-500">Total Systems</span><div class="text-2xl font-bold text-cyan-400 mono-font mt-1">${allFlattenedNodes.length}</div></div>
+          <div class="stat-card rounded-lg px-4 py-3"><span class="text-gray-500">Depth</span><div class="text-2xl font-bold text-purple-400 mono-font mt-1">L${Math.max(...allFlattenedNodes.map(n => n.path.length))}</div></div>
+        </div>
+      </div></div>`;
+    }
+
+    // ── Specifications ──
+    function renderSpecifications(n) {
+      const rows = [];
+      const func = n.specifications?.functional || {};
+      const phys = n.specifications?.physical || {};
+      const ops = n.specifications?.operational || {};
+
+      // Performance requirements
+      const perf = func.performance_requirements || {};
+      if (typeof perf === 'object') {
+        Object.entries(perf).forEach(([k, v]) => {
+          if (v !== null && v !== '' && v !== undefined) {
+            const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            rows.push({label, value: String(v), category: 'Performance'});
+          }
+        });
+      }
+
+      // Physical specs
+      if (phys.mass_kg) rows.push({label: 'Mass', value: `${phys.mass_kg} kg`, category: 'Physical'});
+      if (phys.dimensions) rows.push({label: 'Dimensions', value: phys.dimensions, category: 'Physical'});
+
+      // Environment
+      const env = phys.environment || {};
+      Object.entries(env).forEach(([k, v]) => {
+        if (v !== null && v !== '' && v !== undefined && v !== true && v !== false) {
+          const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          rows.push({label, value: String(v), category: 'Environment'});
+        } else if (v === true) {
+          rows.push({label: k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), value: 'Yes', category: 'Environment'});
+        }
+      });
+
+      // Operational
+      if (ops.power_consumption_w) rows.push({label: 'Power Consumption', value: `${ops.power_consumption_w} W`, category: 'Operational'});
+      if (ops.lifetime_years) rows.push({label: 'Design Lifetime', value: `${ops.lifetime_years} years`, category: 'Operational'});
+      if (ops.mtbf_hours) rows.push({label: 'MTBF', value: `${Number(ops.mtbf_hours).toLocaleString()} hours`, category: 'Operational'});
+
+      if (rows.length === 0) return null;
+
+      // Group by category
+      const groups = {};
+      rows.forEach(r => {
+        if (!groups[r.category]) groups[r.category] = [];
+        groups[r.category].push(r);
+      });
+
+      let html = '';
+      Object.entries(groups).forEach(([cat, items]) => {
+        html += `<div class="mb-4"><div class="text-[10px] text-emerald-400 uppercase tracking-wider font-bold mb-2">${cat}</div>`;
+        html += `<div class="grid sm:grid-cols-2 gap-2">${items.map(r =>
+          `<div class="flex justify-between items-baseline px-3 py-2 bg-black/20 rounded-lg border border-white/5">
+            <span class="text-gray-400 text-xs">${esc(r.label)}</span>
+            <span class="text-white text-sm font-semibold mono-font ml-3 text-right">${esc(r.value)}</span>
+          </div>`
+        ).join('')}</div></div>`;
+      });
+
+      // Inputs/Outputs
+      const inputs = func.inputs || [];
+      const outputs = func.outputs || [];
+      if (inputs.length > 0 || outputs.length > 0) {
+        html += `<div class="grid sm:grid-cols-2 gap-4 mt-4">`;
+        if (inputs.length > 0) {
+          html += `<div><div class="text-[10px] text-blue-400 uppercase tracking-wider font-bold mb-2">Inputs</div>
+            <ul class="space-y-1">${inputs.map(i => `<li class="text-gray-400 text-xs flex gap-2"><span class="text-blue-500">&#8592;</span>${esc(i)}</li>`).join('')}</ul></div>`;
+        }
+        if (outputs.length > 0) {
+          html += `<div><div class="text-[10px] text-green-400 uppercase tracking-wider font-bold mb-2">Outputs</div>
+            <ul class="space-y-1">${outputs.map(o => `<li class="text-gray-400 text-xs flex gap-2"><span class="text-green-500">&#8594;</span>${esc(o)}</li>`).join('')}</ul></div>`;
+        }
+        html += `</div>`;
+      }
+
+      return html;
+    }
+
+    // ── Interfaces ──
+    function renderInterfaces(n) {
+      const provides = n.interfaces?.provides || [];
+      const requires = n.interfaces?.requires || [];
+      if (provides.length === 0 && requires.length === 0) return null;
+
+      let html = '<div class="grid md:grid-cols-2 gap-4">';
+
+      if (provides.length > 0) {
+        html += `<div><div class="text-[10px] text-green-400 uppercase tracking-wider font-bold mb-3">Provides To</div>
+          <div class="space-y-2">${provides.map(p => {
+            const critColor = {critical:'red',essential:'amber',important:'blue'}[p.criticality] || 'gray';
+            const targetLink = renderClickableNode(p.to, p.to, 'green');
+            return `<div class="bg-green-900/10 border border-green-500/10 rounded-lg px-3 py-2.5">
+              <div class="flex items-center justify-between mb-1">
+                ${targetLink}
+                <span class="text-[9px] px-1.5 py-0.5 rounded bg-${critColor}-500/10 text-${critColor}-400">${esc(p.criticality || '')}</span>
+              </div>
+              <p class="text-gray-400 text-[11px] leading-relaxed">${esc(p.description || p.what || '')}</p>
+            </div>`;
+          }).join('')}</div></div>`;
+      }
+
+      if (requires.length > 0) {
+        html += `<div><div class="text-[10px] text-orange-400 uppercase tracking-wider font-bold mb-3">Requires From</div>
+          <div class="space-y-2">${requires.map(r => {
+            const critColor = {critical:'red',essential:'amber',important:'blue'}[r.criticality] || 'gray';
+            const sourceLink = renderClickableNode(r.from, r.from, 'orange');
+            return `<div class="bg-orange-900/10 border border-orange-500/10 rounded-lg px-3 py-2.5">
+              <div class="flex items-center justify-between mb-1">
+                ${sourceLink}
+                <span class="text-[9px] px-1.5 py-0.5 rounded bg-${critColor}-500/10 text-${critColor}-400">${esc(r.criticality || '')}</span>
+              </div>
+              <p class="text-gray-400 text-[11px] leading-relaxed">${esc(r.description || r.what || '')}</p>
+            </div>`;
+          }).join('')}</div></div>`;
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    // ── Traceability ──
+    function renderTraceability(n) {
+      const reqs = n.traceability?.l0_requirements || [];
+      const inherited = n.traceability?.constraints_inherited || [];
+      const imposed = n.traceability?.constraints_imposed || [];
+      if (reqs.length === 0 && inherited.length === 0 && imposed.length === 0) return null;
+
+      let html = '';
+      if (reqs.length > 0) {
+        html += `<div class="mb-4"><div class="text-[10px] text-violet-400 uppercase tracking-wider font-bold mb-2">L0 Requirements</div>
+          <div class="space-y-1.5">${reqs.map(r => `<div class="flex gap-2 items-start"><span class="text-violet-400 text-xs mt-0.5">&#9654;</span><span class="text-gray-300 text-xs">${esc(r)}</span></div>`).join('')}</div></div>`;
+      }
+      if (inherited.length > 0) {
+        html += `<div class="mb-4"><div class="text-[10px] text-blue-400 uppercase tracking-wider font-bold mb-2">Constraints Inherited</div>
+          <div class="space-y-1">${inherited.map(c => `<p class="text-gray-400 text-xs pl-4 border-l-2 border-blue-500/20">${esc(c)}</p>`).join('')}</div></div>`;
+      }
+      if (imposed.length > 0) {
+        html += `<div><div class="text-[10px] text-rose-400 uppercase tracking-wider font-bold mb-2">Constraints Imposed</div>
+          <div class="space-y-1">${imposed.map(c => `<p class="text-gray-400 text-xs pl-4 border-l-2 border-rose-500/20">${esc(c)}</p>`).join('')}</div></div>`;
+      }
+      return html;
+    }
+
+    // ── Design Notes ──
+    function renderNotes(n) {
+      const assumptions = n.notes?.assumptions || [];
+      const uncertainties = n.notes?.uncertainties || [];
+      const future = n.notes?.future_considerations || [];
+      if (assumptions.length === 0 && uncertainties.length === 0 && future.length === 0) return null;
+
+      let html = '<div class="grid sm:grid-cols-3 gap-4">';
+      if (assumptions.length > 0) {
+        html += `<div><div class="text-[10px] text-gray-400 uppercase tracking-wider font-bold mb-2">Assumptions</div>
+          ${assumptions.map(a => `<p class="text-gray-500 text-xs mb-1.5 leading-relaxed">${esc(a)}</p>`).join('')}</div>`;
+      }
+      if (uncertainties.length > 0) {
+        html += `<div><div class="text-[10px] text-yellow-500 uppercase tracking-wider font-bold mb-2">Uncertainties</div>
+          ${uncertainties.map(u => `<p class="text-gray-500 text-xs mb-1.5 leading-relaxed">${esc(u)}</p>`).join('')}</div>`;
+      }
+      if (future.length > 0) {
+        html += `<div><div class="text-[10px] text-cyan-500 uppercase tracking-wider font-bold mb-2">Future Considerations</div>
+          ${future.map(f => `<p class="text-gray-500 text-xs mb-1.5 leading-relaxed">${esc(f)}</p>`).join('')}</div>`;
+      }
+      html += '</div>';
+      return html;
+    }
+
+    // ── Research Status ──
+    function renderResearchStatus(n) {
+      const research = n.research || {};
+      const queries = research.suggested_queries || [];
+      const sources = research.sources || [];
+      const status = research.status || 'pending';
+      const statusLabel = {complete:'Research Complete', researched:'Researched', needs_enrichment:'Needs Enrichment', pending:'Pending'}[status] || status;
+      const statusColor = {complete:'green', researched:'cyan', needs_enrichment:'orange', pending:'gray'}[status] || 'gray';
+
+      let html = `<div class="flex items-center gap-3 mb-4">
+        <span class="text-[10px] px-2 py-1 rounded bg-${statusColor}-500/10 text-${statusColor}-400 uppercase font-bold tracking-wider">${statusLabel}</span>
+        ${sources.length > 0 ? `<span class="text-xs text-gray-500">${sources.length} sources</span>` : ''}
+      </div>`;
+
+      if (sources.length > 0) {
+        html += `<div class="mb-4"><div class="text-[10px] text-cyan-400 uppercase tracking-wider font-bold mb-2">Sources</div>
+          <div class="space-y-1">${sources.map(s => {
+            const title = typeof s === 'string' ? s : (s.title || s.url || '');
+            const url = typeof s === 'string' ? '' : (s.url || '');
+            return url && url !== 'inline'
+              ? `<a href="${esc(url)}" target="_blank" class="block text-xs text-cyan-400 hover:text-cyan-300 truncate">${esc(title)}</a>`
+              : `<p class="text-xs text-gray-400">${esc(title)}</p>`;
+          }).join('')}</div></div>`;
+      }
+
+      if (queries.length > 0) {
+        html += `<div><div class="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-2">Suggested Research Queries</div>
+          <div class="flex flex-wrap gap-2">${queries.map(q =>
+            `<span class="text-[10px] px-2 py-1 rounded bg-white/5 text-gray-400 border border-white/5">${esc(q)}</span>`
+          ).join('')}</div></div>`;
+      }
+
+      return renderSection('Research Status', 'search', 'gray', html);
+    }
+
+    // ── Navigation by ID ──
+    function findNodeById(id) {
+      return allFlattenedNodes.find(item => item.node.id === id);
+    }
+
+    function navigateToId(id) {
+      const found = findNodeById(id);
+      if (found) navigateTo(found.node);
+    }
+
+    function renderClickableNode(id, displayText, colorClass) {
+      const found = findNodeById(id);
+      if (found) {
+        return `<a href="#" onclick="event.preventDefault(); navigateToId('${esc(id)}')" class="text-${colorClass}-300 text-xs font-bold hover:text-${colorClass}-100 underline decoration-${colorClass}-500/30 hover:decoration-${colorClass}-400 transition cursor-pointer">${esc(displayText || found.node.name)}</a>`;
+      }
+      return `<span class="text-${colorClass}-300 text-xs font-bold">${esc(displayText || id)}</span>`;
+    }
+
+    // ── Utility ──
+    function esc(s) {
+      if (!s) return '';
+      const div = document.createElement('div');
+      div.textContent = String(s);
+      return div.innerHTML;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SIDEBAR NAVIGATION TREE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Per-L1 hero image mapping. Files live in images/systems/ — see Session 8 manifest.
+    // Missing files fall back to the gradient defined in updateUI() — no broken-image visible.
+    const L1_HERO_IMAGES = {
+      'L1-CDH': 'images/systems/l1-cdh.jpg',
+      'L1-COM': 'images/systems/l1-com.jpg',
+      'L1-CRY': 'images/systems/l1-cry.jpg',
+      'L1-DST': 'images/systems/l1-dst.jpg',
+      'L1-DVT': 'images/systems/l1-dvt.jpg',
+      'L1-ESS': 'images/systems/l1-ess.jpg',
+      'L1-GEN': 'images/systems/l1-gen.jpg',
+      'L1-HAB': 'images/systems/l1-hab.jpg',
+      'L1-ISR': 'images/systems/l1-isr.jpg',
+      'L1-KMS': 'images/systems/l1-kms.jpg',
+      'L1-MFG': 'images/systems/l1-mfg.jpg',
+      'L1-MMD': 'images/systems/l1-mmd.jpg',
+      'L1-MNT': 'images/systems/l1-mnt.jpg',
+      'L1-NAV': 'images/systems/l1-nav.jpg',
+      'L1-PDM': 'images/systems/l1-pdm.jpg',
+      'L1-PTC': 'images/systems/l1-ptc.jpg',
+      'L1-PWR': 'images/systems/l1-pwr.jpg',
+      'L1-RAD': 'images/systems/l1-rad.jpg',
+      'L1-ROB': 'images/systems/l1-rob.jpg',
+      'L1-SLF': 'images/systems/l1-slf.jpg',
+      'L1-SSM': 'images/systems/l1-ssm.jpg',
+      'L1-STR': 'images/systems/l1-str.jpg',
+      'L1-TCS': 'images/systems/l1-tcs.jpg',
+      'L1-WMS': 'images/systems/l1-wms.jpg',
+      'L1-WTR': 'images/systems/l1-wtr.jpg'
+    };
+
+    // 8 functional clusters — source of truth matches index.html systemData
+    const CLUSTER_MAP = [
+      { name: 'Preservation Vaults',     color: 'emerald', l1s: ['L1-CRY', 'L1-GEN', 'L1-DVT', 'L1-KMS'] },
+      { name: 'Power Systems',           color: 'yellow',  l1s: ['L1-PWR', 'L1-ESS', 'L1-PDM'] },
+      { name: 'Autonomous Intelligence', color: 'cyan',    l1s: ['L1-CDH', 'L1-ROB', 'L1-SLF', 'L1-MNT'] },
+      { name: 'Protection & Structure',  color: 'red',     l1s: ['L1-RAD', 'L1-STR', 'L1-MMD'] },
+      { name: 'Thermal & Habitat',       color: 'orange',  l1s: ['L1-TCS', 'L1-PTC', 'L1-HAB'] },
+      { name: 'Resource Systems',        color: 'amber',   l1s: ['L1-ISR', 'L1-WTR', 'L1-WMS'] },
+      { name: 'Comms & Navigation',      color: 'blue',    l1s: ['L1-COM', 'L1-NAV'] },
+      { name: 'Operational Support',     color: 'slate',   l1s: ['L1-DST', 'L1-SSM', 'L1-MFG'] }
+    ];
+
+    function buildNavTree() {
+      const container = document.getElementById('nav-tree');
+
+      if (!RESEARCH_DATA || !RESEARCH_DATA.children) {
+        container.innerHTML = '<div class="text-center py-8 text-gray-500 text-sm">No systems available</div>';
+        return;
+      }
+
+      // Index L1 nodes by id for cluster lookup
+      const l1ById = {};
+      for (const child of RESEARCH_DATA.children) {
+        if (child.id) l1ById[child.id] = child;
+      }
+
+      let html = `
+        <button onclick="goToRoot()" class="sidebar-item w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 mb-3" data-name="${RESEARCH_DATA.name}">
+          <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+          <span class="truncate text-gray-300">${RESEARCH_DATA.name}</span>
+        </button>
+        <div class="text-[9px] text-gray-600 uppercase tracking-widest font-bold px-3 mb-2">8 Functional Clusters</div>
+      `;
+
+      const placedL1s = new Set();
+      for (const cluster of CLUSTER_MAP) {
+        const l1s = cluster.l1s.map(id => l1ById[id]).filter(Boolean);
+        if (l1s.length === 0) continue;
+        l1s.forEach(l1 => placedL1s.add(l1.id));
+        const dotColor = `bg-${cluster.color}-400`;
+        html += `
+          <details class="cluster-group mb-1.5" data-cluster="${cluster.name}">
+            <summary class="sidebar-item w-full text-left px-3 py-2 rounded-lg cursor-pointer flex items-center gap-2 hover:bg-white/5 transition" style="list-style:none;">
+              <span class="w-2 h-2 rounded-full ${dotColor} flex-shrink-0"></span>
+              <span class="text-[11px] font-black uppercase tracking-widest text-gray-300 flex-1 truncate">${cluster.name}</span>
+              <span class="text-[10px] text-gray-600 mono-font">${l1s.length}</span>
+              <svg class="cluster-chevron w-3 h-3 text-gray-500 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <div class="pl-2 pb-1">${l1s.map(l1 => buildNavItem(l1, 1)).join('')}</div>
+          </details>
+        `;
+      }
+
+      // Any L1 children not mapped to a cluster (defensive — shouldn't happen with current data)
+      const orphans = RESEARCH_DATA.children.filter(c => c.id && !placedL1s.has(c.id));
+      if (orphans.length > 0) {
+        html += `<div class="text-[9px] text-gray-600 uppercase tracking-widest font-bold px-3 mt-4 mb-2">Other</div>`;
+        html += orphans.map(o => buildNavItem(o, 0)).join('');
+      }
+
+      container.innerHTML = html;
+    }
+
+    function buildNavItem(node, depth) {
+      const indent = depth * 10;
+      const hasChildren = node.children && node.children.length > 0;
+      const statusColor = getStatusColor(node.researchStatus || 'pending');
+      
+      return `
+        <button 
+          onclick="navigateTo(findNodeByName('${node.name.replace(/'/g, "\\'")}'))" 
+          class="sidebar-item w-full text-left px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-2"
+          style="padding-left: ${12 + indent}px"
+          data-name="${node.name}"
+        >
+          <span class="w-2 h-2 rounded-full bg-${statusColor}-400 flex-shrink-0"></span>
+          <span class="truncate text-gray-400 hover:text-white flex-1">${node.name}</span>
+          ${hasChildren ? `<span class="text-xs text-gray-600">${node.children.length}</span>` : ''}
+        </button>
+      `;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SEARCH
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function initSearch() {
+      const input = document.getElementById('search-input');
+      let debounceTimer;
+
+      input.addEventListener('input', (e) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          performSearch(e.target.value);
+        }, 300);
+      });
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          input.value = '';
+          closeSearchResults();
+        }
+      });
+    }
+
+    function performSearch(query) {
+      if (!query || query.length < 2) {
+        closeSearchResults();
+        return;
+      }
+
+      const q = query.toLowerCase();
+      const results = [];
+
+      // Phase 1: Name matches (instant)
+      allFlattenedNodes.forEach(({ node, path }) => {
+        if (node.name.toLowerCase().includes(q)) {
+          results.push({ node, path, matchField: 'name', matchText: node.name });
+        }
+      });
+
+      // Phase 2: Description matches from hierarchy data
+      if (results.length < 20) {
+        allFlattenedNodes.forEach(({ node, path }) => {
+          if (results.find(r => r.node === node)) return; // skip duplicates
+          const desc = typeof node.description === 'string' ? node.description : '';
+          if (desc.toLowerCase().includes(q)) {
+            const idx = desc.toLowerCase().indexOf(q);
+            const snippet = desc.substring(Math.max(0, idx - 30), idx + query.length + 50);
+            results.push({ node, path, matchField: 'description', matchText: '...' + snippet + '...' });
+          }
+        });
+      }
+
+      // Phase 3: Search cached full node data (principles, implementations, lunar considerations)
+      if (results.length < 20) {
+        Object.entries(fullNodeCache).forEach(([nodeId, nodeData]) => {
+          const flatNode = allFlattenedNodes.find(item => item.node.id === nodeId);
+          if (!flatNode || results.find(r => r.node === flatNode.node)) return;
+
+          const k = nodeData.knowledge?.content || {};
+          const searchFields = [
+            { field: 'principles', data: k.principles || [] },
+            { field: 'implementations', data: k.typical_implementations || [] },
+            { field: 'lunar challenges', data: k.lunar_considerations || [] },
+          ];
+
+          for (const { field, data } of searchFields) {
+            const match = data.find(item => item.toLowerCase().includes(q));
+            if (match) {
+              results.push({ node: flatNode.node, path: flatNode.path, matchField: field, matchText: match.substring(0, 80) + (match.length > 80 ? '...' : '') });
+              break;
+            }
+          }
+        });
+      }
+
+      if (results.length === 0) {
+        closeSearchResults();
+        return;
+      }
+
+      showSearchResults(results.slice(0, 25), query);
+    }
+
+    function showSearchResults(results, query) {
+      const modal = document.getElementById('search-results-modal');
+      const list = document.getElementById('search-results-list');
+      const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      list.innerHTML = results.map(({ node, path, matchField, matchText }) => {
+        const highlightedName = node.name.replace(
+          new RegExp(`(${safeQuery})`, 'gi'),
+          '<span class="search-highlight">$1</span>'
+        );
+        const pathStr = path.map(p => p.name).join(' → ');
+        const highlightedMatch = matchField !== 'name' ? matchText.replace(
+          new RegExp(`(${safeQuery})`, 'gi'),
+          '<span class="search-highlight">$1</span>'
+        ) : '';
+        const fieldBadge = matchField !== 'name' ?
+          `<span class="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 uppercase">${matchField}</span>` : '';
+
+        return `
+          <button
+            onclick="navigateTo(findNodeByName('${node.name.replace(/'/g, "\\'")}'));closeSearchResults();"
+            class="w-full text-left p-4 rounded-xl hover:bg-purple-500/10 transition group"
+          >
+            <div class="flex items-center gap-2">
+              <div class="font-bold text-white group-hover:text-purple-300 transition">${highlightedName}</div>
+              ${fieldBadge}
+            </div>
+            ${highlightedMatch ? `<div class="text-xs text-gray-400 mt-1 leading-relaxed line-clamp-2">${highlightedMatch}</div>` : ''}
+            <div class="text-[10px] text-gray-500 mt-1 truncate">${pathStr}</div>
+          </button>
+        `;
+      }).join('');
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeSearchResults() {
+      document.getElementById('search-results-modal').classList.add('hidden');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FILTERS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function initFilters() {
+      document.getElementById('status-filter').addEventListener('change', (e) => {
+        filterByStatus(e.target.value);
+      });
+    }
+
+    function filterByStatus(status) {
+      const container = document.getElementById('nav-tree');
+      
+      if (status === 'all') {
+        buildNavTree();
+        return;
+      }
+
+      const filtered = allFlattenedNodes.filter(({ node }) => 
+        node.researchStatus === status && node.name !== RESEARCH_DATA.name
+      );
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="text-center py-10 text-gray-500 text-xs">No systems match this filter</div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(({ node }) => buildNavItem(node, 0)).join('');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // STATS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function updateStats() {
+      const total = allFlattenedNodes.length;
+      const complete = allFlattenedNodes.filter(n => n.node.researchStatus === 'complete').length;
+      const maxDepth = Math.max(...allFlattenedNodes.map(n => n.path.length));
+
+      document.getElementById('stat-nodes').textContent = total;
+      document.getElementById('stat-depth').textContent = `L${maxDepth}`;
+      document.getElementById('stat-research').textContent = `${Math.round((complete / total) * 100)}%`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MOBILE SIDEBAR
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+      
+      sidebar.classList.toggle('-translate-x-full');
+      overlay.classList.toggle('hidden');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SHIMMER EFFECT
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function initShimmerEffect() {
+      document.addEventListener('mousemove', (e) => {
+        document.querySelectorAll('.shimmer-card, .system-card').forEach(card => {
+          const rect = card.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          card.style.setProperty('--mouse-x', `${x}px`);
+          card.style.setProperty('--mouse-y', `${y}px`);
+        });
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INITIALIZATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('[ARK] Initializing Research System...');
+      
+      loadResearchData();
+      initSearch();
+      initFilters();
+      initShimmerEffect();
+
+      // Mobile menu toggle
+      document.getElementById('mobile-menu-btn')?.addEventListener('click', toggleSidebar);
+
+      // Close sidebar on escape
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          const sidebar = document.getElementById('sidebar');
+          if (!sidebar.classList.contains('-translate-x-full')) {
+            toggleSidebar();
+          }
+        }
+      });
+
+      console.log('[ARK] Research System initialized');
+    });
+  </script>
+
+  <script src="archivist-status.js"></script>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+  <!-- FOOTER -->
+  <!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+  <footer style="border-top:1px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.6); padding:3rem 1.5rem; backdrop-filter:blur(12px); margin-top:4rem; position:relative; z-index:50;">
+    <div style="max-width:72rem; margin:0 auto;">
+      <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:1.5rem; margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <svg style="width:1.25rem; height:1.25rem; color:#9ca3af;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+          <span style="color:#9ca3af; font-family:'Orbitron', sans-serif; letter-spacing:0.2em;">LUNAR ARK</span>
+        </div>
+        <nav style="display:flex; flex-wrap:wrap; justify-content:center; gap:1.25rem; font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.15em;">
+          <a href="index.html" style="color:#6b7280; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">CODEX</a>
+          <a href="sanctuary.html" style="color:#6b7280; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">SANCTUARY</a>
+          <a href="research.html" style="color:#6b7280; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">RESEARCH</a>
+          <a href="simulation.html" style="color:#6b7280; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">SIMULATION</a>
+          <a href="intel.html" style="color:#6b7280; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">INTEL</a>
+          <a href="about.html" style="color:#6b7280; text-decoration:none; transition:color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">ABOUT</a>
+          <a href="status.html" style="color:#6b7280; text-decoration:none;">STATUS</a>
+        </nav>
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,0.05); padding-top:1.5rem; display:flex; flex-wrap:wrap; justify-content:space-between; gap:1rem; font-family:'JetBrains Mono', monospace; font-size:11px; color:#6b7280;">
+        <div>An open codex of a future lunar settlement · Volume I · 2026<br><span style="color:#4b5563;">Chetan Hansraj · Mumbai · India</span></div>
+        <div style="text-align:right;"><a href="mailto:contribute@lunarark.com" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">contribute@lunarark.com</a><br><a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener" style="color:#4b5563; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#4b5563'">CC-BY-SA 4.0</a></div>
+      </div>
+      <div style="text-align:center; color:#4b5563; font-size:10px; font-family:'JetBrains Mono', monospace; margin-top:1.25rem; font-style:italic;">Independent open project · not affiliated with any space agency</div>
+    </div>
+  </footer>
+
+</body>
+</html>
