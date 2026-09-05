@@ -1,0 +1,2455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lunar Ark — Knowledge Graph | The Codex</title>
+  <meta name="description" content="Interactive force-directed graph of the Lunar Ark codex. 763 entries, 3,336 connections, eight functional clusters. Click any node to explore. CC-BY-SA.">
+  <meta property="og:title" content="Lunar Ark — Knowledge Graph | The Codex">
+  <meta property="og:description" content="Interactive force-directed graph of the Lunar Ark codex. 763 entries, 3,336 connections, eight functional clusters. Click any node to explore. CC-BY-SA.">
+  <meta property="og:image" content="https://lunarark.com/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:alt" content="Lunar Ark — an open engineering codex for a settlement at the Moon's south pole">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="https://lunarark.com/simulation.html">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Lunar Ark — Knowledge Graph | The Codex">
+  <meta name="twitter:description" content="Interactive force-directed graph of the Lunar Ark codex. 763 entries, 3,336 connections, eight functional clusters. Click any node to explore. CC-BY-SA.">
+  <meta name="twitter:image" content="https://lunarark.com/og-image.jpg">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;500;600;700&family=Space+Mono&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+  <style>
+    :root {
+      --deep-bg: #030014;
+      --glass-bg: rgba(15, 23, 42, 0.6);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --accent-purple: #8b5cf6;
+      --accent-cyan: #06b6d4;
+      --accent-indigo: #6366f1;
+    }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
+    }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.3); border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.5); }
+
+    body { 
+      background-color: var(--deep-bg); 
+      color: #e2e8f0; 
+      font-family: 'Rajdhani', sans-serif; 
+      overflow: hidden; 
+    }
+
+    h1, h2, h3, .brand-font { font-family: 'Orbitron', sans-serif; letter-spacing: 0.1em; }
+    .mono-font { font-family: 'Space Mono', monospace; }
+
+    /* === LAYOUT === */
+    #app-container { display: flex; width: 100vw; height: 100vh; }
+    
+    #sidebar { 
+      width: 380px; 
+      min-width: 320px; 
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(20px);
+      border-right: 1px solid var(--glass-border); 
+      display: flex; 
+      flex-direction: column; 
+      z-index: 20; 
+      position: relative; 
+    }
+    
+    #main-area { 
+      flex: 1; 
+      display: flex; 
+      flex-direction: column; 
+      position: relative; 
+    }
+    
+    #viewport { 
+      flex: 1; 
+      position: relative; 
+      background: radial-gradient(ellipse at center, rgba(99, 102, 241, 0.05) 0%, transparent 70%),
+                  radial-gradient(ellipse at 20% 80%, rgba(139, 92, 246, 0.03) 0%, transparent 50%),
+                  var(--deep-bg);
+      overflow: hidden; 
+    }
+
+    /* === NAVBAR === */
+    #navbar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+      border-bottom: 1px solid var(--glass-border);
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(12px);
+    }
+
+    /* === VIEW TOGGLE === */
+    .view-toggle { 
+      position: absolute; 
+      top: 80px; 
+      right: 20px; 
+      z-index: 40; 
+      background: rgba(0, 0, 0, 0.8); 
+      border: 1px solid var(--glass-border); 
+      border-radius: 8px; 
+      padding: 4px; 
+      display: flex; 
+      gap: 4px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .toggle-btn { 
+      padding: 8px 16px; 
+      font-size: 10px; 
+      cursor: pointer; 
+      color: #64748b; 
+      font-weight: bold; 
+      border-radius: 6px; 
+      transition: all 0.3s ease;
+      font-family: 'Orbitron', sans-serif;
+      letter-spacing: 0.1em;
+    }
+    
+    .toggle-btn:hover {
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .toggle-btn.active { 
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-indigo));
+      color: white; 
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+    }
+
+    /* === TOOLTIP === */
+    #tooltip { 
+      position: absolute; 
+      opacity: 0; 
+      pointer-events: none; 
+      background: rgba(15, 23, 42, 0.95); 
+      border: 1px solid var(--accent-cyan); 
+      padding: 10px 14px; 
+      border-radius: 8px; 
+      color: white; 
+      font-size: 12px; 
+      box-shadow: 0 0 30px rgba(6, 182, 212, 0.3); 
+      z-index: 100; 
+      transition: opacity 0.15s;
+      backdrop-filter: blur(10px);
+      max-width: 300px;
+    }
+
+    /* === TERMINAL PANEL === */
+    #terminal-panel { 
+      height: 200px; 
+      background: rgba(0, 0, 0, 0.9);
+      border-top: 1px solid var(--glass-border); 
+      display: flex; 
+      flex-direction: column; 
+      z-index: 20; 
+      transition: height 0.3s ease;
+    }
+    
+    #terminal-panel.collapsed { height: 40px; }
+    #terminal-panel.resizing { transition: none !important; }
+
+    .resize-handle {
+      height: 6px;
+      cursor: ns-resize;
+      background: transparent;
+      position: relative;
+      flex-shrink: 0;
+      z-index: 25;
+    }
+    .resize-handle::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 3px;
+      border-radius: 2px;
+      background: rgba(139, 92, 246, 0.3);
+      transition: background 0.2s ease;
+    }
+    .resize-handle:hover::after {
+      background: rgba(139, 92, 246, 0.7);
+    }
+    .resize-handle:active::after {
+      background: rgba(139, 92, 246, 1);
+      width: 60px;
+    }
+
+    .terminal-header {
+      height: 40px;
+      background: linear-gradient(90deg, rgba(139, 92, 246, 0.1), transparent);
+      border-bottom: 1px solid var(--glass-border);
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    
+    .terminal-header:hover {
+      background: linear-gradient(90deg, rgba(139, 92, 246, 0.2), transparent);
+    }
+    
+    .log-entry { 
+      margin-bottom: 6px; 
+      font-size: 11px; 
+      color: #64748b; 
+      font-family: 'Space Mono', monospace; 
+      border-left: 2px solid transparent; 
+      padding-left: 10px;
+      transition: all 0.2s ease;
+    }
+    
+    .log-entry.info { border-left-color: var(--accent-cyan); color: #94a3b8; }
+    .log-entry.success { border-left-color: #22c55e; color: #86efac; }
+    .log-entry.warning { border-left-color: #f59e0b; color: #fcd34d; }
+    .log-entry.error { border-left-color: #ef4444; color: #fca5a5; }
+    .log-entry.research { border-left-color: var(--accent-purple); color: #c4b5fd; }
+    .log-entry.connection { border-left-color: #ec4899; color: #f9a8d4; }
+
+    /* Panel tabs */
+    .panel-tab {
+      background: rgba(255,255,255,0.05);
+      color: #64748b;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .panel-tab:hover { color: #94a3b8; background: rgba(255,255,255,0.1); }
+    .panel-tab-active {
+      background: rgba(139, 92, 246, 0.2) !important;
+      color: #c4b5fd !important;
+      border-color: rgba(139, 92, 246, 0.3) !important;
+    }
+
+    /* Connection rows */
+    .conn-row {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.03);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-bottom: 4px;
+    }
+    .conn-row:hover {
+      background: rgba(139, 92, 246, 0.08);
+      border-color: rgba(139, 92, 246, 0.2);
+    }
+    .conn-row.conn-row-active {
+      background: rgba(139, 92, 246, 0.15);
+      border-color: rgba(139, 92, 246, 0.4);
+    }
+
+    /* Edge type badges */
+    .edge-badge {
+      font-size: 8px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    .edge-badge-power { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.2); }
+    .edge-badge-data { background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); }
+    .edge-badge-thermal { background: rgba(249,115,22,0.15); color: #fdba74; border: 1px solid rgba(249,115,22,0.2); }
+    .edge-badge-mechanical { background: rgba(107,114,128,0.15); color: #d1d5db; border: 1px solid rgba(107,114,128,0.2); }
+    .edge-badge-supplies { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.2); }
+    .edge-badge-environmental { background: rgba(6,182,212,0.15); color: #67e8f9; border: 1px solid rgba(6,182,212,0.2); }
+    .edge-badge-operational { background: rgba(168,85,247,0.15); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.2); }
+    .edge-badge-other { background: rgba(75,85,99,0.15); color: #9ca3af; border: 1px solid rgba(75,85,99,0.2); }
+
+    /* Type breakdown pills */
+    .type-pill {
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    /* === D3 SCHEMATIC TREE === */
+    .node rect { 
+      fill: rgba(99, 102, 241, 0.1); 
+      stroke: rgba(99, 102, 241, 0.6); 
+      stroke-width: 1.5px; 
+      cursor: pointer; 
+      transition: all 0.3s ease;
+      filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.2));
+    }
+    
+    .node:hover rect { 
+      fill: rgba(99, 102, 241, 0.2); 
+      stroke: rgba(139, 92, 246, 0.9);
+      filter: drop-shadow(0 0 15px rgba(139, 92, 246, 0.5));
+    }
+    
+    .node.collapsed rect { 
+      stroke: rgba(251, 191, 36, 0.7); 
+      fill: rgba(251, 191, 36, 0.08);
+      filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.2));
+    }
+    
+    .node.selected rect { 
+      stroke: var(--accent-cyan); 
+      fill: rgba(6, 182, 212, 0.15); 
+      stroke-width: 2px;
+      filter: drop-shadow(0 0 20px rgba(6, 182, 212, 0.5));
+    }
+    
+    .node text { 
+      font-family: 'Rajdhani', sans-serif; 
+      font-size: 10px; 
+      font-weight: 600; 
+      fill: #e2e8f0; 
+      pointer-events: none;
+      text-transform: uppercase; 
+      letter-spacing: 0.5px;
+    }
+    
+    .link { 
+      fill: none; 
+      stroke: rgba(99, 102, 241, 0.2); 
+      stroke-width: 1.5px;
+      filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.1));
+    }
+
+    /* === D3 NEURAL FORCE === */
+    .neural-node circle { 
+      cursor: pointer; 
+      transition: all 0.3s ease;
+    }
+    
+    .neural-node:hover circle {
+      filter: brightness(1.3) drop-shadow(0 0 15px currentColor);
+    }
+    
+    .neural-node.selected circle {
+      stroke: white;
+      stroke-width: 3px;
+      filter: drop-shadow(0 0 20px currentColor);
+    }
+    
+    .neural-node text { 
+      font-family: 'Rajdhani', sans-serif; 
+      font-size: 9px; 
+      fill: rgba(255, 255, 255, 0.8); 
+      pointer-events: none;
+      font-weight: 600;
+    }
+
+    /* Neural Links - Hierarchy */
+    .neural-link { 
+      stroke: rgba(255, 255, 255, 0.08); 
+      stroke-width: 1px;
+    }
+
+    /* Neural Links - Cross Connections */
+    .cross-link {
+      stroke-width: 2px;
+      opacity: 0.6;
+      transition: all 0.3s ease;
+    }
+    
+    .cross-link:hover {
+      opacity: 1;
+      stroke-width: 3px;
+    }
+    
+    .cross-link.dependency { stroke: #ef4444; }
+    .cross-link.supplies { stroke: #22c55e; }
+    .cross-link.dataFlow { stroke: #3b82f6; stroke-dasharray: 5,5; }
+    .cross-link.sharedTech { stroke: #a855f7; stroke-dasharray: 2,2; }
+    .cross-link.redundancy { stroke: #f59e0b; }
+    .cross-link.communication { stroke: #06b6d4; stroke-dasharray: 8,3; }
+
+    /* On-demand connection animation */
+    .cross-link-active {
+      stroke-width: 2.5px;
+      opacity: 0;
+      animation: draw-link 0.6s ease forwards;
+    }
+    @keyframes draw-link {
+      0% { opacity: 0; stroke-width: 0.5px; }
+      100% { opacity: 0.8; stroke-width: 2.5px; }
+    }
+
+    .cross-link-label {
+      font-size: 8px;
+      fill: rgba(255,255,255,0.5);
+      pointer-events: none;
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* Dimmed / highlighted states */
+    .neural-node.node-dimmed { opacity: 0.1; transition: opacity 0.4s ease; }
+    .neural-node.node-highlighted { opacity: 1; transition: opacity 0.3s ease; }
+    .neural-node.node-highlighted circle {
+      filter: drop-shadow(0 0 14px currentColor) !important;
+    }
+    .neural-node.node-source circle {
+      stroke: #fff;
+      stroke-width: 3px;
+      filter: drop-shadow(0 0 20px #fff) !important;
+    }
+    .neural-link.link-dimmed { opacity: 0.03; }
+
+    /* === SIDEBAR COMPONENTS === */
+    .sidebar-header {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.1) 100%);
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    .stat-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--glass-border);
+      transition: all 0.3s ease;
+    }
+    
+    .stat-box:hover {
+      border-color: rgba(139, 92, 246, 0.3);
+      background: rgba(139, 92, 246, 0.05);
+    }
+
+    .confidence-bar {
+      background: linear-gradient(90deg, #22c55e 0%, var(--accent-cyan) 50%, var(--accent-purple) 100%);
+    }
+
+    .node-image-container {
+      position: relative;
+      overflow: hidden;
+      border-radius: 8px;
+      border: 1px solid var(--glass-border);
+    }
+    
+    .node-image-container::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(3, 0, 20, 0.8) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .description-content {
+      line-height: 1.7;
+      color: #94a3b8;
+    }
+    
+    .description-content strong {
+      color: #a5b4fc;
+      font-weight: 600;
+    }
+
+    /* === STATUS BADGES === */
+    .status-complete { background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.3); color: #86efac; }
+    .status-in-progress { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.3); color: #fcd34d; }
+    .status-deep-research { background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3); color: #a5b4fc; }
+    .status-pending { background: rgba(100, 116, 139, 0.1); border-color: rgba(100, 116, 139, 0.3); color: #94a3b8; }
+
+    /* === CONNECTION ITEMS === */
+    .connection-item {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--glass-border);
+      transition: all 0.2s ease;
+    }
+    
+    .connection-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .connection-type-badge {
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .conn-dependency { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+    .conn-supplies { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+    .conn-dataFlow { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
+    .conn-sharedTech { background: rgba(168, 85, 247, 0.2); color: #d8b4fe; }
+    .conn-redundancy { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+    .conn-communication { background: rgba(6, 182, 212, 0.2); color: #67e8f9; }
+
+    /* === METRIC BAR === */
+    .metric-bar {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    
+    .metric-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.5s ease;
+    }
+
+    /* === SYSTEM COLOR LEGEND === */
+    .system-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    
+    .system-legend-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .system-legend-item.dimmed {
+      opacity: 0.3;
+    }
+
+    /* === BREADCRUMBS === */
+    .breadcrumb-item {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    
+    .breadcrumb-item:hover {
+      color: var(--accent-cyan);
+    }
+
+    /* === STARFIELD CANVAS === */
+    #starfield {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* === PULSE ANIMATION === */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.8); opacity: 1; }
+      100% { transform: scale(2); opacity: 0; }
+    }
+
+    .pulse-dot::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 50%;
+      border: 2px solid currentColor;
+      animation: pulse-ring 2s ease-out infinite;
+    }
+
+    /* === AI INSIGHT BOX === */
+    .ai-insight-box {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 8px;
+    }
+
+    /* === CLUSTER TAG === */
+    .cluster-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+  </style>
+  <link rel="canonical" href="https://lunarark.com/simulation.html">
+  <meta property="og:site_name" content="Lunar Ark">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://lunarark.com/#organization", "name": "Lunar Ark", "alternateName": ["Lunar Ark Codex", "The Lunar Ark"], "url": "https://lunarark.com", "logo": {"@type": "ImageObject", "url": "https://lunarark.com/logo-nav.png"}, "email": "contribute@lunarark.com", "description": "An open engineering encyclopedia for a permanent lunar settlement at the Moon's south pole — 763 entries decomposed to component level, licensed CC-BY-SA 4.0.", "founder": {"@type": "Person", "name": "Chetan Hansraj"}, "foundingDate": "2018", "location": {"@type": "Place", "name": "Mumbai, India"}, "knowsAbout": ["lunar settlement", "space systems engineering", "Shackleton Crater", "in-situ resource utilisation", "long-term data preservation", "planetary defence"]}, {"@type": "WebSite", "@id": "https://lunarark.com/#website", "url": "https://lunarark.com", "name": "Lunar Ark", "alternateName": "Lunar Ark Codex", "publisher": {"@id": "https://lunarark.com/#organization"}, "inLanguage": "en", "license": "https://creativecommons.org/licenses/by-sa/4.0/", "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://lunarark.com/codex?q={search_term_string}"}, "query-input": "required name=search_term_string"}}]}</script>
+</head>
+
+<body>
+  <!-- STARFIELD BACKGROUND -->
+  <canvas id="starfield"></canvas>
+
+  <div id="app-container">
+    
+    <!-- === SIDEBAR === -->
+    <aside id="sidebar">
+      
+      <!-- Sidebar Header -->
+      <div class="sidebar-header p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
+              <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path>
+              </svg>
+            </div>
+            <div>
+              <h1 class="text-white font-bold text-sm brand-font tracking-wider"><span class="sr-only">Lunar Ark — </span>SYSTEM SIMULATION</h1>
+              <div id="sidebar-mode-label" class="text-[10px] text-purple-400/70 mono-font">HIERARCHY EXPLORER</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
+            <span class="relative w-2 h-2 rounded-full bg-green-500 pulse-dot"></span>
+            <span class="text-[10px] font-bold text-green-400 uppercase tracking-wider">LIVE</span>
+          </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="grid grid-cols-3 gap-2">
+          <div class="stat-box rounded-lg p-2 text-center">
+            <div class="text-[9px] text-gray-500 uppercase tracking-wider">Nodes</div>
+            <div id="stat-nodes" class="text-lg font-bold text-cyan-400 mono-font">--</div>
+          </div>
+          <div class="stat-box rounded-lg p-2 text-center">
+            <div class="text-[9px] text-gray-500 uppercase tracking-wider">Depth</div>
+            <div id="stat-depth" class="text-lg font-bold text-purple-400 mono-font">--</div>
+          </div>
+          <div class="stat-box rounded-lg p-2 text-center">
+            <div class="text-[9px] text-gray-500 uppercase tracking-wider" id="stat-label-3">Links</div>
+            <div id="stat-connections" class="text-lg font-bold text-green-400 mono-font">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- === SCHEMATIC SIDEBAR CONTENT === -->
+      <div id="schematic-sidebar" class="flex-1 flex flex-col overflow-hidden">
+        
+        <!-- Breadcrumbs -->
+        <div id="breadcrumbs" class="px-5 py-3 border-b border-white/5 bg-black/20">
+          <div class="flex items-center gap-2 text-[10px] flex-wrap">
+            <button onclick="goToRoot()" class="breadcrumb-item text-gray-500 hover:text-cyan-400 font-bold uppercase tracking-widest flex items-center gap-1">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+              ROOT
+            </button>
+            <span id="breadcrumb-trail"></span>
+          </div>
+        </div>
+
+        <!-- Node Details -->
+        <div class="flex-1 overflow-y-auto p-5" id="node-details">
+          
+          <!-- Node Title & Status -->
+          <div class="mb-4">
+            <div id="node-status-badge" class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mb-3 status-complete border">
+              <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+              <span id="node-status-text">Complete</span>
+            </div>
+            <h2 id="node-title" class="text-xl text-white brand-font leading-tight">LUNAR ARK PROJECT</h2>
+          </div>
+
+          <!-- Node Image -->
+          <div id="node-image-wrapper" class="node-image-container mb-4 hidden">
+            <img id="node-image" src="" alt="Node visual" loading="lazy" decoding="async" class="w-full h-40 object-cover">
+          </div>
+
+          <!-- Meta Info -->
+          <div class="grid grid-cols-2 gap-2 mb-4">
+            <div class="stat-box rounded-lg p-3">
+              <div class="text-[9px] text-gray-500 uppercase tracking-wider mb-1">Type</div>
+              <div id="node-type" class="text-sm font-bold text-white">System</div>
+            </div>
+            <div class="stat-box rounded-lg p-3">
+              <div class="text-[9px] text-gray-500 uppercase tracking-wider mb-1">Updated</div>
+              <div id="node-updated" class="text-sm font-bold text-white mono-font">--</div>
+            </div>
+          </div>
+
+          <!-- Confidence -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[10px] text-gray-500 uppercase tracking-wider">Research Confidence</span>
+              <span id="node-confidence-value" class="text-sm font-bold text-cyan-400 mono-font">99%</span>
+            </div>
+            <div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+              <div id="node-confidence-bar" class="h-full confidence-bar rounded-full transition-all duration-500" style="width: 99%"></div>
+            </div>
+          </div>
+
+          <!-- Children Count -->
+          <div id="children-info" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/10 border border-purple-500/20 mb-4">
+            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+            </svg>
+            <span id="children-count" class="text-sm text-purple-300 mono-font">0 Subsystems</span>
+            <span class="text-[10px] text-gray-500 ml-auto">Click to expand</span>
+          </div>
+
+          <!-- Description -->
+          <div class="border-t border-white/5 pt-4">
+            <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Description</div>
+            <div id="node-desc" class="description-content text-sm leading-relaxed max-h-[300px] overflow-y-auto pr-2">
+              Select a node from the graph to view its details and research data.
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <div class="p-4 border-t border-white/5 bg-black/30 space-y-2">
+          <a id="view-full-research-btn" href="research.html" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-sm font-bold uppercase tracking-widest hover:border-cyan-400 hover:bg-cyan-500/25 transition">
+            View Full Research
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+          </a>
+          <button onclick="goToRoot()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-300 text-sm font-bold uppercase tracking-widest hover:border-purple-500/40 hover:bg-purple-500/20 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            Reset View
+          </button>
+        </div>
+      </div>
+
+      <!-- === NEURAL SIDEBAR CONTENT === -->
+      <div id="neural-sidebar" class="flex-1 flex flex-col overflow-hidden hidden">
+        
+        <!-- Selected Node Header -->
+        <div class="px-5 py-4 border-b border-white/5 bg-black/20">
+          <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Selected Node</div>
+          <div class="flex items-center gap-3">
+            <div id="neural-node-color" class="w-4 h-4 rounded-full" style="background: #8b5cf6;"></div>
+            <div>
+              <h3 id="neural-node-title" class="text-lg font-bold text-white brand-font">LUNAR ARK PROJECT</h3>
+              <div class="flex items-center gap-2 mt-1">
+                <span id="neural-node-system" class="text-[10px] text-gray-400">Root System</span>
+                <span class="text-gray-600">•</span>
+                <span id="neural-node-depth" class="text-[10px] text-cyan-400 mono-font">Level 0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connections Panel -->
+        <div class="flex-1 overflow-y-auto p-5">
+          
+          <!-- Connection Stats -->
+          <div class="grid grid-cols-3 gap-2 mb-5">
+            <div class="stat-box rounded-lg p-2 text-center">
+              <div class="text-[9px] text-gray-500 uppercase">Inbound</div>
+              <div id="conn-inbound" class="text-lg font-bold text-green-400 mono-font">0</div>
+            </div>
+            <div class="stat-box rounded-lg p-2 text-center">
+              <div class="text-[9px] text-gray-500 uppercase">Outbound</div>
+              <div id="conn-outbound" class="text-lg font-bold text-cyan-400 mono-font">0</div>
+            </div>
+            <div class="stat-box rounded-lg p-2 text-center">
+              <div class="text-[9px] text-gray-500 uppercase">Cross-Sys</div>
+              <div id="conn-cross" class="text-lg font-bold text-purple-400 mono-font">0</div>
+            </div>
+          </div>
+
+          <!-- Connections List -->
+          <div class="mb-5">
+            <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-3">Connections</div>
+            <div id="connections-list" class="space-y-2">
+              <div class="text-sm text-gray-500 italic">No connections mapped yet</div>
+            </div>
+          </div>
+
+          <!-- Graph Metrics -->
+          <div class="mb-5">
+            <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-3">Graph Metrics</div>
+            
+            <div class="space-y-3">
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-gray-400">Centrality Score</span>
+                  <span id="metric-centrality" class="text-cyan-400 mono-font">0.00</span>
+                </div>
+                <div class="metric-bar">
+                  <div id="metric-centrality-bar" class="metric-bar-fill bg-cyan-500" style="width: 0%"></div>
+                </div>
+              </div>
+              
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-gray-400">Connectivity</span>
+                  <span id="metric-connectivity" class="text-purple-400 mono-font">0.00</span>
+                </div>
+                <div class="metric-bar">
+                  <div id="metric-connectivity-bar" class="metric-bar-fill bg-purple-500" style="width: 0%"></div>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-gray-400">Critical Path Score</span>
+                  <span id="metric-critical" class="text-amber-400 mono-font">0.00</span>
+                </div>
+                <div class="metric-bar">
+                  <div id="metric-critical-bar" class="metric-bar-fill bg-amber-500" style="width: 0%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cluster Analysis -->
+          <div class="mb-5">
+            <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-3">System Bridges</div>
+            <div id="cluster-bridges" class="flex flex-wrap gap-2">
+              <span class="text-sm text-gray-500 italic">Analyzing...</span>
+            </div>
+          </div>
+
+          <!-- AI Insights -->
+          <div class="ai-insight-box p-4">
+            <div class="flex items-center gap-2 mb-3">
+              <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+              </svg>
+              <span class="text-[10px] text-purple-300 uppercase tracking-wider font-bold">AI Insights</span>
+            </div>
+            <p id="ai-insight-text" class="text-xs text-gray-400 leading-relaxed">
+              Select a node to view AI-generated insights about its role in the system architecture.
+            </p>
+            <div id="suggested-links" class="mt-3 hidden">
+              <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Suggested Missing Links</div>
+              <div id="suggested-links-list" class="space-y-1"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Legend -->
+        <div class="p-4 border-t border-white/5 bg-black/30">
+          <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-3">System Legend</div>
+          <div id="system-legend" class="grid grid-cols-2 gap-1 max-h-32 overflow-y-auto text-[10px]">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- === MAIN AREA === -->
+    <div id="main-area">
+      
+      <!-- Navbar -->
+      <nav id="navbar">
+        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+          <a href="index.html" class="flex items-center gap-3">
+            <img src="/logo-nav.png" alt="Lunar Ark" class="h-9 w-auto" style="max-width:210px;">
+          </a>
+          
+          <div class="hidden md:flex items-center gap-8 text-xs font-bold tracking-widest text-gray-400 brand-font">
+            <a href="index.html" class="hover:text-white transition">CODEX</a>
+            <a href="sanctuary.html" class="hover:text-purple-400 transition">SANCTUARY</a>
+            <a href="research.html" class="hover:text-cyan-400 transition">RESEARCH</a>
+            <a href="simulation.html" class="text-purple-400 border-b border-purple-400 pb-0.5">SIMULATION</a>
+            <a href="intel.html" class="hover:text-purple-400 transition">INTEL</a>
+          </div>
+
+          <!-- Mobile hamburger -->
+          <button id="mobile-nav-toggle" class="md:hidden p-2 rounded-lg text-white" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);" aria-label="Open menu" onclick="document.getElementById('mobile-nav-overlay').classList.remove('hidden')">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Mobile nav overlay (cyber register) -->
+      <div id="mobile-nav-overlay" class="hidden fixed inset-0 z-[100] md:hidden" style="background:rgba(3,0,20,0.97);backdrop-filter:blur(20px);">
+        <button onclick="document.getElementById('mobile-nav-overlay').classList.add('hidden')" class="absolute top-5 right-5 p-2 rounded-lg text-white" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);" aria-label="Close menu">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+        <nav class="container mx-auto px-6 pt-24 pb-12 flex flex-col gap-1 brand-font tracking-widest">
+          <a href="index.html" class="text-gray-300 text-2xl py-4 border-b border-white/10 hover:text-white transition">CODEX</a>
+          <a href="sanctuary.html" class="text-gray-300 text-2xl py-4 border-b border-white/10 hover:text-purple-400 transition">SANCTUARY</a>
+          <a href="research.html" class="text-gray-300 text-2xl py-4 border-b border-white/10 hover:text-cyan-400 transition">RESEARCH</a>
+          <a href="simulation.html" class="text-purple-400 text-2xl py-4 border-b border-white/10 font-black">· SIMULATION</a>
+          <a href="intel.html" class="text-gray-300 text-2xl py-4 border-b border-white/10 hover:text-purple-400 transition">INTEL</a>
+          <div class="text-[10px] text-gray-600 mt-8 mono-font tracking-widest">contribute@lunarark.com · CC-BY-SA 4.0</div>
+        </nav>
+      </div>
+
+      <!-- Viewport -->
+      <div id="viewport">
+        <div class="view-toggle">
+          <div class="toggle-btn active" id="btn-tree" onclick="setMode('tree')">
+            <span class="flex items-center gap-2">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path></svg>
+              SCHEMATIC
+            </span>
+          </div>
+          <div class="toggle-btn" id="btn-force" onclick="setMode('force')">
+            <span class="flex items-center gap-2">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+              NEURAL
+            </span>
+          </div>
+        </div>
+        <div id="graph-container" class="w-full h-full cursor-move"></div>
+        <div id="tooltip"></div>
+      </div>
+
+      <!-- Connection Intelligence Panel -->
+      <div id="terminal-panel">
+        <div class="resize-handle" id="panel-resize-handle"></div>
+        <div class="terminal-header flex justify-between items-center px-4" onclick="toggleTerminal()">
+          <div class="flex items-center gap-3">
+            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+            </svg>
+            <span class="text-xs text-white font-bold tracking-widest brand-font">AI RESEARCH AGENT</span>
+            <!-- Tab buttons -->
+            <div class="flex items-center gap-1 ml-2">
+              <button onclick="event.stopPropagation(); switchPanelTab('connections')" id="tab-connections" class="panel-tab panel-tab-active text-[9px] px-2 py-0.5 rounded font-bold tracking-wider">CONNECTIONS</button>
+              <button onclick="event.stopPropagation(); switchPanelTab('log')" id="tab-log" class="panel-tab text-[9px] px-2 py-0.5 rounded font-bold tracking-wider">LOG</button>
+            </div>
+            <div id="conn-status-badge" class="flex items-center gap-2 px-2 py-0.5 rounded bg-gray-500/20 border border-gray-500/30 ml-auto mr-4">
+              <span class="text-[9px] text-gray-400 font-bold tracking-wider">Click a node to explore</span>
+            </div>
+          </div>
+          <svg id="terminal-chevron" class="w-4 h-4 text-gray-400 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </div>
+
+        <!-- CONNECTIONS TAB -->
+        <div id="panel-connections" class="flex-1 flex overflow-hidden">
+          <!-- Summary sidebar -->
+          <div id="conn-summary" class="w-64 min-w-[220px] border-r border-white/5 bg-black/60 p-3 overflow-y-auto flex-shrink-0">
+            <div id="conn-empty-state" class="flex flex-col items-center justify-center h-full text-center">
+              <svg class="w-8 h-8 text-purple-500/30 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+              <p class="text-[10px] text-gray-500">Click a node in the graph to explore its connections</p>
+            </div>
+            <div id="conn-summary-content" class="hidden">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+          <!-- Connection details list -->
+          <div id="conn-details" class="flex-1 bg-black/40 p-3 overflow-y-auto">
+            <div id="conn-details-content">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- LOG TAB (hidden by default) -->
+        <div id="panel-log" class="flex-1 bg-black/50 p-4 overflow-y-auto hidden">
+          <div id="sys-log">
+            <div class="log-entry info">[SYSTEM] Neural link established. Awaiting research directives...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ============================================
+  // SYSTEM COLOR PALETTE - 13 Major Systems
+  // ============================================
+  const SYSTEM_COLORS = {
+    'Energy Systems': { primary: '#f59e0b', light: '#fcd34d', dark: '#b45309', name: 'Amber' },
+    'Life Support Systems': { primary: '#22c55e', light: '#86efac', dark: '#15803d', name: 'Green' },
+    'Habitat and Infrastructure': { primary: '#6b7280', light: '#9ca3af', dark: '#4b5563', name: 'Gray' },
+    'Communication and Navigation': { primary: '#3b82f6', light: '#93c5fd', dark: '#1d4ed8', name: 'Blue' },
+    'Transportation and Mobility': { primary: '#f97316', light: '#fdba74', dark: '#c2410c', name: 'Orange' },
+    'Resource Utilization': { primary: '#a855f7', light: '#d8b4fe', dark: '#7c3aed', name: 'Purple' },
+    'Scientific Research and Exploration': { primary: '#06b6d4', light: '#67e8f9', dark: '#0891b2', name: 'Cyan' },
+    'Crew Health and Safety': { primary: '#ef4444', light: '#fca5a5', dark: '#b91c1c', name: 'Red' },
+    'Robotics and Automation': { primary: '#8b5cf6', light: '#c4b5fd', dark: '#6d28d9', name: 'Violet' },
+    'Mission Control and Operations': { primary: '#ec4899', light: '#f9a8d4', dark: '#be185d', name: 'Pink' },
+    'Biodiversity Repository': { primary: '#84cc16', light: '#bef264', dark: '#4d7c0f', name: 'Lime' },
+    'Knowledge Repository': { primary: '#14b8a6', light: '#5eead4', dark: '#0f766e', name: 'Teal' },
+    'Artificial Intelligence and Computing Infrastructure': { primary: '#6366f1', light: '#a5b4fc', dark: '#4338ca', name: 'Indigo' }
+  };
+
+  // Connection Types Configuration
+  const CONNECTION_TYPES = {
+    dependency: { label: 'Depends On', icon: '⚡', color: '#ef4444', cssClass: 'dependency' },
+    supplies: { label: 'Supplies To', icon: '📤', color: '#22c55e', cssClass: 'supplies' },
+    dataFlow: { label: 'Data Flow', icon: '📊', color: '#3b82f6', cssClass: 'dataFlow' },
+    sharedTech: { label: 'Shared Tech', icon: '🔄', color: '#a855f7', cssClass: 'sharedTech' },
+    redundancy: { label: 'Redundancy', icon: '🛡️', color: '#f59e0b', cssClass: 'redundancy' },
+    communication: { label: 'Comms', icon: '📡', color: '#06b6d4', cssClass: 'communication' }
+  };
+
+  // ============================================
+  // CONNECTIONS DATA (Will be populated by AI)
+  // ============================================
+  let connectionsData = {
+    metadata: {
+      lastAnalyzed: new Date().toISOString(),
+      totalConnections: 0,
+      aiGenerated: 0,
+      validated: 0
+    },
+    connections: []
+  };
+
+  // Sample connections for demonstration
+  const SAMPLE_CONNECTIONS = [
+    { source: 'Cryogenic Storage Systems', target: 'Thermal Management', type: 'dependency', strength: 0.95, confidence: 0.88 },
+    { source: 'Cryogenic Storage Systems', target: 'Power Distribution', type: 'dependency', strength: 0.90, confidence: 0.92 },
+    { source: 'Cryogenic Storage Systems', target: 'Biodiversity Repository', type: 'supplies', strength: 1.0, confidence: 0.95 },
+    { source: 'Solar Power Generation', target: 'Power Distribution', type: 'supplies', strength: 0.95, confidence: 0.98 },
+    { source: 'Solar Power Generation', target: 'Energy Storage', type: 'supplies', strength: 0.90, confidence: 0.95 },
+    { source: 'AI Decision Support', target: 'Mission Control and Operations', type: 'dataFlow', strength: 0.85, confidence: 0.80 },
+    { source: 'Environmental Control', target: 'Life Support Systems', type: 'dependency', strength: 0.95, confidence: 0.90 },
+    { source: 'Robotic Maintenance', target: 'Robotics and Automation', type: 'sharedTech', strength: 0.80, confidence: 0.75 },
+    { source: 'Communication Arrays', target: 'Mission Control and Operations', type: 'communication', strength: 0.90, confidence: 0.92 },
+    { source: 'Backup Power Systems', target: 'Energy Systems', type: 'redundancy', strength: 0.85, confidence: 0.88 },
+    { source: 'Water Recycling', target: 'Life Support Systems', type: 'supplies', strength: 0.95, confidence: 0.90 },
+    { source: 'Oxygen Generation', target: 'Life Support Systems', type: 'supplies', strength: 1.0, confidence: 0.98 },
+    { source: 'Navigation Systems', target: 'Communication and Navigation', type: 'sharedTech', strength: 0.85, confidence: 0.82 },
+    { source: 'Sensor Networks', target: 'Scientific Research and Exploration', type: 'dataFlow', strength: 0.80, confidence: 0.78 },
+    { source: 'Habitat Modules', target: 'Habitat and Infrastructure', type: 'dependency', strength: 0.90, confidence: 0.95 }
+  ];
+
+  // ============================================
+  // KNOWLEDGE GRAPH LOADING
+  // ============================================
+
+  // Map knowledge_graph edge types to UI connection types
+  const EDGE_TYPE_MAP = {
+    'power': 'dependency', 'electrical_power': 'dependency', 'Electrical power': 'dependency',
+    'Regulated power rails': 'dependency', 'Regulated electrical power': 'dependency',
+    'thermal': 'dependency', 'thermal_load': 'dependency', 'thermal_control': 'dependency',
+    'Thermal management': 'dependency', 'thermal_isolation': 'dependency',
+    'data': 'dataFlow', 'command_control': 'dataFlow', 'data_interface': 'dataFlow',
+    'telemetry_uplink_downlink': 'communication', 'mesh_network_access': 'communication',
+    'mesh_network': 'communication',
+    'mechanical': 'sharedTech', 'mechanical_interface': 'sharedTech',
+    'structural': 'sharedTech', 'structural_components': 'sharedTech',
+    'structural_mounting': 'sharedTech', 'structural_interface': 'sharedTech',
+    'material': 'supplies', 'fluid': 'supplies', 'environmental': 'supplies',
+    'operational': 'sharedTech', 'redundancy': 'redundancy',
+    'radiation_shielding': 'sharedTech', 'robotic_services': 'sharedTech',
+    'maintenance': 'sharedTech', 'cryogenic_storage': 'supplies',
+  };
+
+  async function loadKnowledgeGraph() {
+    const kgSources = [
+      '/api/knowledge_graph',
+      'OUTPUT/knowledge_graph.json'
+    ];
+
+    let kgData = null;
+    for (const src of kgSources) {
+      try {
+        const res = await fetch(src);
+        if (res.ok) { kgData = await res.json(); break; }
+      } catch(e) {}
+    }
+
+    if (kgData && kgData.edges) {
+      // Build ID→name lookup from knowledge_graph nodes
+      const idToName = {};
+      (kgData.nodes || []).forEach(n => { idToName[n.id] = n.name; });
+
+      // Filter non-hierarchy edges and map to connection format
+      const realConnections = kgData.edges
+        .filter(e => e.type !== 'hierarchy')
+        .map(e => {
+          const sourceName = idToName[e.source] || e.source;
+          const targetName = idToName[e.target] || e.target;
+          const connType = EDGE_TYPE_MAP[e.type] || 'dependency';
+          return {
+            source: sourceName,
+            target: targetName,
+            sourceId: e.source,
+            targetId: e.target,
+            type: connType,
+            edgeType: e.type,    // preserve original type
+            label: e.label || e.type,
+            strength: 0.8,
+            confidence: 0.85
+          };
+        });
+
+      connectionsData.connections = realConnections;
+      connectionsData.metadata.totalConnections = realConnections.length;
+      document.getElementById('stat-connections').textContent = realConnections.length;
+      addLog('success', `[KG] Loaded ${realConnections.length} real connections from knowledge graph`);
+    } else {
+      // Fallback to sample connections
+      connectionsData.connections = SAMPLE_CONNECTIONS;
+      connectionsData.metadata.totalConnections = SAMPLE_CONNECTIONS.length;
+      document.getElementById('stat-connections').textContent = SAMPLE_CONNECTIONS.length;
+      addLog('warning', '[KG] Knowledge graph unavailable, using sample connections');
+    }
+  }
+
+  // ============================================
+  // STARFIELD BACKGROUND
+  // ============================================
+  const starCanvas = document.getElementById('starfield');
+  const starCtx = starCanvas.getContext('2d');
+  let stars = [];
+
+  function initStarfield() {
+    starCanvas.width = window.innerWidth;
+    starCanvas.height = window.innerHeight;
+    stars = [];
+    for (let i = 0; i < 200; i++) {
+      stars.push({
+        x: Math.random() * starCanvas.width,
+        y: Math.random() * starCanvas.height,
+        size: Math.random() * 1.5,
+        opacity: Math.random() * 0.8 + 0.2,
+        twinkleSpeed: Math.random() * 0.02 + 0.005
+      });
+    }
+  }
+
+  function drawStarfield() {
+    starCtx.clearRect(0, 0, starCanvas.width, starCanvas.height);
+    stars.forEach(star => {
+      star.opacity += Math.sin(Date.now() * star.twinkleSpeed) * 0.01;
+      star.opacity = Math.max(0.1, Math.min(1, star.opacity));
+      starCtx.beginPath();
+      starCtx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+      starCtx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
+      starCtx.fill();
+    });
+    requestAnimationFrame(drawStarfield);
+  }
+
+  initStarfield();
+  drawStarfield();
+  window.addEventListener('resize', initStarfield);
+
+  // ============================================
+  // TERMINAL TOGGLE
+  // ============================================
+  function toggleTerminal() {
+    const panel = document.getElementById('terminal-panel');
+    const chevron = document.getElementById('terminal-chevron');
+    panel.classList.toggle('collapsed');
+    chevron.style.transform = panel.classList.contains('collapsed') ? 'rotate(180deg)' : '';
+  }
+
+  function openTerminal() {
+    const panel = document.getElementById('terminal-panel');
+    if (panel.classList.contains('collapsed')) {
+      panel.classList.remove('collapsed');
+      document.getElementById('terminal-chevron').style.transform = '';
+    }
+  }
+
+  // ============================================
+  // PANEL DRAG-TO-RESIZE
+  // ============================================
+  (function initPanelResize() {
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const handle = document.getElementById('panel-resize-handle');
+      const panel = document.getElementById('terminal-panel');
+      if (!handle || !panel) return;
+
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isResizing = true;
+        startY = e.clientY;
+        startHeight = panel.offsetHeight;
+        panel.classList.add('resizing');
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        const delta = startY - e.clientY;
+        const newHeight = Math.min(window.innerHeight * 0.7, Math.max(80, startHeight + delta));
+        panel.style.height = newHeight + 'px';
+        panel.classList.remove('collapsed');
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!isResizing) return;
+        isResizing = false;
+        panel.classList.remove('resizing');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      });
+    });
+  })();
+
+  // ============================================
+  // PANEL TABS
+  // ============================================
+  let currentPanelTab = 'connections';
+
+  function switchPanelTab(tab) {
+    currentPanelTab = tab;
+    document.getElementById('panel-connections').classList.toggle('hidden', tab !== 'connections');
+    document.getElementById('panel-log').classList.toggle('hidden', tab !== 'log');
+    document.getElementById('tab-connections').classList.toggle('panel-tab-active', tab === 'connections');
+    document.getElementById('tab-log').classList.toggle('panel-tab-active', tab === 'log');
+  }
+
+  // ============================================
+  // CONNECTION INTELLIGENCE PANEL
+  // ============================================
+
+  // Edge type display config
+  const EDGE_DISPLAY = {
+    power: { label: 'Power', badge: 'edge-badge-power', icon: '⚡' },
+    electrical_power: { label: 'Power', badge: 'edge-badge-power', icon: '⚡' },
+    'Electrical power': { label: 'Power', badge: 'edge-badge-power', icon: '⚡' },
+    data: { label: 'Data', badge: 'edge-badge-data', icon: '◈' },
+    command_control: { label: 'Command', badge: 'edge-badge-data', icon: '◈' },
+    data_interface: { label: 'Data', badge: 'edge-badge-data', icon: '◈' },
+    thermal: { label: 'Thermal', badge: 'edge-badge-thermal', icon: '◊' },
+    thermal_load: { label: 'Thermal', badge: 'edge-badge-thermal', icon: '◊' },
+    thermal_control: { label: 'Thermal', badge: 'edge-badge-thermal', icon: '◊' },
+    mechanical: { label: 'Mechanical', badge: 'edge-badge-mechanical', icon: '⊞' },
+    mechanical_interface: { label: 'Mechanical', badge: 'edge-badge-mechanical', icon: '⊞' },
+    structural: { label: 'Structural', badge: 'edge-badge-mechanical', icon: '⊞' },
+    material: { label: 'Supplies', badge: 'edge-badge-supplies', icon: '▸' },
+    fluid: { label: 'Fluid', badge: 'edge-badge-supplies', icon: '▸' },
+    environmental: { label: 'Environmental', badge: 'edge-badge-environmental', icon: '◉' },
+    operational: { label: 'Operational', badge: 'edge-badge-operational', icon: '◎' },
+  };
+
+  function getEdgeDisplay(edgeType) {
+    return EDGE_DISPLAY[edgeType] || { label: edgeType || '?', badge: 'edge-badge-other', icon: '◆' };
+  }
+
+  function updateConnectionPanel(d, nodeConns) {
+    const data = d.data;
+    const nodeId = data.id || '';
+    const nodeName = data.name || '';
+
+    // Update status badge
+    const statusBadge = document.getElementById('conn-status-badge');
+    statusBadge.innerHTML = `
+      <span class="relative w-1.5 h-1.5 rounded-full bg-cyan-400 pulse-dot"></span>
+      <span class="text-[9px] text-cyan-300 font-bold tracking-wider">${nodeConns.length} CONNECTIONS</span>
+    `;
+    statusBadge.className = 'flex items-center gap-2 px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/30 ml-auto mr-4';
+
+    // Group connections by edgeType
+    const groups = {};
+    nodeConns.forEach(c => {
+      const key = c.edgeType || c.type || 'other';
+      if (!groups[key]) groups[key] = [];
+      const isSource = (c.sourceId === nodeId || c.source === nodeName);
+      groups[key].push({ ...c, direction: isSource ? 'out' : 'in' });
+    });
+
+    // Separate inbound/outbound
+    const inbound = nodeConns.filter(c => c.targetId === nodeId || c.target === nodeName);
+    const outbound = nodeConns.filter(c => c.sourceId === nodeId || c.source === nodeName);
+
+    // ── SUMMARY SIDEBAR ──
+    const summaryEl = document.getElementById('conn-summary-content');
+    document.getElementById('conn-empty-state').classList.add('hidden');
+    summaryEl.classList.remove('hidden');
+
+    let summaryHtml = `
+      <div class="mb-3">
+        <div class="text-white font-bold text-sm">${nodeName}</div>
+        <div class="mono-font text-[10px] text-purple-400/70">${nodeId}</div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 mb-3">
+        <div class="bg-green-500/5 border border-green-500/10 rounded-lg px-2 py-1.5 text-center">
+          <div class="text-green-400 text-lg font-bold mono-font">${outbound.length}</div>
+          <div class="text-[8px] text-gray-500 uppercase tracking-wider">Outbound</div>
+        </div>
+        <div class="bg-orange-500/5 border border-orange-500/10 rounded-lg px-2 py-1.5 text-center">
+          <div class="text-orange-400 text-lg font-bold mono-font">${inbound.length}</div>
+          <div class="text-[8px] text-gray-500 uppercase tracking-wider">Inbound</div>
+        </div>
+      </div>
+      <div class="text-[9px] text-gray-500 uppercase tracking-wider font-bold mb-2">By Type</div>
+      <div class="flex flex-wrap gap-1.5">
+    `;
+
+    // Sort groups by count
+    const sortedGroups = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+    sortedGroups.forEach(([type, conns]) => {
+      const display = getEdgeDisplay(type);
+      summaryHtml += `<span class="type-pill ${display.badge}">${display.icon} ${display.label} <span class="mono-font">${conns.length}</span></span>`;
+    });
+    summaryHtml += `</div>`;
+
+    summaryEl.innerHTML = summaryHtml;
+
+    // ── CONNECTION DETAILS LIST ──
+    const detailsEl = document.getElementById('conn-details-content');
+    let detailsHtml = '';
+
+    sortedGroups.forEach(([type, conns]) => {
+      const display = getEdgeDisplay(type);
+      detailsHtml += `<div class="mb-3">
+        <div class="flex items-center gap-2 mb-2 sticky top-0 bg-black/80 py-1 z-10">
+          <span class="edge-badge ${display.badge}">${display.icon} ${display.label}</span>
+          <span class="text-[9px] text-gray-600 mono-font">${conns.length}</span>
+          <div class="flex-1 h-px bg-white/5"></div>
+        </div>`;
+
+      conns.forEach((c, idx) => {
+        const otherName = c.direction === 'out' ? c.target : c.source;
+        const otherId = c.direction === 'out' ? c.targetId : c.sourceId;
+        const arrow = c.direction === 'out' ? '→' : '←';
+        const arrowColor = c.direction === 'out' ? 'text-green-500' : 'text-orange-400';
+        const label = c.label || '';
+
+        detailsHtml += `
+          <div class="conn-row" onclick="focusConnection(${idx}, '${type}')" data-conn-type="${type}" data-conn-idx="${idx}">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="${arrowColor} text-xs font-bold">${arrow}</span>
+              <a href="#" onclick="event.preventDefault(); event.stopPropagation(); navigateToNodeInGraph('${(otherId || '').replace(/'/g, "\\'")}', '${(otherName || '').replace(/'/g, "\\'")}')" class="text-cyan-400 text-xs font-bold hover:text-cyan-200 transition">${otherName}</a>
+              <span class="mono-font text-[8px] text-gray-600">${otherId || ''}</span>
+            </div>
+            ${label ? `<p class="text-[10px] text-gray-400 leading-relaxed pl-4">${label}</p>` : ''}
+          </div>`;
+      });
+
+      detailsHtml += `</div>`;
+    });
+
+    detailsEl.innerHTML = detailsHtml;
+
+    // Switch to connections tab and open panel
+    switchPanelTab('connections');
+    openTerminal();
+  }
+
+  function clearConnectionPanel() {
+    document.getElementById('conn-empty-state').classList.remove('hidden');
+    document.getElementById('conn-summary-content').classList.add('hidden');
+    document.getElementById('conn-details-content').innerHTML = '';
+    const statusBadge = document.getElementById('conn-status-badge');
+    statusBadge.innerHTML = '<span class="text-[9px] text-gray-400 font-bold tracking-wider">Click a node to explore</span>';
+    statusBadge.className = 'flex items-center gap-2 px-2 py-0.5 rounded bg-gray-500/20 border border-gray-500/30 ml-auto mr-4';
+  }
+
+  function focusConnection(idx, type) {
+    // Highlight one specific connection line on the graph
+    crossLinkLayer.selectAll('line')
+      .attr('stroke-opacity', 0.15)
+      .attr('stroke-width', 1);
+
+    // Find the matching line and brighten it
+    crossLinkLayer.selectAll('line')
+      .filter((d, i) => d && d.edgeType === type)
+      .filter((d, i) => i === idx)
+      .attr('stroke-opacity', 1)
+      .attr('stroke-width', 4);
+
+    // Highlight the row
+    document.querySelectorAll('.conn-row').forEach(r => r.classList.remove('conn-row-active'));
+    const rows = document.querySelectorAll(`.conn-row[data-conn-type="${type}"]`);
+    if (rows[idx]) rows[idx].classList.add('conn-row-active');
+  }
+
+  function navigateToNodeInGraph(nodeId, nodeName) {
+    const targetNode = nodeMap.get(nodeId) || nodeMap.get(nodeName);
+    if (targetNode) {
+      selectedNode = targetNode;
+      updateNeuralSidebar(targetNode);
+      d3.selectAll('.neural-node').classed('selected', false);
+      highlightNodeConnections(targetNode);
+      addLog('research', `[NEURAL] Navigated to: ${nodeName}`);
+    }
+  }
+
+  // ============================================
+  // GLOBAL VARIABLES
+  // ============================================
+  let i = 0;
+  let duration = 400;
+  let root;
+  let rawData;
+  let mode = 'tree';
+  let selectedNode = null;
+  let simulation = null;
+  let g = null;
+  let svg = null;
+  let linkLayer = null;
+  let crossLinkLayer = null;
+  let nodeLayer = null;
+  let breadcrumbPath = [];
+  let nodeMap = new Map(); // For quick node lookup by name
+  let allNodesFlat = [];
+
+  // ============================================
+  // D3 SETUP
+  // ============================================
+  const container = document.getElementById("graph-container");
+  const viewport = document.getElementById("viewport");
+  const tooltip = document.getElementById('tooltip');
+
+  svg = d3.select("#graph-container").append("svg")
+    .attr("width", "100%")
+    .attr("height", "100%")
+    .call(d3.zoom().scaleExtent([0.1, 4]).on("zoom", (e) => g.attr("transform", e.transform)))
+    .on("dblclick.zoom", null);
+
+  g = svg.append("g").attr("transform", "translate(100, 0)");
+  linkLayer = g.append("g").attr("class", "link-layer");
+  crossLinkLayer = g.append("g").attr("class", "cross-link-layer");
+  nodeLayer = g.append("g").attr("class", "node-layer");
+
+  const treemap = d3.tree().nodeSize([45, 200]);
+
+  // ============================================
+  // DATA LOADING
+  // ============================================
+  async function initSystem() {
+    addLog('info', '[INIT] Loading hierarchy data...');
+    
+    try {
+      // Try enriched hierarchy first, then fallbacks
+      const sources = [
+        '/api/hierarchy',
+        'OUTPUT/hierarchy.json',
+        'hierarchy.json'
+      ];
+      let rawData_loaded = false;
+      for (const src of sources) {
+        try {
+          const response = await fetch(src);
+          if (response.ok) {
+            rawData = await response.json();
+            addLog('info', `[DATA] Loaded hierarchy from ${src}`);
+            rawData_loaded = true;
+            break;
+          }
+        } catch(e) {}
+      }
+      if (!rawData_loaded) throw new Error("Could not load hierarchy from any source");
+
+      root = d3.hierarchy(rawData, d => d.children);
+      root.x0 = 0;
+      root.y0 = 0;
+
+      // Build node map and flat list (index by both name and id)
+      allNodesFlat = root.descendants();
+      allNodesFlat.forEach(d => {
+        nodeMap.set(d.data.name, d);
+        if (d.data.id) nodeMap.set(d.data.id, d);
+        d.id = d.id || ++i;
+      });
+
+      const maxDepth = d3.max(allNodesFlat, d => d.depth);
+      
+      document.getElementById('stat-nodes').textContent = allNodesFlat.length;
+      document.getElementById('stat-depth').textContent = 'L' + maxDepth;
+
+      // Auto-collapse for performance
+      if (root.children) {
+        root.children.forEach(child => {
+          if (child.children) {
+            child.children.forEach(collapseAll);
+          }
+        });
+      }
+
+      // Load real knowledge graph connections
+      await loadKnowledgeGraph();
+
+      // Initial details
+      selectedNode = root;
+      updateSchematicSidebar(root);
+      
+      const viewerHeight = container.clientHeight;
+      renderTree(root, viewerHeight);
+
+      addLog('success', `[INIT] Loaded ${allNodesFlat.length} nodes across ${maxDepth} levels`);
+      addLog('connection', `[GRAPH] Loaded ${connectionsData.connections.length} cross-system connections`);
+      addLog('info', '[READY] System simulation online. Click nodes to explore.');
+
+      // Populate system legend
+      populateSystemLegend();
+
+      // Simulate AI discovering connections
+      setTimeout(() => simulateAIConnectionDiscovery(), 3000);
+
+    } catch (error) {
+      console.error(error);
+      addLog('error', '[ERROR] Failed to load hierarchy.json');
+      root = d3.hierarchy({ name: "LUNAR ARK (OFFLINE)", type: "ERROR", description: "Failed to load data." }, d => d.children);
+      renderTree(root, container.clientHeight);
+    }
+  }
+
+  function collapseAll(d) {
+    if (d.children) {
+      d._children = d.children;
+      d._children.forEach(collapseAll);
+      d.children = null;
+    }
+  }
+
+  // ============================================
+  // SYSTEM LEGEND
+  // ============================================
+  function populateSystemLegend() {
+    const legend = document.getElementById('system-legend');
+    legend.innerHTML = '';
+    
+    Object.entries(SYSTEM_COLORS).forEach(([name, colors]) => {
+      const shortName = name.replace(' and ', ' & ').replace('Artificial Intelligence', 'AI');
+      const div = document.createElement('div');
+      div.className = 'system-legend-item';
+      div.innerHTML = `
+        <div class="w-3 h-3 rounded-full" style="background: ${colors.primary}"></div>
+        <span class="text-gray-400 truncate">${shortName}</span>
+      `;
+      div.onclick = () => highlightSystem(name);
+      legend.appendChild(div);
+    });
+  }
+
+  function highlightSystem(systemName) {
+    // Toggle highlight in neural view
+    if (mode === 'force') {
+      d3.selectAll('.neural-node').classed('dimmed', d => {
+        const nodeSystem = getNodeSystem(d);
+        return nodeSystem !== systemName;
+      });
+    }
+  }
+
+  // ============================================
+  // GET NODE'S PARENT SYSTEM (Level 1)
+  // ============================================
+  function getNodeSystem(d) {
+    let current = d;
+    while (current.parent && current.depth > 1) {
+      current = current.parent;
+    }
+    return current.data ? current.data.name : 'Root';
+  }
+
+  function getNodeColor(d) {
+    if (d.depth === 0) return '#8b5cf6'; // Root
+    
+    const systemName = getNodeSystem(d);
+    const systemColor = SYSTEM_COLORS[systemName];
+    
+    if (!systemColor) return '#6366f1'; // Default indigo
+    
+    // Vary shade based on depth
+    if (d.depth === 1) return systemColor.primary;
+    if (d.depth === 2) return systemColor.light;
+    return systemColor.dark;
+  }
+
+  // ============================================
+  // MODE SWITCHER
+  // ============================================
+  function setMode(newMode) {
+    mode = newMode;
+    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(mode === 'tree' ? 'btn-tree' : 'btn-force').classList.add('active');
+
+    // Toggle sidebars
+    document.getElementById('schematic-sidebar').classList.toggle('hidden', mode !== 'tree');
+    document.getElementById('neural-sidebar').classList.toggle('hidden', mode !== 'force');
+    document.getElementById('sidebar-mode-label').textContent = mode === 'tree' ? 'HIERARCHY EXPLORER' : 'KNOWLEDGE GRAPH';
+
+    // Update stats label
+    document.getElementById('stat-label-3').textContent = mode === 'tree' ? 'Active' : 'Links';
+    if (mode === 'tree') {
+      document.getElementById('stat-connections').textContent = allNodesFlat.filter(d => d.data.researchStatus === 'complete').length;
+    } else {
+      document.getElementById('stat-connections').textContent = connectionsData.connections.length;
+    }
+
+    linkLayer.selectAll("*").remove();
+    crossLinkLayer.selectAll("*").remove();
+    nodeLayer.selectAll("*").remove();
+    if (simulation) simulation.stop();
+
+    if (mode === 'tree') {
+      addLog('info', '[MODE] Switching to Schematic view');
+      g.transition().duration(500).attr("transform", "translate(100, 0)");
+      root.x0 = 0;
+      root.y0 = 0;
+      renderTree(root, container.clientHeight);
+      if (selectedNode) updateSchematicSidebar(selectedNode);
+    } else {
+      addLog('info', '[MODE] Switching to Neural Knowledge Graph');
+      g.transition().duration(500).attr("transform", "translate(0, 0)");
+      renderForce();
+      if (selectedNode) updateNeuralSidebar(selectedNode);
+    }
+  }
+
+  // ============================================
+  // RENDER: SCHEMATIC TREE
+  // ============================================
+  function renderTree(source, currentHeight) {
+    const treeHeight = currentHeight || container.clientHeight;
+    const treeData = treemap(root);
+    const nodes = treeData.descendants();
+    const links = treeData.links();
+
+    nodes.forEach(d => { d.y = d.depth * 220; });
+
+    // NODES
+    const node = nodeLayer.selectAll('g.node')
+      .data(nodes, d => d.id);
+
+    const nodeEnter = node.enter().append('g')
+      .attr('class', d => {
+        let classes = 'node';
+        if (d._children) classes += ' collapsed';
+        if (selectedNode && d.id === selectedNode.id) classes += ' selected';
+        return classes;
+      })
+      .attr("transform", d => `translate(${source.y0},${source.x0 + treeHeight / 2})`)
+      .on('click', clickTree)
+      .on('mouseover', mouseOver)
+      .on('mousemove', mouseMove)
+      .on('mouseout', mouseOut);
+
+    nodeEnter.append('rect')
+      .attr('width', 140)
+      .attr('height', 32)
+      .attr('x', -70)
+      .attr('y', -16)
+      .attr('rx', 6)
+      .attr('ry', 6);
+
+    nodeEnter.append('text')
+      .attr("dy", ".35em")
+      .attr("text-anchor", "middle")
+      .text(d => truncateText(d.data.name, 18));
+
+    // Update
+    const nodeUpdate = node.merge(nodeEnter).transition().duration(duration)
+      .attr("transform", d => `translate(${d.y},${d.x + treeHeight / 2})`)
+      .attr('class', d => {
+        let classes = 'node';
+        if (d._children) classes += ' collapsed';
+        if (selectedNode && d.id === selectedNode.id) classes += ' selected';
+        return classes;
+      });
+
+    // Exit
+    node.exit().transition().duration(duration)
+      .attr("transform", d => `translate(${source.y},${source.x + treeHeight / 2})`)
+      .style("opacity", 0)
+      .remove();
+
+    // LINKS
+    const link = linkLayer.selectAll('path.link').data(links, d => d.target.id);
+
+    const linkEnter = link.enter().insert('path', "g")
+      .attr("class", "link")
+      .attr('d', d => {
+        const o = { x: source.x0 + treeHeight / 2, y: source.y0 };
+        return diagonal(o, o);
+      });
+
+    link.merge(linkEnter).transition().duration(duration)
+      .attr('d', d => diagonal(
+        { x: d.source.x + treeHeight / 2, y: d.source.y },
+        { x: d.target.x + treeHeight / 2, y: d.target.y }
+      ));
+
+    link.exit().transition().duration(duration)
+      .attr('d', d => {
+        const o = { x: source.x + treeHeight / 2, y: source.y };
+        return diagonal(o, o);
+      })
+      .style("opacity", 0)
+      .remove();
+
+    nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+  }
+
+  function clickTree(event, d) {
+    if (d.children) {
+      d._children = d.children;
+      d.children = null;
+    } else if (d._children) {
+      d.children = d._children;
+      d._children = null;
+    }
+
+    selectedNode = d;
+    updateSchematicSidebar(d);
+    updateBreadcrumbs(d);
+    renderTree(d, container.clientHeight);
+    
+    addLog('research', `[NAV] Accessing node: ${d.data.name}`);
+  }
+
+  function diagonal(s, d) {
+    return `M ${s.y} ${s.x}
+            C ${(s.y + d.y) / 2} ${s.x},
+              ${(s.y + d.y) / 2} ${d.x},
+              ${d.y} ${d.x}`;
+  }
+
+  // ============================================
+  // RENDER: NEURAL FORCE GRAPH
+  // ============================================
+  function renderForce() {
+    const allNodes = root.descendants();
+    const hierarchyLinks = root.links();
+
+    // Reset positions
+    allNodes.forEach(d => {
+      d.x = null;
+      d.y = null;
+    });
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    simulation = d3.forceSimulation(allNodes)
+      .force("link", d3.forceLink(hierarchyLinks).id(d => d.id).distance(60).strength(0.3))
+      .force("charge", d3.forceManyBody().strength(-200))
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("collide", d3.forceCollide(25))
+      .force("x", d3.forceX(width / 2).strength(0.05))
+      .force("y", d3.forceY(height / 2).strength(0.05));
+
+    // Hierarchy links (faint)
+    const link = linkLayer.selectAll("line")
+      .data(hierarchyLinks)
+      .enter().append("line")
+      .attr("class", "neural-link");
+
+    // No pre-rendered cross-links — connections shown on-demand when clicking a node
+
+    // Nodes
+    const node = nodeLayer.selectAll("g")
+      .data(allNodes)
+      .enter().append("g")
+      .attr("class", d => `neural-node ${selectedNode && d.id === selectedNode.id ? 'selected' : ''}`)
+      .call(d3.drag()
+        .on("start", dragStart)
+        .on("drag", dragging)
+        .on("end", dragEnd))
+      .on("click", (e, d) => {
+        e.stopPropagation();
+        selectedNode = d;
+        updateNeuralSidebar(d);
+        d3.selectAll('.neural-node').classed('selected', false);
+        d3.select(e.currentTarget).classed('selected', true);
+        highlightNodeConnections(d);
+        addLog('research', `[NEURAL] Analyzing node: ${d.data.name}`);
+      })
+      .on('mouseover', mouseOver)
+      .on('mousemove', mouseMove)
+      .on('mouseout', mouseOut);
+
+    // Node circles with system colors
+    node.append("circle")
+      .attr("r", d => Math.max(5, 16 - d.depth * 2.5))
+      .attr("fill", d => getNodeColor(d))
+      .attr("stroke", d => d.depth === 0 ? '#fff' : 'none')
+      .attr("stroke-width", 2)
+      .style("filter", d => `drop-shadow(0 0 ${8 - d.depth}px ${getNodeColor(d)})`);
+
+    // Labels for top 2 levels only
+    node.filter(d => d.depth <= 1)
+      .append("text")
+      .attr("dy", ".35em")
+      .attr("dx", d => Math.max(8, 18 - d.depth * 3))
+      .text(d => truncateText(d.data.name, 25));
+
+    // Add background click to clear highlights
+    svg.on("click", () => {
+      clearHighlights();
+    });
+
+    simulation.on("tick", () => {
+      link
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+
+      // Update on-demand cross-links (dynamically added/removed)
+      crossLinkLayer.selectAll("line").each(function(d) {
+        const sourceNode = nodeMap.get(d.sourceId) || nodeMap.get(d.source);
+        const targetNode = nodeMap.get(d.targetId) || nodeMap.get(d.target);
+        if (sourceNode && targetNode) {
+          d3.select(this)
+            .attr("x1", sourceNode.x)
+            .attr("y1", sourceNode.y)
+            .attr("x2", targetNode.x)
+            .attr("y2", targetNode.y);
+        }
+      });
+      // Update connection labels
+      crossLinkLayer.selectAll("text.cross-link-label").each(function(d) {
+        const sourceNode = nodeMap.get(d.sourceId) || nodeMap.get(d.source);
+        const targetNode = nodeMap.get(d.targetId) || nodeMap.get(d.target);
+        if (sourceNode && targetNode) {
+          d3.select(this)
+            .attr("x", (sourceNode.x + targetNode.x) / 2)
+            .attr("y", (sourceNode.y + targetNode.y) / 2);
+        }
+      });
+
+      node.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+  }
+
+  // ============================================
+  // ON-DEMAND CONNECTION HIGHLIGHTING
+  // ============================================
+  let highlightActive = false;
+
+  function highlightNodeConnections(d) {
+    const nodeId = d.data.id || '';
+    const nodeName = d.data.name || '';
+
+    // Find all connections for this node
+    const nodeConns = connectionsData.connections.filter(c =>
+      c.sourceId === nodeId || c.targetId === nodeId ||
+      c.source === nodeName || c.target === nodeName
+    );
+
+    if (nodeConns.length === 0) {
+      addLog('info', `[NEURAL] No connections found for ${nodeName}`);
+      clearHighlights();
+      return;
+    }
+
+    highlightActive = true;
+
+    // Collect IDs/names of connected nodes
+    const connectedIds = new Set();
+    connectedIds.add(nodeId);
+    connectedIds.add(nodeName);
+    nodeConns.forEach(c => {
+      connectedIds.add(c.sourceId || '');
+      connectedIds.add(c.targetId || '');
+      connectedIds.add(c.source || '');
+      connectedIds.add(c.target || '');
+    });
+
+    // Dim all nodes, highlight connected ones
+    d3.selectAll('.neural-node')
+      .classed('node-dimmed', true)
+      .classed('node-highlighted', false)
+      .classed('node-source', false);
+
+    d3.selectAll('.neural-node')
+      .filter(n => connectedIds.has(n.data.id) || connectedIds.has(n.data.name))
+      .classed('node-dimmed', false)
+      .classed('node-highlighted', true);
+
+    // Mark the clicked node specially
+    d3.selectAll('.neural-node')
+      .filter(n => n.data.id === nodeId || n.data.name === nodeName)
+      .classed('node-source', true);
+
+    // Dim hierarchy links
+    linkLayer.selectAll('line').classed('link-dimmed', true);
+
+    // Clear previous cross-links
+    crossLinkLayer.selectAll("*").remove();
+
+    // Draw new connection lines with staggered animation
+    nodeConns.forEach((c, idx) => {
+      const sourceNode = nodeMap.get(c.sourceId) || nodeMap.get(c.source);
+      const targetNode = nodeMap.get(c.targetId) || nodeMap.get(c.target);
+      if (!sourceNode || !targetNode) return;
+
+      const connType = CONNECTION_TYPES[c.type] || { icon: '◆', label: c.type };
+      const strokeColors = {
+        dependency: '#ef4444', supplies: '#22c55e', dataFlow: '#3b82f6',
+        sharedTech: '#a855f7', redundancy: '#f59e0b', communication: '#06b6d4'
+      };
+      const strokeColor = strokeColors[c.type] || '#8b5cf6';
+      const isDashed = c.type === 'dataFlow' || c.type === 'communication' || c.type === 'sharedTech';
+
+      // Line
+      crossLinkLayer.append("line")
+        .datum(c)
+        .attr("class", `cross-link cross-link-active ${c.type}`)
+        .attr("x1", sourceNode.x || 0)
+        .attr("y1", sourceNode.y || 0)
+        .attr("x2", targetNode.x || 0)
+        .attr("y2", targetNode.y || 0)
+        .attr("stroke", strokeColor)
+        .attr("stroke-width", 2.5)
+        .style("animation-delay", `${idx * 0.05}s`)
+        .on("mouseover", (e) => {
+          tooltip.style.opacity = 1;
+          tooltip.innerHTML = `
+            <div class="font-bold text-white mb-1">${connType.icon} ${connType.label}</div>
+            <div class="text-[10px] text-gray-400">${c.source} → ${c.target}</div>
+            ${c.label && c.label !== c.type ? `<div class="text-[10px] text-purple-300 mt-0.5">${c.label}</div>` : ''}
+            <div class="text-[10px] text-cyan-400 mt-1">${c.edgeType ? 'Type: ' + c.edgeType : ''}</div>
+          `;
+        })
+        .on("mousemove", mouseMove)
+        .on("mouseout", mouseOut);
+
+      // Edge label at midpoint (only for first 20 to avoid clutter)
+      if (idx < 20) {
+        const midX = ((sourceNode.x || 0) + (targetNode.x || 0)) / 2;
+        const midY = ((sourceNode.y || 0) + (targetNode.y || 0)) / 2;
+        crossLinkLayer.append("text")
+          .datum(c)
+          .attr("class", "cross-link-label")
+          .attr("x", midX)
+          .attr("y", midY)
+          .attr("text-anchor", "middle")
+          .attr("fill", strokeColor)
+          .style("opacity", 0.6)
+          .text(c.edgeType || c.type);
+      }
+    });
+
+    // Show temporary labels on highlighted nodes that don't already have labels (depth > 1)
+    d3.selectAll('.neural-node.node-highlighted, .neural-node.node-source')
+      .filter(function(n) {
+        // Only add labels to nodes that don't already have a text element (L2+ nodes)
+        return n.depth > 1 && d3.select(this).select('text').empty();
+      })
+      .append('text')
+      .attr('class', 'temp-label')
+      .attr('dy', '.35em')
+      .attr('dx', 10)
+      .attr('fill', 'rgba(255, 255, 255, 0.9)')
+      .attr('font-size', '9px')
+      .attr('font-weight', '600')
+      .attr('font-family', "'Rajdhani', sans-serif")
+      .attr('pointer-events', 'none')
+      .attr('filter', 'drop-shadow(0 0 3px rgba(0,0,0,0.8))')
+      .text(n => truncateText(n.data.name, 22));
+
+    addLog('connection', `[NEURAL] Showing ${nodeConns.length} connections for ${nodeName}`);
+
+    // Update connection intelligence panel
+    updateConnectionPanel(d, nodeConns);
+  }
+
+  function clearHighlights() {
+    if (!highlightActive) return;
+    highlightActive = false;
+
+    // Remove cross-links
+    crossLinkLayer.selectAll("*").remove();
+
+    // Remove temporary labels from highlighted nodes
+    d3.selectAll('.temp-label').remove();
+
+    // Restore all nodes
+    d3.selectAll('.neural-node')
+      .classed('node-dimmed', false)
+      .classed('node-highlighted', false)
+      .classed('node-source', false);
+
+    // Restore hierarchy links
+    linkLayer.selectAll('line').classed('link-dimmed', false);
+
+    // Clear connection panel
+    clearConnectionPanel();
+  }
+
+  function dragStart(event, d) {
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+  }
+
+  function dragging(event, d) {
+    d.fx = event.x;
+    d.fy = event.y;
+  }
+
+  function dragEnd(event, d) {
+    if (!event.active) simulation.alphaTarget(0);
+    d.fx = null;
+    d.fy = null;
+  }
+
+  // ============================================
+  // SCHEMATIC SIDEBAR
+  // ============================================
+  function updateSchematicSidebar(d) {
+    const data = d.data;
+    
+    document.getElementById('node-title').textContent = data.name || 'Unknown';
+
+    // Node ID badge
+    let idBadge = document.getElementById('node-id-badge');
+    if (!idBadge) {
+      idBadge = document.createElement('div');
+      idBadge.id = 'node-id-badge';
+      idBadge.className = 'mono-font text-[10px] text-purple-400/70 mt-0.5 mb-2';
+      document.getElementById('node-title').after(idBadge);
+    }
+    idBadge.textContent = data.id || '';
+
+    // Update "View Full Research" button href to deep-link this node
+    const viewBtn = document.getElementById('view-full-research-btn');
+    if (viewBtn) {
+      viewBtn.href = data.id ? `research.html?node=${encodeURIComponent(data.id)}` : 'research.html';
+    }
+
+    // Status
+    const statusBadge = document.getElementById('node-status-badge');
+    const statusText = document.getElementById('node-status-text');
+    const status = data.researchStatus || 'pending';
+    statusBadge.className = `inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mb-3 border status-${status.replace(' ', '-')}`;
+    statusText.textContent = status.replace('-', ' ');
+
+    // Type
+    const types = ['Project', 'System', 'Subsystem', 'Component', 'Module'];
+    document.getElementById('node-type').textContent = data.type || types[Math.min(d.depth, types.length - 1)] || 'Node';
+
+    // Updated date
+    document.getElementById('node-updated').textContent = data.lastUpdated || '--';
+
+    // Confidence
+    const confidence = (data.confidenceScore || 0) * 100;
+    document.getElementById('node-confidence-value').textContent = confidence.toFixed(0) + '%';
+    document.getElementById('node-confidence-bar').style.width = confidence + '%';
+
+    // Children count
+    const childCount = (d.children || d._children || []).length;
+    document.getElementById('children-count').textContent = `${childCount} Subsystem${childCount !== 1 ? 's' : ''}`;
+    document.getElementById('children-info').style.display = childCount > 0 ? 'flex' : 'none';
+
+    // Image
+    const imgWrapper = document.getElementById('node-image-wrapper');
+    const img = document.getElementById('node-image');
+    if (data.image) {
+      img.src = data.image;
+      img.alt = data.name;
+      imgWrapper.classList.remove('hidden');
+    } else {
+      imgWrapper.classList.add('hidden');
+    }
+
+    // Description
+    let desc = data.description || 'No description available.';
+    desc = desc
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n\n/g, '</p><p class="mt-3">')
+      .replace(/\n(\d+\.)/g, '<br>$1')
+      .replace(/\n- /g, '<br>• ');
+    
+    if (desc.length > 1500) {
+      desc = desc.substring(0, 1500) + '...';
+    }
+    
+    // Category & criticality badges
+    const category = (data.category || '').replace(/_/g, ' ');
+    const criticality = data.criticality || '';
+    const critColors = {critical:'red',essential:'amber',important:'blue',supporting:'gray'};
+    const critCol = critColors[criticality] || 'gray';
+
+    let enrichedHtml = '';
+    if (category || criticality) {
+      enrichedHtml += `<div class="flex flex-wrap gap-2 mb-3">`;
+      if (category) enrichedHtml += `<span class="text-[10px] px-2 py-1 rounded bg-indigo-500/10 text-indigo-300 uppercase tracking-wider font-bold">${category}</span>`;
+      if (criticality) enrichedHtml += `<span class="text-[10px] px-2 py-1 rounded bg-${critCol}-500/10 text-${critCol}-400 uppercase tracking-wider font-bold">${criticality}</span>`;
+      enrichedHtml += `</div>`;
+    }
+
+    enrichedHtml += `<p>${desc}</p>`;
+
+    // Children list (clickable)
+    const children = d.children || d._children || [];
+    if (children.length > 0) {
+      enrichedHtml += `<div class="mt-4 pt-3 border-t border-white/5">
+        <div class="text-[10px] text-cyan-400 uppercase tracking-wider font-bold mb-2">Subsystems (${children.length})</div>
+        <div class="space-y-1">${children.map(c =>
+          `<button onclick="navigateToNodeByName('${(c.data.name || '').replace(/'/g, "\\'")}')" class="block w-full text-left text-xs text-gray-400 hover:text-cyan-300 transition px-2 py-1 rounded hover:bg-white/5">
+            ${c.data.id ? `<span class="mono-font text-purple-400/60 mr-1">${c.data.id}</span>` : ''}${c.data.name}
+          </button>`
+        ).join('')}</div></div>`;
+    }
+
+    // Key connections from knowledge graph
+    const nodeId = data.id || '';
+    const nodeName = data.name || '';
+    const nodeConns = connectionsData.connections.filter(c =>
+      c.sourceId === nodeId || c.targetId === nodeId || c.source === nodeName || c.target === nodeName
+    ).slice(0, 8);
+    if (nodeConns.length > 0) {
+      enrichedHtml += `<div class="mt-4 pt-3 border-t border-white/5">
+        <div class="text-[10px] text-green-400 uppercase tracking-wider font-bold mb-2">Key Interfaces (${nodeConns.length})</div>
+        <div class="space-y-1">${nodeConns.map(c => {
+          const isSource = c.sourceId === nodeId || c.source === nodeName;
+          const otherName = isSource ? c.target : c.source;
+          const arrow = isSource ? '→' : '←';
+          const connType = CONNECTION_TYPES[c.type] || { icon: '◆', label: c.edgeType || c.type };
+          return `<div class="flex items-center justify-between text-xs px-2 py-1 rounded bg-black/20">
+            <span class="text-gray-400">${arrow} ${otherName}</span>
+            <span class="text-[9px] text-gray-600">${connType.icon} ${c.edgeType || c.type}</span>
+          </div>`;
+        }).join('')}</div></div>`;
+    }
+
+    document.getElementById('node-desc').innerHTML = enrichedHtml;
+  }
+
+  // ============================================
+  // NEURAL SIDEBAR
+  // ============================================
+  function updateNeuralSidebar(d) {
+    const data = d.data;
+    const systemName = getNodeSystem(d);
+    const systemColor = SYSTEM_COLORS[systemName] || { primary: '#8b5cf6' };
+    
+    // Header
+    document.getElementById('neural-node-color').style.background = getNodeColor(d);
+    document.getElementById('neural-node-title').textContent = data.name;
+    // Add ID badge to neural sidebar
+    let neuralIdBadge = document.getElementById('neural-id-badge');
+    if (!neuralIdBadge) {
+      neuralIdBadge = document.createElement('div');
+      neuralIdBadge.id = 'neural-id-badge';
+      neuralIdBadge.className = 'mono-font text-[10px] text-purple-400/70 mt-0.5';
+      document.getElementById('neural-node-title').after(neuralIdBadge);
+    }
+    neuralIdBadge.textContent = data.id || '';
+    document.getElementById('neural-node-system').textContent = systemName;
+    document.getElementById('neural-node-depth').textContent = `Level ${d.depth}`;
+
+    // Get connections for this node (match by ID or name)
+    const nodeId = data.id || '';
+    const nodeName = data.name || '';
+    const inbound = connectionsData.connections.filter(c => c.targetId === nodeId || c.target === nodeName);
+    const outbound = connectionsData.connections.filter(c => c.sourceId === nodeId || c.source === nodeName);
+    const crossSystem = [...inbound, ...outbound].filter(c => {
+      const sourceNode = nodeMap.get(c.sourceId) || nodeMap.get(c.source);
+      const targetNode = nodeMap.get(c.targetId) || nodeMap.get(c.target);
+      if (sourceNode && targetNode) {
+        return getNodeSystem(sourceNode) !== getNodeSystem(targetNode);
+      }
+      return false;
+    });
+
+    document.getElementById('conn-inbound').textContent = inbound.length;
+    document.getElementById('conn-outbound').textContent = outbound.length;
+    document.getElementById('conn-cross').textContent = crossSystem.length;
+
+    // Connections list
+    const connList = document.getElementById('connections-list');
+    const allConns = [...inbound.map(c => ({...c, direction: 'in'})), ...outbound.map(c => ({...c, direction: 'out'}))];
+    
+    if (allConns.length === 0) {
+      connList.innerHTML = '<div class="text-sm text-gray-500 italic">No connections mapped yet</div>';
+    } else {
+      connList.innerHTML = allConns.map(c => `
+        <div class="connection-item rounded-lg p-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="connection-type-badge conn-${c.type}">${CONNECTION_TYPES[c.type].icon} ${CONNECTION_TYPES[c.type].label}</span>
+            <span class="text-[10px] text-gray-500">${(c.strength * 100).toFixed(0)}%</span>
+          </div>
+          <div class="text-xs text-gray-300">
+            ${c.direction === 'in' ? '← ' + c.source : '→ ' + c.target}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Graph metrics (calculated)
+    const totalNodes = allNodesFlat.length;
+    const totalConnections = inbound.length + outbound.length;
+    const centrality = Math.min(1, totalConnections / 10);
+    const connectivity = totalConnections / Math.max(1, totalNodes) * 10;
+    const criticalScore = crossSystem.length > 0 ? 0.7 + (crossSystem.length * 0.1) : 0.2;
+
+    document.getElementById('metric-centrality').textContent = centrality.toFixed(2);
+    document.getElementById('metric-centrality-bar').style.width = `${centrality * 100}%`;
+    
+    document.getElementById('metric-connectivity').textContent = connectivity.toFixed(2);
+    document.getElementById('metric-connectivity-bar').style.width = `${Math.min(100, connectivity * 100)}%`;
+    
+    document.getElementById('metric-critical').textContent = Math.min(1, criticalScore).toFixed(2);
+    document.getElementById('metric-critical-bar').style.width = `${Math.min(100, criticalScore * 100)}%`;
+
+    // System bridges
+    const bridges = document.getElementById('cluster-bridges');
+    if (crossSystem.length > 0) {
+      const bridgedSystems = new Set();
+      crossSystem.forEach(c => {
+        const sourceNode = nodeMap.get(c.sourceId) || nodeMap.get(c.source);
+        const targetNode = nodeMap.get(c.targetId) || nodeMap.get(c.target);
+        if (sourceNode) bridgedSystems.add(getNodeSystem(sourceNode));
+        if (targetNode) bridgedSystems.add(getNodeSystem(targetNode));
+      });
+      bridgedSystems.delete(systemName);
+      
+      bridges.innerHTML = Array.from(bridgedSystems).map(sys => {
+        const color = SYSTEM_COLORS[sys]?.primary || '#6366f1';
+        return `<span class="cluster-tag" style="background: ${color}20; color: ${color}; border: 1px solid ${color}40;">${sys.split(' ')[0]}</span>`;
+      }).join('');
+    } else {
+      bridges.innerHTML = '<span class="text-sm text-gray-500 italic">No cross-system bridges</span>';
+    }
+
+    // AI Insights
+    const insights = generateAIInsight(d, inbound, outbound, crossSystem);
+    document.getElementById('ai-insight-text').textContent = insights.text;
+    
+    // Suggested links
+    const suggestedDiv = document.getElementById('suggested-links');
+    const suggestedList = document.getElementById('suggested-links-list');
+    if (insights.suggestions.length > 0) {
+      suggestedDiv.classList.remove('hidden');
+      suggestedList.innerHTML = insights.suggestions.map(s => `
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-gray-400">→ ${s.target}</span>
+          <span class="text-purple-400 mono-font">${s.confidence}%</span>
+        </div>
+      `).join('');
+    } else {
+      suggestedDiv.classList.add('hidden');
+    }
+  }
+
+  function generateAIInsight(d, inbound, outbound, crossSystem) {
+    const totalConns = inbound.length + outbound.length;
+    let text = '';
+    let suggestions = [];
+
+    if (d.depth === 0) {
+      text = 'Root node of the Lunar Ark system hierarchy. All subsystems trace back to this central coordination point.';
+    } else if (d.depth === 1) {
+      text = `Major system category containing ${(d.children || d._children || []).length} subsystems. `;
+      if (crossSystem.length > 0) {
+        text += `This system bridges to ${crossSystem.length} other major systems, indicating high architectural importance.`;
+      } else {
+        text += 'Consider mapping dependencies to other major systems for complete graph coverage.';
+        suggestions = [
+          { target: 'Power Distribution', confidence: 75 },
+          { target: 'Mission Control', confidence: 68 }
+        ];
+      }
+    } else if (totalConns === 0) {
+      text = 'No connections mapped yet. This node may be isolated or awaiting AI analysis to discover relationships.';
+      suggestions = [
+        { target: 'Parent System', confidence: 85 },
+        { target: 'Related Subsystem', confidence: 62 }
+      ];
+    } else if (crossSystem.length > 2) {
+      text = `High connectivity node bridging ${crossSystem.length} systems. Critical junction point - failure could impact multiple subsystems. Consider redundancy planning.`;
+    } else {
+      text = `Connected to ${totalConns} other nodes. ${outbound.length > inbound.length ? 'Primarily a supplier/source node.' : 'Primarily a consumer/dependent node.'}`;
+    }
+
+    return { text, suggestions };
+  }
+
+  // ============================================
+  // BREADCRUMBS
+  // ============================================
+  function updateBreadcrumbs(d) {
+    breadcrumbPath = [];
+    let current = d;
+    while (current) {
+      breadcrumbPath.unshift(current);
+      current = current.parent;
+    }
+
+    const trail = document.getElementById('breadcrumb-trail');
+    trail.innerHTML = breadcrumbPath.slice(1).map((node, idx) => `
+      <span class="text-gray-600 mx-1">›</span>
+      <button onclick="navigateToBreadcrumb(${idx + 1})" class="breadcrumb-item text-gray-400 hover:text-cyan-400 font-bold uppercase tracking-widest transition">
+        ${truncateText(node.data.name, 15)}
+      </button>
+    `).join('');
+  }
+
+  function navigateToBreadcrumb(index) {
+    const targetNode = breadcrumbPath[index];
+    if (targetNode) {
+      selectedNode = targetNode;
+      updateSchematicSidebar(targetNode);
+      updateBreadcrumbs(targetNode);
+      if (mode === 'tree') {
+        renderTree(targetNode, container.clientHeight);
+      }
+    }
+  }
+
+  function navigateToNodeByName(name) {
+    const targetNode = nodeMap.get(name);
+    if (targetNode) {
+      selectedNode = targetNode;
+      updateSchematicSidebar(targetNode);
+      updateBreadcrumbs(targetNode);
+      if (mode === 'tree') {
+        // Expand parents to make node visible
+        let current = targetNode;
+        while (current.parent) {
+          if (current.parent._children) {
+            current.parent.children = current.parent._children;
+            current.parent._children = null;
+          }
+          current = current.parent;
+        }
+        renderTree(root, container.clientHeight);
+      }
+      addLog('info', `[NAV] Navigated to: ${name}`);
+    }
+  }
+
+  function goToRoot() {
+    if (root) {
+      if (root.children) {
+        root.children.forEach(child => {
+          if (child.children) {
+            child.children.forEach(collapseAll);
+          }
+        });
+      }
+      
+      selectedNode = root;
+      breadcrumbPath = [root];
+      updateSchematicSidebar(root);
+      document.getElementById('breadcrumb-trail').innerHTML = '';
+      
+      if (mode === 'tree') {
+        renderTree(root, container.clientHeight);
+      } else {
+        setMode('tree');
+      }
+      
+      addLog('info', '[NAV] Returned to root node');
+    }
+  }
+
+  // ============================================
+  // TOOLTIPS
+  // ============================================
+  function mouseOver(event, d) {
+    tooltip.style.opacity = 1;
+    const childCount = (d.children || d._children || []).length;
+    const systemName = getNodeSystem(d);
+    const nodeId = d.data.id || '';
+    const category = (d.data.category || '').replace(/_/g, ' ');
+    const criticality = d.data.criticality || '';
+    const critColors = {critical:'#ef4444',essential:'#f59e0b',important:'#3b82f6',supporting:'#6b7280'};
+    const critColor = critColors[criticality] || '#6b7280';
+    // Count connections from knowledge graph
+    const connCount = connectionsData.connections.filter(c => c.sourceId === nodeId || c.targetId === nodeId || c.source === d.data.name || c.target === d.data.name).length;
+
+    tooltip.innerHTML = `
+      <div class="font-bold text-cyan-400 mb-1">${d.data.name}</div>
+      <div class="text-[10px] text-purple-400/70 mono-font mb-1">${nodeId}</div>
+      <div class="text-[10px] text-gray-400">
+        ${systemName} • Level ${d.depth}${category ? ' • ' + category : ''}
+      </div>
+      ${criticality ? `<div class="text-[10px] mt-1"><span style="color:${critColor}; text-transform:uppercase; font-weight:bold;">${criticality}</span></div>` : ''}
+      <div class="text-[10px] text-gray-500 mt-1">
+        ${childCount > 0 ? `${childCount} subsystems` : 'Leaf node'}
+        ${connCount > 0 ? ` • ${connCount} connections` : ''}
+        ${d._children ? ' • Click to expand' : ''}
+      </div>
+    `;
+  }
+
+  function mouseMove(event) {
+    const viewportRect = viewport.getBoundingClientRect();
+    tooltip.style.left = (event.clientX - viewportRect.left + 15) + "px";
+    tooltip.style.top = (event.clientY - viewportRect.top - 10) + "px";
+  }
+
+  function mouseOut() {
+    tooltip.style.opacity = 0;
+  }
+
+  // ============================================
+  // AI CONNECTION DISCOVERY SIMULATION
+  // ============================================
+  function simulateAIConnectionDiscovery() {
+    const newConnections = [
+      { source: 'Thermal Management', target: 'Habitat and Infrastructure', type: 'dependency', strength: 0.88, confidence: 0.82 },
+      { source: 'ISRU Processing', target: 'Resource Utilization', type: 'supplies', strength: 0.92, confidence: 0.90 },
+    ];
+
+    newConnections.forEach((conn, idx) => {
+      setTimeout(() => {
+        connectionsData.connections.push(conn);
+        addLog('connection', `[AI] Discovered: ${conn.source} → ${conn.target} (${CONNECTION_TYPES[conn.type].label})`);
+        document.getElementById('stat-connections').textContent = connectionsData.connections.length;
+      }, idx * 2000);
+    });
+  }
+
+  // ============================================
+  // LOGGING
+  // ============================================
+  function addLog(type, message) {
+    const logContainer = document.getElementById('sys-log');
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const div = document.createElement('div');
+    div.className = `log-entry ${type}`;
+    div.innerHTML = `<span class="text-gray-600">[${timestamp}]</span> ${message}`;
+    logContainer.appendChild(div);
+    logContainer.scrollTop = logContainer.scrollHeight;
+    
+    // Keep log manageable
+    while (logContainer.children.length > 50) {
+      logContainer.removeChild(logContainer.firstChild);
+    }
+  }
+
+  // ============================================
+  // UTILITIES
+  // ============================================
+  function truncateText(text, maxLength) {
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  }
+
+  // ============================================
+  // INIT
+  // ============================================
+  initSystem();
+</script>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+  <!-- FOOTER -->
+  <!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+  <footer style="border-top:1px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.6); padding:3rem 1.5rem; backdrop-filter:blur(12px); position:relative; z-index:50;">
+    <div style="max-width:72rem; margin:0 auto;">
+      <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:1.5rem; margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <svg style="width:1.25rem; height:1.25rem; color:#9ca3af;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+          <span style="color:#9ca3af; font-family:'Orbitron', sans-serif; letter-spacing:0.2em;">LUNAR ARK</span>
+        </div>
+        <nav style="display:flex; flex-wrap:wrap; justify-content:center; gap:1.25rem; font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.15em;">
+          <a href="index.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">CODEX</a>
+          <a href="sanctuary.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">SANCTUARY</a>
+          <a href="research.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">RESEARCH</a>
+          <a href="simulation.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">SIMULATION</a>
+          <a href="intel.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">INTEL</a>
+          <a href="about.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">ABOUT</a>
+          <a href="status.html" style="color:#6b7280; text-decoration:none;">STATUS</a>
+        </nav>
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,0.05); padding-top:1.5rem; display:flex; flex-wrap:wrap; justify-content:space-between; gap:1rem; font-family:'JetBrains Mono', monospace; font-size:11px; color:#6b7280;">
+        <div>An open codex of a future lunar settlement · Volume I · 2026<br><span style="color:#4b5563;">Chetan Hansraj · Mumbai · India</span></div>
+        <div style="text-align:right;"><a href="mailto:contribute@lunarark.com" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">contribute@lunarark.com</a><br><a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener" style="color:#4b5563; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#4b5563'">CC-BY-SA 4.0</a></div>
+      </div>
+      <div style="text-align:center; color:#4b5563; font-size:10px; font-family:'JetBrains Mono', monospace; margin-top:1.25rem; font-style:italic;">Independent open project · not affiliated with any space agency</div>
+    </div>
+  </footer>
+
+</body>
+</html>

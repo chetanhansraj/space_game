@@ -1,0 +1,2486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lunar Ark — Lunar Registry | The Codex</title>
+    <meta name="description" content="3D lunar globe with mission landing sites, polar resources, and the Shackleton-rim Ark candidate site in geographic context. Lunar Ark codex. CC-BY-SA.">
+    <meta property="og:title" content="Lunar Ark — Lunar Registry | The Codex">
+    <meta property="og:description" content="3D lunar globe with mission landing sites, polar resources, and the Shackleton-rim Ark candidate site in geographic context. Lunar Ark codex. CC-BY-SA.">
+    <meta property="og:image" content="https://lunarark.com/og-image.jpg">
+    <meta property="og:url" content="https://lunarark.com/moon_sim.html">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Lunar Ark — Lunar Registry | The Codex">
+    <meta name="twitter:description" content="3D lunar globe with mission landing sites, polar resources, and the Shackleton-rim Ark candidate site in geographic context. Lunar Ark codex. CC-BY-SA.">
+    <meta name="twitter:image" content="https://lunarark.com/og-image.jpg">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --deep-bg: #030014;
+            --glass-bg: rgba(15, 23, 42, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent-purple: #8b5cf6;
+            --accent-cyan: #06b6d4;
+            --accent-indigo: #6366f1;
+            --text-primary: #e2e8f0;
+            --text-muted: rgba(255, 255, 255, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
+        }
+
+        *::-webkit-scrollbar { width: 6px; height: 6px; }
+        *::-webkit-scrollbar-track { background: transparent; }
+        *::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.3); border-radius: 3px; }
+
+        body {
+            margin: 0;
+            background: var(--deep-bg);
+            overflow: hidden;
+            font-family: 'Rajdhani', sans-serif;
+            color: var(--text-primary);
+        }
+
+        .brand-font { font-family: 'Orbitron', sans-serif; letter-spacing: 0.1em; }
+        .mono-font { font-family: 'Space Mono', monospace; }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        /* Navbar */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 32px;
+        }
+
+        .nav-links a {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: rgba(255,255,255,0.5);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover { color: #fff; }
+        .nav-links a.active { color: var(--accent-cyan); }
+
+        /* Search Bar */
+        .search-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-input {
+            width: 0;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: #fff;
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            outline: none;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0;
+        }
+
+        .search-container.open .search-input {
+            width: 220px;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 8px;
+            opacity: 1;
+        }
+
+        .search-toggle {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s;
+            color: rgba(255,255,255,0.5);
+            border: 1px solid transparent;
+            background: transparent;
+        }
+
+        .search-toggle:hover {
+            color: #fff;
+            background: rgba(139, 92, 246, 0.15);
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 8px;
+            width: 320px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(40px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            display: none;
+            z-index: 2000;
+        }
+
+        .search-results.visible { display: block; }
+
+        .search-result-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            transition: background 0.15s;
+        }
+
+        .search-result-item:hover { background: rgba(139, 92, 246, 0.1); }
+        .search-result-item:last-child { border-bottom: none; }
+
+        .search-result-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .search-result-info { flex: 1; min-width: 0; }
+
+        .search-result-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .search-result-meta {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .search-no-results {
+            padding: 20px;
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'Space Mono', monospace;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 84px;
+            bottom: 20px;
+            width: 340px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(40px);
+            border: 1px solid var(--glass-border);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        /* Shimmer effect */
+        .sidebar::before {
+            content: "";
+            position: absolute;
+            height: 100%; width: 100%;
+            left: 0; top: 0;
+            background: radial-gradient(
+                600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+                rgba(139, 92, 246, 0.06),
+                transparent 40%
+            );
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        #left-sidebar { left: 20px; }
+        #right-sidebar {
+            right: 20px;
+            display: none;
+            width: 380px;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--glass-border);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+            position: relative;
+            z-index: 1;
+        }
+
+        .sidebar-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #fff;
+        }
+
+        .sidebar-subtitle {
+            font-size: 11px;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-family: 'Space Mono', monospace;
+            margin-top: 4px;
+        }
+
+        /* Category Tabs */
+        .category-tabs {
+            display: flex;
+            gap: 6px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--glass-border);
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
+        }
+
+        .category-tab {
+            font-size: 10px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            font-family: 'Space Mono', monospace;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .category-tab:hover {
+            background: rgba(139, 92, 246, 0.15);
+            border-color: rgba(139, 92, 246, 0.3);
+            color: #fff;
+        }
+
+        .category-tab.active {
+            background: var(--accent-purple);
+            border-color: var(--accent-purple);
+            color: #fff;
+        }
+
+        /* Special Ark tab */
+        .category-tab.ark-tab {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.2));
+            border-color: rgba(6, 182, 212, 0.4);
+            color: var(--accent-cyan);
+        }
+
+        .category-tab.ark-tab.active {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            color: #fff;
+        }
+
+        /* Nav List */
+        #nav-list {
+            overflow-y: auto;
+            flex: 1;
+            position: relative;
+            z-index: 1;
+        }
+
+        .nav-item {
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-item:hover {
+            background: rgba(139, 92, 246, 0.08);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(90deg, rgba(139, 92, 246, 0.15) 0%, transparent 100%);
+            border-left: 3px solid var(--accent-purple);
+        }
+
+        /* Special Ark item styling */
+        .nav-item.ark-item {
+            background: linear-gradient(90deg, rgba(6, 182, 212, 0.08) 0%, transparent 100%);
+            border-left: 3px solid var(--accent-cyan);
+        }
+
+        .nav-item.ark-item:hover {
+            background: linear-gradient(90deg, rgba(6, 182, 212, 0.15) 0%, transparent 100%);
+        }
+
+        .nav-item.ark-item.active {
+            background: linear-gradient(90deg, rgba(6, 182, 212, 0.2) 0%, transparent 100%);
+        }
+
+        .nav-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: 0 0 12px currentColor;
+        }
+
+        /* Ark special marker */
+        .nav-dot.ark-marker {
+            width: 12px;
+            height: 12px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple)) !important;
+            animation: ark-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes ark-pulse {
+            0%, 100% { box-shadow: 0 0 12px var(--accent-cyan), 0 0 24px var(--accent-purple); }
+            50% { box-shadow: 0 0 20px var(--accent-cyan), 0 0 40px var(--accent-purple); }
+        }
+
+        .nav-content { flex: 1; min-width: 0; }
+
+        .tag {
+            font-size: 9px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            display: inline-block;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            font-family: 'Space Mono', monospace;
+            margin-bottom: 4px;
+        }
+
+        .mission-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 0.5px;
+        }
+
+        .mission-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'Space Mono', monospace;
+            margin-top: 2px;
+        }
+
+        /* Right Sidebar - Detail Panel */
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .detail-label {
+            font-size: 10px;
+            color: var(--accent-cyan);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-family: 'Space Mono', monospace;
+        }
+
+        .detail-image {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .detail-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin: 16px 0 8px;
+            text-transform: uppercase;
+        }
+
+        .detail-agency {
+            display: inline-block;
+            font-size: 10px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-family: 'Space Mono', monospace;
+            margin-bottom: 12px;
+        }
+
+        .detail-desc {
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.7;
+            margin-bottom: 20px;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .meta-item {
+            background: rgba(139, 92, 246, 0.06);
+            border: 1px solid rgba(139, 92, 246, 0.12);
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .meta-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-cyan);
+            font-family: 'Space Mono', monospace;
+            margin-bottom: 4px;
+        }
+
+        .meta-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .close-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-muted);
+        }
+
+        .close-btn:hover {
+            background: rgba(139, 92, 246, 0.2);
+            border-color: rgba(139, 92, 246, 0.4);
+            color: #fff;
+        }
+
+        /* Bottom Stats Bar */
+        .stats-bar {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 2px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            overflow: hidden;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+        }
+
+        .stat-item {
+            padding: 12px 24px;
+            text-align: center;
+            border-right: 1px solid var(--glass-border);
+        }
+
+        .stat-item:last-child { border-right: none; }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .stat-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-family: 'Space Mono', monospace;
+            margin-top: 2px;
+        }
+
+        /* Top Status Badge */
+        .status-badge {
+            position: fixed;
+            top: 84px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            font-family: 'Space Mono', monospace;
+            font-size: 10px;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            background: #22c55e;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #22c55e;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* 3D Hover Tooltip */
+        .hover-tooltip {
+            position: fixed;
+            pointer-events: none;
+            z-index: 900;
+            padding: 8px 14px;
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 8px;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            white-space: nowrap;
+            transform: translate(-50%, -120%);
+        }
+
+        .hover-tooltip.visible { opacity: 1; }
+
+        .hover-tooltip-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 1px;
+        }
+
+        .hover-tooltip-meta {
+            font-family: 'Space Mono', monospace;
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .hover-tooltip-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        /* Phase inset (Earth-view of moon) */
+        .phase-inset {
+            position: fixed;
+            bottom: 20px;
+            left: 380px;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: #050510;
+            border: 1px solid var(--glass-border);
+            z-index: 120;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .phase-inset canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .phase-inset-label {
+            position: fixed;
+            bottom: 125px;
+            left: 380px;
+            width: 100px;
+            text-align: center;
+            font-family: 'Space Mono', monospace;
+            font-size: 8px;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            z-index: 120;
+        }
+
+        .phase-inset-name {
+            font-size: 9px;
+            color: var(--accent-cyan);
+            font-weight: 700;
+        }
+
+        /* Mission dot labels (HTML overlay for each node) */
+        .mission-dot-label {
+            position: fixed;
+            pointer-events: none;
+            z-index: 45;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 7px;
+            font-weight: 600;
+            letter-spacing: 0.8px;
+            color: rgba(255,255,255,0.8);
+            white-space: nowrap;
+            text-shadow: 0 0 4px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.7), 0 1px 2px rgba(0,0,0,0.9);
+            transition: opacity 0.3s;
+            transform: translate(-50%, -130%);
+        }
+
+        .mission-dot-label.ark-dot-label {
+            font-size: 8px;
+            color: var(--accent-cyan);
+            text-shadow: 0 0 6px rgba(6, 182, 212, 0.5), 0 0 10px rgba(0,0,0,0.9);
+        }
+
+        /* Labels Toggle (in navbar) */
+        .toggle-btn {
+            padding: 6px 14px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            color: rgba(255,255,255,0.5);
+            cursor: pointer;
+            transition: all 0.25s;
+            text-transform: uppercase;
+        }
+
+        .toggle-btn:hover {
+            color: #fff;
+            border-color: rgba(139, 92, 246, 0.5);
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .toggle-btn.active {
+            color: var(--accent-cyan);
+            border-color: rgba(6, 182, 212, 0.5);
+            background: rgba(6, 182, 212, 0.12);
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.15);
+        }
+
+        /* Lunar Feature Labels (rendered as HTML overlays) */
+        .lunar-label {
+            position: fixed;
+            pointer-events: auto;
+            cursor: pointer;
+            z-index: 50;
+            font-family: 'Space Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            white-space: nowrap;
+            transition: opacity 0.3s, color 0.2s, text-shadow 0.2s;
+            text-shadow: 0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.8);
+        }
+
+        .lunar-label-mare {
+            font-size: 11px;
+            color: rgba(180, 160, 255, 0.85);
+            font-weight: 700;
+        }
+
+        .lunar-label-mare:hover {
+            color: rgba(220, 200, 255, 1);
+            text-shadow: 0 0 8px rgba(139, 92, 246, 0.6), 0 0 16px rgba(139, 92, 246, 0.3), 0 1px 3px rgba(0,0,0,0.9);
+        }
+
+        .lunar-label-crater {
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 400;
+        }
+
+        .lunar-label-crater:hover {
+            color: rgba(255, 255, 255, 1);
+            text-shadow: 0 0 8px rgba(6, 182, 212, 0.5), 0 0 16px rgba(6, 182, 212, 0.2), 0 1px 3px rgba(0,0,0,0.9);
+        }
+
+        /* Lunar Feature Info Popup */
+        .feature-popup {
+            position: fixed;
+            z-index: 950;
+            width: 300px;
+            padding: 16px;
+            background: rgba(10, 15, 30, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 12px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.25s ease, visibility 0.25s ease;
+            pointer-events: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(139, 92, 246, 0.1);
+        }
+
+        .feature-popup.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .feature-popup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .feature-popup-type {
+            font-family: 'Space Mono', monospace;
+            font-size: 9px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .feature-popup-type.mare {
+            color: #b4a0ff;
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .feature-popup-type.crater {
+            color: var(--accent-cyan);
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+
+        .feature-popup-close {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: all 0.15s;
+        }
+
+        .feature-popup-close:hover {
+            background: rgba(139, 92, 246, 0.2);
+            color: #fff;
+        }
+
+        .feature-popup-name {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+
+        .feature-popup-desc {
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .feature-popup-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+        .feature-popup-stat {
+            background: rgba(139, 92, 246, 0.06);
+            border: 1px solid rgba(139, 92, 246, 0.12);
+            border-radius: 6px;
+            padding: 8px;
+        }
+
+        .feature-popup-stat-label {
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-cyan);
+            font-family: 'Space Mono', monospace;
+            margin-bottom: 2px;
+        }
+
+        .feature-popup-stat-value {
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        /* Loading Screen */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--deep-bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            transition: opacity 0.8s ease, visibility 0.8s ease;
+        }
+
+        .loading-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .loading-moon {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2a2a3a 0%, #1a1a2a 50%, #0a0a1a 100%);
+            box-shadow:
+                inset -15px -8px 30px rgba(0,0,0,0.8),
+                inset 8px 8px 20px rgba(255,255,255,0.03),
+                0 0 60px rgba(139, 92, 246, 0.3),
+                0 0 120px rgba(6, 182, 212, 0.1);
+            position: relative;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .loading-moon::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            width: 15px;
+            height: 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 50%;
+        }
+
+        .loading-moon::after {
+            content: '';
+            position: absolute;
+            top: 45px;
+            left: 55px;
+            width: 25px;
+            height: 25px;
+            background: rgba(0,0,0,0.25);
+            border-radius: 50%;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        .loading-text {
+            margin-top: 32px;
+            font-size: 11px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .loading-text span { color: var(--accent-cyan); }
+
+        .loading-bar {
+            width: 240px;
+            height: 2px;
+            background: rgba(139, 92, 246, 0.2);
+            border-radius: 1px;
+            margin-top: 24px;
+            overflow: hidden;
+        }
+
+        .loading-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-cyan));
+            border-radius: 1px;
+            animation: load 2s ease-out forwards;
+        }
+
+        @keyframes load {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+
+        /* Ark Location Highlight */
+        .ark-highlight {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .ark-highlight.visible { opacity: 1; }
+
+        .ark-highlight-ring {
+            width: 200px;
+            height: 200px;
+            border: 2px solid var(--accent-cyan);
+            border-radius: 50%;
+            animation: ring-expand 2s ease-out infinite;
+        }
+
+        @keyframes ring-expand {
+            0% { transform: scale(0.8); opacity: 0.8; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            #left-sidebar { width: 300px; }
+            #right-sidebar { width: 340px; }
+        }
+
+        @media (max-width: 900px) {
+            #left-sidebar {
+                left: 10px;
+                right: 10px;
+                width: auto;
+                top: auto;
+                bottom: 80px;
+                max-height: 40vh;
+            }
+            #right-sidebar { display: none !important; }
+            .stats-bar { bottom: 10px; }
+            .status-badge { display: none; }
+            .phase-inset { display: none; }
+            .phase-inset-label { display: none; }
+            .toggle-btn { font-size: 8px; padding: 4px 8px; }
+        }
+    </style>
+  <link rel="canonical" href="https://lunarark.com/moon_sim.html">
+  <meta property="og:site_name" content="Lunar Ark">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://lunarark.com/#organization", "name": "Lunar Ark", "alternateName": ["Lunar Ark Codex", "The Lunar Ark"], "url": "https://lunarark.com", "logo": {"@type": "ImageObject", "url": "https://lunarark.com/logo-nav.png"}, "email": "contribute@lunarark.com", "description": "An open engineering encyclopedia for a permanent lunar settlement at the Moon's south pole — 763 entries decomposed to component level, licensed CC-BY-SA 4.0.", "founder": {"@type": "Person", "name": "Chetan Hansraj"}, "foundingDate": "2018", "location": {"@type": "Place", "name": "Mumbai, India"}, "knowsAbout": ["lunar settlement", "space systems engineering", "Shackleton Crater", "in-situ resource utilisation", "long-term data preservation", "planetary defence"]}, {"@type": "WebSite", "@id": "https://lunarark.com/#website", "url": "https://lunarark.com", "name": "Lunar Ark", "alternateName": "Lunar Ark Codex", "publisher": {"@id": "https://lunarark.com/#organization"}, "inLanguage": "en", "license": "https://creativecommons.org/licenses/by-sa/4.0/", "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://lunarark.com/codex?q={search_term_string}"}, "query-input": "required name=search_term_string"}}]}</script>
+</head>
+<body>
+
+    <!-- Loading Screen -->
+    <div class="loading-overlay" id="loading">
+        <div class="loading-moon"></div>
+        <div class="loading-text">> Initializing <span>LUNAR ARK</span> Simulation</div>
+        <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    </div>
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- Hover Tooltip (for 3D marker hover) -->
+    <div class="hover-tooltip" id="hover-tooltip">
+        <div class="hover-tooltip-title" id="tooltip-title"></div>
+        <div class="hover-tooltip-meta" id="tooltip-meta"></div>
+    </div>
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <a href="index.html" class="flex items-center gap-3">
+            <img src="/logo-nav.png" alt="Lunar Ark" class="h-9 w-auto" style="max-width:210px;">
+        </a>
+        <div class="flex items-center gap-6">
+            <div class="nav-links">
+                <a href="index.html">CODEX</a>
+                <a href="sanctuary.html">SANCTUARY</a>
+                <a href="research.html">RESEARCH</a>
+                <a href="simulation.html">SIMULATION</a>
+                <a href="intel.html">INTEL</a>
+                <span class="active" style="cursor:default;">· LUNAR REGISTRY</span>
+            </div>
+            <button id="mobile-nav-toggle" class="md:hidden" aria-label="Open menu" onclick="document.getElementById('mobile-nav-overlay').style.display='flex'" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:0.5rem; color:#fff; cursor:pointer;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+            <button class="toggle-btn" id="toggle-labels" onclick="toggleLabels()">LABELS</button>
+            <!-- Search -->
+            <div class="search-container" id="search-container">
+                <input type="text" class="search-input" id="search-input" placeholder="Search missions...">
+                <button class="search-toggle" id="search-toggle">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                </button>
+                <div class="search-results" id="search-results"></div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Mobile nav overlay (cyber register) -->
+    <div id="mobile-nav-overlay" style="display:none; position:fixed; inset:0; z-index:200; background:rgba(3,0,20,0.97); backdrop-filter:blur(20px); flex-direction:column; padding:5rem 2rem;">
+      <button onclick="document.getElementById('mobile-nav-overlay').style.display='none'" aria-label="Close menu" style="position:absolute; top:1.25rem; right:1.25rem; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:0.5rem; color:#fff; cursor:pointer;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+      <nav style="display:flex; flex-direction:column; gap:0.25rem; font-family:'Orbitron', sans-serif; letter-spacing:0.2em; margin-top:2rem;">
+        <a href="index.html" style="color:rgba(255,255,255,0.7); text-decoration:none; font-size:1.5rem; padding:1rem 0; border-bottom:1px solid rgba(255,255,255,0.1);">CODEX</a>
+        <a href="sanctuary.html" style="color:rgba(255,255,255,0.7); text-decoration:none; font-size:1.5rem; padding:1rem 0; border-bottom:1px solid rgba(255,255,255,0.1);">SANCTUARY</a>
+        <a href="research.html" style="color:rgba(255,255,255,0.7); text-decoration:none; font-size:1.5rem; padding:1rem 0; border-bottom:1px solid rgba(255,255,255,0.1);">RESEARCH</a>
+        <a href="simulation.html" style="color:rgba(255,255,255,0.7); text-decoration:none; font-size:1.5rem; padding:1rem 0; border-bottom:1px solid rgba(255,255,255,0.1);">SIMULATION</a>
+        <a href="intel.html" style="color:rgba(255,255,255,0.7); text-decoration:none; font-size:1.5rem; padding:1rem 0; border-bottom:1px solid rgba(255,255,255,0.1);">INTEL</a>
+        <span style="color:#a78bfa; font-size:1.25rem; padding:1rem 0; font-weight:700;">· LUNAR REGISTRY</span>
+      </nav>
+      <div style="margin-top:auto; font-family:'JetBrains Mono', monospace; color:rgba(255,255,255,0.3); font-size:10px; letter-spacing:0.15em;">contribute@lunarark.com · CC-BY-SA 4.0</div>
+    </div>
+
+    <style>
+      @media (max-width: 768px) {
+        .navbar .nav-links { display: none !important; }
+        .navbar .search-container { display: none !important; }
+        .navbar #toggle-labels { display: none !important; }
+        .navbar #mobile-nav-toggle { display: inline-flex !important; }
+      }
+    </style>
+
+    <!-- Status Badge -->
+    <div class="status-badge">
+        <div class="status-dot"></div>
+        <span style="color: var(--text-muted);">SIMULATION:</span>
+        <span style="color: #22c55e;">ACTIVE</span>
+        <span style="color: var(--text-muted); margin-left: 12px;">RENDER:</span>
+        <span style="color: var(--accent-cyan);">60 FPS</span>
+    </div>
+
+    <!-- Left Sidebar - Mission List -->
+    <div id="left-sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-cyan-500/20 border border-purple-500/30 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <div class="sidebar-title">Lunar Registry</div>
+                    <div class="sidebar-subtitle">Interactive Globe</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="category-tabs">
+            <div class="category-tab ark-tab active" data-filter="ark">&#x1f3db; Ark Site</div>
+            <div class="category-tab" data-filter="all">All</div>
+            <div class="category-tab" data-filter="apollo">Apollo</div>
+            <div class="category-tab" data-filter="soviet">Soviet</div>
+            <div class="category-tab" data-filter="modern">Modern</div>
+            <div class="category-tab" data-filter="upcoming">Upcoming</div>
+        </div>
+
+        <div id="nav-list"></div>
+    </div>
+
+    <!-- Right Sidebar - Detail Panel -->
+    <div id="right-sidebar" class="sidebar" style="padding: 20px;">
+        <div class="detail-header">
+            <span class="detail-label">> Mission Intel</span>
+            <div class="close-btn" onclick="closeDetail()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+            </div>
+        </div>
+        <div id="detail-content">
+            <img id="d-img" src="" alt="Lunar mission imagery" loading="lazy" decoding="async" class="detail-image">
+            <h3 id="d-title" class="detail-title">---</h3>
+            <div id="d-agency" class="detail-agency"></div>
+            <p id="d-desc" class="detail-desc"></p>
+            <div id="d-meta" class="meta-grid"></div>
+        </div>
+    </div>
+
+    <!-- Stats Bar (includes phase info) -->
+    <div class="stats-bar">
+        <div class="stat-item">
+            <div class="stat-value"><span id="phase-icon" style="font-size:16px;"></span></div>
+            <div class="stat-label" id="phase-name" style="color: var(--accent-cyan);"></div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="total-missions">0</div>
+            <div class="stat-label">Landings</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" id="total-nations">0</div>
+            <div class="stat-label">Nations</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">1966&ndash;2024</div>
+            <div class="stat-label">Timeline</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value" style="color: var(--accent-purple);">2031</div>
+            <div class="stat-label">Ark Target</div>
+        </div>
+    </div>
+
+    <!-- Phase Inset (Earth-view of Moon) -->
+    <div class="phase-inset" id="phase-inset"></div>
+    <div class="phase-inset-label">
+        <div class="phase-inset-name" id="phase-inset-name"></div>
+        <div>VIEW FROM EARTH</div>
+    </div>
+
+    <!-- Mission Dot Labels Container -->
+    <div id="mission-dot-labels-container"></div>
+
+    <!-- Lunar Labels Container -->
+    <div id="lunar-labels-container"></div>
+
+    <!-- Lunar Feature Info Popup -->
+    <div class="feature-popup" id="feature-popup">
+        <div class="feature-popup-header">
+            <div class="feature-popup-type" id="fp-type"></div>
+            <div class="feature-popup-close" onclick="closeFeaturePopup()">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+            </div>
+        </div>
+        <div class="feature-popup-name" id="fp-name"></div>
+        <div class="feature-popup-desc" id="fp-desc"></div>
+        <div class="feature-popup-stats" id="fp-stats"></div>
+    </div>
+
+    <script>
+        // ============================================================
+        // TEXTURE CONFIGURATION
+        // ============================================================
+        const TEXTURE_CONFIG = {
+            colorMap: './img/moon_color_2k.jpg',
+            bumpMap: './img/moon_displacement_2k.jpg'
+        };
+
+        // ============================================================
+        // AGENCY DEFINITIONS
+        // ============================================================
+        const AGENCIES = {
+            ARK:     { color: '#06b6d4', label: 'LUNAR ARK', nation: 'INTL', category: 'ark' },
+            NASA:    { color: '#8b5cf6', label: 'NASA', nation: 'USA', category: 'apollo' },
+            USSR:    { color: '#ef4444', label: 'USSR', nation: 'USSR', category: 'soviet' },
+            CNSA:    { color: '#f59e0b', label: 'CNSA', nation: 'CHINA', category: 'modern' },
+            ISRO:    { color: '#22c55e', label: 'ISRO', nation: 'INDIA', category: 'modern' },
+            JAXA:    { color: '#ec4899', label: 'JAXA', nation: 'JAPAN', category: 'modern' },
+            PRIVATE: { color: '#a78bfa', label: 'PRIVATE', nation: 'USA', category: 'modern' },
+            FUTURE:  { color: '#38bdf8', label: 'PLANNED', nation: 'INTL', category: 'upcoming' }
+        };
+
+        // ============================================================
+        // MISSION DATABASE
+        // ============================================================
+        const NODE_DATABASE = [
+            // === LUNAR ARK SITE (Primary Focus) ===
+            {
+                lat: -89.54, lon: 0.0,
+                title: "LUNAR ARK",
+                agency: "ARK",
+                year: 2031,
+                date: "Target: 2031",
+                desc: "Candidate site for the Lunar Ark preservation facility on the Shackleton Crater rim at the lunar south pole. Permanently shadowed crater floors below 50K provide passive cryogenic cold for the biological vault; rim peaks receive 85-90% annual illumination for solar power; nearby polar regolith holds extractable water ice. Coordinates with NASA Artemis III and ESA Moonlight south-pole infrastructure.",
+                location: "Shackleton Crater Rim \u00b7 Lunar South Pole",
+                specs: "6.7M species \u00b7 100 EB data",
+                status: "In Development",
+                img: "images/hero/hero-shackleton-night.jpg",
+                isArk: true
+            },
+
+            // === APOLLO PROGRAM ===
+            { lat: 0.67416, lon: 23.47314, title: "Apollo 11", agency: "NASA", year: 1969, date: "July 20, 1969",
+              desc: "Sea of Tranquility. First crewed lunar landing. Neil Armstrong and Buzz Aldrin spent 21.5 hours on surface.",
+              location: "Mare Tranquillitatis", samples: "21.5 kg", surfaceTime: "21h 36m", crew: "Armstrong, Aldrin, Collins",
+              img: "images/missions/apollo-11.jpg" },
+            { lat: -3.01239, lon: -23.42157, title: "Apollo 12", agency: "NASA", year: 1969, date: "Nov 19, 1969",
+              desc: "Ocean of Storms. Precision landing within 200m of Surveyor 3. Retrieved probe parts.",
+              location: "Oceanus Procellarum", samples: "34.3 kg", surfaceTime: "31h 31m", crew: "Conrad, Bean, Gordon",
+              img: "images/missions/apollo-12.jpg" },
+            { lat: -3.64589, lon: -17.47194, title: "Apollo 14", agency: "NASA", year: 1971, date: "Feb 5, 1971",
+              desc: "Fra Mauro formation. Originally Apollo 13 target. Extensive geological sampling.",
+              location: "Fra Mauro", samples: "42.3 kg", surfaceTime: "33h 31m", crew: "Shepard, Mitchell, Roosa",
+              img: "images/missions/apollo-14.jpg" },
+            { lat: 26.13239, lon: 3.63330, title: "Apollo 15", agency: "NASA", year: 1971, date: "July 30, 1971",
+              desc: "Hadley\u2013Apennine. First Lunar Roving Vehicle. Discovered Genesis Rock.",
+              location: "Hadley Rille", samples: "77.3 kg", surfaceTime: "66h 55m", crew: "Scott, Irwin, Worden",
+              img: "images/missions/apollo-15.jpg" },
+            { lat: -8.97301, lon: 15.50019, title: "Apollo 16", agency: "NASA", year: 1972, date: "Apr 21, 1972",
+              desc: "Descartes Highlands. Only mission to land in lunar highlands.",
+              location: "Descartes", samples: "95.7 kg", surfaceTime: "71h 2m", crew: "Young, Duke, Mattingly",
+              img: "images/missions/apollo-16.jpg" },
+            { lat: 20.18809, lon: 30.77475, title: "Apollo 17", agency: "NASA", year: 1972, date: "Dec 11, 1972",
+              desc: "Taurus-Littrow valley. Final Apollo mission. Most samples returned.",
+              location: "Taurus-Littrow", samples: "110.5 kg", surfaceTime: "74h 59m", crew: "Cernan, Schmitt, Evans",
+              img: "images/missions/apollo-17.jpg" },
+
+            // === SOVIET LUNA PROGRAM ===
+            { lat: 7.08, lon: -64.37, title: "Luna 9", agency: "USSR", year: 1966, date: "Feb 3, 1966",
+              desc: "First successful soft landing on any celestial body. First panoramic images from lunar surface.",
+              location: "Oceanus Procellarum", surfaceTime: "~3 days",
+              img: "images/missions/luna-09.jpg" },
+            { lat: 18.87, lon: -62.05, title: "Luna 13", agency: "USSR", year: 1966, date: "Dec 24, 1966",
+              desc: "Second Soviet soft landing. Mechanical probe tested soil density.",
+              location: "Oceanus Procellarum", surfaceTime: "~7 days",
+              img: "images/missions/luna-09.jpg" },
+            { lat: -0.68, lon: 56.30, title: "Luna 16", agency: "USSR", year: 1970, date: "Sep 20, 1970",
+              desc: "First robotic sample return. Collected 101g of lunar soil.",
+              location: "Mare Fecunditatis", samples: "101 g", surfaceTime: "26h 25m",
+              img: "images/missions/luna-16.jpg" },
+            { lat: 38.28, lon: -35.00, title: "Lunokhod 1", agency: "USSR", year: 1970, date: "Nov 17, 1970",
+              desc: "First robotic rover. Operated 11 months, traveled 10.5 km.",
+              location: "Mare Imbrium", surfaceTime: "322 days",
+              img: "images/missions/lunokhod-1.jpg" },
+            { lat: 3.57, lon: 56.50, title: "Luna 20", agency: "USSR", year: 1972, date: "Feb 21, 1972",
+              desc: "Second Soviet sample return from highlands. Returned 55g.",
+              location: "Apollonius Highlands", samples: "55 g", surfaceTime: "27h",
+              img: "images/missions/luna-16.jpg" },
+            { lat: 25.85, lon: 30.45, title: "Lunokhod 2", agency: "USSR", year: 1973, date: "Jan 15, 1973",
+              desc: "Advanced rover. Traveled 42 km - record until 2014.",
+              location: "Le Monnier Crater", surfaceTime: "~4 months",
+              img: "images/missions/lunokhod-2.jpg" },
+            { lat: 12.75, lon: 62.20, title: "Luna 24", agency: "USSR", year: 1976, date: "Aug 18, 1976",
+              desc: "Last Soviet mission. Drilled 2m deep, returned 170g.",
+              location: "Mare Crisium", samples: "170 g", surfaceTime: "~1 day",
+              img: "images/missions/luna-24.jpg" },
+
+            // === MODERN ERA (China, India, Japan, Private) ===
+            { lat: 44.12, lon: -19.51, title: "Chang'e 3", agency: "CNSA", year: 2013, date: "Dec 14, 2013",
+              desc: "First soft landing since 1976. Deployed Yutu rover.",
+              location: "Mare Imbrium", surfaceTime: "31 months",
+              img: "images/missions/change-3.jpg" },
+            { lat: -45.44, lon: 177.59, title: "Chang'e 4", agency: "CNSA", year: 2019, date: "Jan 3, 2019",
+              desc: "First lunar far side landing. Von K\u00e1rm\u00e1n crater. Still operational.",
+              location: "Von K\u00e1rm\u00e1n (Far Side)", surfaceTime: "5+ years",
+              img: "images/missions/change-4.jpg" },
+            { lat: 43.06, lon: -51.92, title: "Chang'e 5", agency: "CNSA", year: 2020, date: "Dec 1, 2020",
+              desc: "Sample return near Mons R\u00fcmker. Returned 1.731 kg.",
+              location: "Oceanus Procellarum", samples: "1,731 g", surfaceTime: "~19 hours",
+              img: "images/missions/change-5.jpg" },
+            { lat: -41.64, lon: -153.99, title: "Chang'e 6", agency: "CNSA", year: 2024, date: "Jun 1, 2024",
+              desc: "First far side sample return. Historic achievement.",
+              location: "Apollo Basin (Far Side)", samples: "1,935 g", surfaceTime: "~2 days",
+              img: "images/missions/change-6.jpg" },
+            { lat: -69.37, lon: 32.35, title: "Chandrayaan-3", agency: "ISRO", year: 2023, date: "Aug 23, 2023",
+              desc: "First south pole region landing. Vikram lander + Pragyan rover.",
+              location: "Manzinus U (South Pole)", surfaceTime: "~14 days",
+              img: "images/missions/chandrayaan-3.jpg" },
+            { lat: -13.32, lon: 25.25, title: "SLIM", agency: "JAXA", year: 2024, date: "Jan 19, 2024",
+              desc: "Smart Lander. Pinpoint landing within 55m of target.",
+              location: "Shioli Crater", surfaceTime: "Multiple days",
+              img: "images/missions/slim.jpg" },
+            { lat: -80.13, lon: 1.44, title: "Odysseus (IM-1)", agency: "PRIVATE", year: 2024, date: "Feb 22, 2024",
+              desc: "First commercial soft landing. Southernmost landing ever.",
+              location: "Malapert A (South Pole)", surfaceTime: "~7 days",
+              img: "images/missions/im-1.jpg" },
+
+            // === UPCOMING MISSIONS ===
+            { lat: -84.0, lon: -56.0, title: "Artemis III", agency: "FUTURE", year: 2026, date: "Target: 2026",
+              desc: "First crewed lunar landing since Apollo 17. Will land near the lunar south pole.",
+              location: "South Pole Region", status: "Planned",
+              img: "images/missions/artemis-3.jpg" },
+            { lat: -85.0, lon: 0, title: "Luna 25", agency: "FUTURE", year: 2025, date: "Target: 2025",
+              desc: "Russia's return to lunar exploration. South pole landing attempt.",
+              location: "Boguslavsky Crater", status: "Planned",
+              img: "images/missions/luna-25.jpg" },
+            { lat: 44.0, lon: -25.0, title: "Chang'e 7", agency: "FUTURE", year: 2026, date: "Target: 2026",
+              desc: "Chinese orbiter, lander, rover, and mini flying probe.",
+              location: "South Pole Region", status: "Planned",
+              img: "images/missions/change-7.jpg" }
+        ];
+
+        // ============================================================
+        // LUNAR FEATURE LABELS (Major Maria & Craters)
+        // ============================================================
+        const LUNAR_FEATURES = [
+            // Major Maria (Seas)
+            { lat: 8.5, lon: 31.4, name: "Mare Tranquillitatis", type: "mare",
+              desc: "Sea of Tranquility. One of the most famous lunar maria, this is where Apollo 11 made humanity's first crewed lunar landing in 1969. The basaltic plain formed from ancient volcanic eruptions 3.5 billion years ago.",
+              diameter: "873 km", age: "3.5 billion yrs", origin: "Volcanic basalt" },
+            { lat: 15.0, lon: -47.4, name: "Oceanus Procellarum", type: "mare",
+              desc: "Ocean of Storms. The largest of the lunar maria, covering roughly 2,500 km across the Moon's western face. Landing site for Apollo 12, Luna 9, Luna 13, and Chang'e 5. Rich in KREEP basalts.",
+              diameter: "2,500 km", age: "3.2 billion yrs", origin: "Volcanic basalt" },
+            { lat: 33.7, lon: -22.0, name: "Mare Imbrium", type: "mare",
+              desc: "Sea of Rains. Second largest mare, formed by a massive impact 3.8 billion years ago that created one of the Moon's largest impact basins. Landing site of Chang'e 3 and Lunokhod 1.",
+              diameter: "1,123 km", age: "3.8 billion yrs", origin: "Giant impact basin" },
+            { lat: 7.0, lon: -20.0, name: "Mare Insularum", type: "mare",
+              desc: "Sea of Islands. A small mare region between the larger Oceanus Procellarum and Mare Imbrium. Named for the isolated highland peaks that rise above the lava plain like islands.",
+              diameter: "513 km", age: "3.3 billion yrs", origin: "Volcanic basalt" },
+            { lat: 26.0, lon: 52.0, name: "Mare Crisium", type: "mare",
+              desc: "Sea of Crises. A distinctive circular mare visible to the naked eye, set apart from other maria on the Moon's eastern limb. Landing site of Luna 24, the last Soviet lunar mission.",
+              diameter: "555 km", age: "3.9 billion yrs", origin: "Impact basin" },
+            { lat: -7.5, lon: 51.3, name: "Mare Fecunditatis", type: "mare",
+              desc: "Sea of Fertility. A large mare on the eastern nearside. Landing site of Luna 16, the first robotic sample return mission. Contains irregular mare patches suggesting late-stage volcanism.",
+              diameter: "909 km", age: "3.7 billion yrs", origin: "Volcanic basalt" },
+            { lat: 12.8, lon: -22.4, name: "Sinus Aestuum", type: "mare",
+              desc: "Bay of Billows. A dark, flat region at the southeast edge of Mare Imbrium. Notable for its unusually low albedo and dark pyroclastic deposits from ancient volcanic fire fountains.",
+              diameter: "290 km", age: "3.5 billion yrs", origin: "Pyroclastic deposits" },
+            { lat: 14.0, lon: 17.5, name: "Mare Serenitatis", type: "mare",
+              desc: "Sea of Serenity. A large dark plain bordered by mountains. Apollo 17 landed on its southeastern edge at Taurus-Littrow. Contains striking color variations visible in multispectral imaging.",
+              diameter: "707 km", age: "3.8 billion yrs", origin: "Impact basin" },
+            { lat: -15.0, lon: -25.0, name: "Mare Nubium", type: "mare",
+              desc: "Sea of Clouds. An ancient and heavily cratered mare in the southern nearside. One of the oldest visible maria, its surface is peppered with ghost craters from impacts buried by lava.",
+              diameter: "715 km", age: "3.9 billion yrs", origin: "Volcanic basalt" },
+            { lat: -19.4, lon: -53.7, name: "Mare Humorum", type: "mare",
+              desc: "Sea of Moisture. A well-defined circular mare with dramatic wrinkle ridges and rilles. Its floor shows evidence of tectonic compression from cooling and settling of the basalt fill.",
+              diameter: "389 km", age: "3.6 billion yrs", origin: "Impact basin" },
+            { lat: 46.7, lon: 62.2, name: "Mare Humboldtianum", type: "mare",
+              desc: "Humboldt's Sea. A mare on the northeastern limb, only partially visible from Earth due to libration. Contains a well-preserved multi-ring impact basin structure beneath the basalt fill.",
+              diameter: "273 km", age: "3.7 billion yrs", origin: "Impact basin" },
+            { lat: 56.0, lon: 2.0, name: "Mare Frigoris", type: "mare",
+              desc: "Sea of Cold. The most northerly of the major maria, stretching as a long narrow band across the northern nearside. One of the largest maria by length, though relatively narrow.",
+              diameter: "1,596 km", age: "3.5 billion yrs", origin: "Volcanic basalt" },
+            { lat: -2.0, lon: 67.0, name: "Mare Marginis", type: "mare",
+              desc: "Sea of the Edge. A small and irregular mare on the Moon's eastern limb. Features distinctive magnetic anomalies known as swirls, bright sinuous markings that resist space weathering.",
+              diameter: "358 km", age: "3.6 billion yrs", origin: "Volcanic basalt" },
+            // Major Craters
+            { lat: -43.3, lon: -11.2, name: "Tycho", type: "crater",
+              desc: "One of the Moon's most prominent craters, visible to the naked eye. Features a spectacular ray system stretching over 1,500 km. Relatively young at 108 million years, its central peak rises 2.4 km above the floor.",
+              diameter: "85 km", depth: "4.8 km", age: "108 million yrs" },
+            { lat: 9.6, lon: -20.1, name: "Copernicus", type: "crater",
+              desc: "A large, young, and prominent impact crater. Called the 'Monarch of the Moon' by early astronomers. Features terraced walls, a complex central peak, and an extensive ray system visible during full moon.",
+              diameter: "93 km", depth: "3.8 km", age: "800 million yrs" },
+            { lat: 23.7, lon: 47.4, name: "Cleomedes", type: "crater",
+              desc: "A large crater on the northeastern edge of Mare Crisium. Notable for its flat floor filled with volcanic basalt and a system of rilles (narrow channels) crossing the interior.",
+              diameter: "126 km", depth: "2.7 km", age: "3.8 billion yrs" },
+            { lat: -8.9, lon: -38.1, name: "Gassendi", type: "crater",
+              desc: "A large crater on the northern edge of Mare Humorum. Famous for its complex floor fracture system and central peak cluster. A frequent target for amateur astronomers studying transient lunar phenomena.",
+              diameter: "110 km", depth: "1.9 km", age: "3.6 billion yrs" },
+            { lat: 32.8, lon: -1.4, name: "Aristillus", type: "crater",
+              desc: "A prominent crater in eastern Mare Imbrium. Features dramatic terraced walls and a complex central mountain group. Its dark rays suggest it excavated into basaltic mare material.",
+              diameter: "55 km", depth: "3.6 km", age: "1.2 billion yrs" },
+            { lat: -41.2, lon: 11.1, name: "Maurolycus", type: "crater",
+              desc: "A large ancient crater in the heavily cratered southern highlands. Its floor has been deformed by subsequent impacts. Named after the 16th-century mathematician Francesco Maurolico.",
+              diameter: "114 km", depth: "4.7 km", age: "Pre-Nectarian" },
+            { lat: 40.8, lon: -11.8, name: "Plato", type: "crater",
+              desc: "A large, dark-floored crater on the northeastern edge of Mare Imbrium. Its unusually flat and dark floor was flooded by basaltic lava. A favorite of lunar observers for its sharp rim contrast.",
+              diameter: "101 km", depth: "1.0 km", age: "3.8 billion yrs" },
+            { lat: 12.1, lon: -9.3, name: "Eratosthenes", type: "crater",
+              desc: "A prominent crater at the southern end of the Apennine mountain range. Marks the boundary between the Eratosthenian and Copernican geological periods. Has well-preserved terraced walls.",
+              diameter: "58 km", depth: "3.6 km", age: "3.2 billion yrs" },
+            { lat: -9.3, lon: 43.2, name: "Langrenus", type: "crater",
+              desc: "A large prominent crater on the eastern edge of Mare Fecunditatis. Features bright terraced walls and a substantial central peak. Named after the Belgian astronomer Michel van Langren.",
+              diameter: "132 km", depth: "4.5 km", age: "3.2 billion yrs" },
+            { lat: -20.7, lon: -33.8, name: "Bullialdus", type: "crater",
+              desc: "A well-preserved crater within Mare Nubium. Notable for its complex central peak containing minerals from deep in the lunar crust, uplifted by the impact. A key site for studying lunar geology.",
+              diameter: "61 km", depth: "3.5 km", age: "3.5 billion yrs" },
+            { lat: -58.5, lon: -8.1, name: "Clavius", type: "crater",
+              desc: "One of the largest craters on the Moon and the second largest on the nearside. Its floor contains a distinctive curved chain of progressively smaller craters. Featured in the film 2001: A Space Odyssey.",
+              diameter: "225 km", depth: "3.5 km", age: "Pre-Nectarian" },
+            { lat: 51.6, lon: 17.2, name: "Aristoteles", type: "crater",
+              desc: "A prominent crater in the region north of Mare Frigoris. Named after the Greek philosopher. Features well-defined terraced inner walls and a relatively flat floor with low central hills.",
+              diameter: "87 km", depth: "3.3 km", age: "2.1 billion yrs" },
+        ];
+
+        // ============================================================
+        // THREE.JS SETUP
+        // ============================================================
+        let scene, camera, renderer, controls, moon, activeNode = null;
+        let nodes = [];
+        const loader = new THREE.TextureLoader();
+        let currentFilter = 'ark';
+        let texturesLoaded = 0;
+
+        // Raycasting for 3D click/hover
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let hoveredNode = null;
+
+        // Labels state
+        let labelsVisible = false;
+        let labelElements = [];
+        let missionDotLabels = [];
+
+        // Phase inset mini renderer
+        let phaseInsetRenderer, phaseInsetScene, phaseInsetCamera, phaseInsetMoon;
+
+        // Earth / Sun state
+        let earthMesh = null;
+        let sunLight = null;
+        let lunarPhase = 0; // 0-1 through synodic month
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 0.8;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // === MOON ===
+            const moonGeometry = new THREE.SphereGeometry(2, 128, 128);
+            const moonMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.95,
+                metalness: 0.0,
+            });
+
+            // Load textures
+            loader.load(TEXTURE_CONFIG.colorMap, (texture) => {
+                moonMaterial.map = texture;
+                moonMaterial.needsUpdate = true;
+                checkTexturesLoaded();
+            });
+
+            loader.load(TEXTURE_CONFIG.bumpMap, (texture) => {
+                moonMaterial.bumpMap = texture;
+                moonMaterial.bumpScale = 0.015;
+                moonMaterial.needsUpdate = true;
+                checkTexturesLoaded();
+            });
+
+            moon = new THREE.Mesh(moonGeometry, moonMaterial);
+            scene.add(moon);
+
+            // === LIGHTING ===
+            sunLight = new THREE.DirectionalLight(0xfff8e7, 0.7);
+            sunLight.position.set(5, 3, 5); // Will be set by ephemeris
+            scene.add(sunLight);
+
+            // Very low ambient so dark side is barely visible (realistic)
+            const ambientLight = new THREE.AmbientLight(0x303050, 0.48);
+            scene.add(ambientLight);
+
+            // Subtle blue rim for visual polish (earthshine simulation)
+            const rimLight = new THREE.DirectionalLight(0x4466aa, 0.4);
+            rimLight.position.set(-5, 0, -5);
+            scene.add(rimLight);
+
+            // === STARS ===
+            const starGeometry = new THREE.BufferGeometry();
+            const starCount = 3000;
+            const positions = new Float32Array(starCount * 3);
+            const colors = new Float32Array(starCount * 3);
+
+            for (let i = 0; i < starCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 200;
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 200;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 200;
+
+                const color = new THREE.Color();
+                color.setHSL(0.6 + Math.random() * 0.2, 0.3, 0.7 + Math.random() * 0.3);
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+
+            starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const starMaterial = new THREE.PointsMaterial({
+                size: 0.15,
+                vertexColors: true,
+                sizeAttenuation: true
+            });
+            scene.add(new THREE.Points(starGeometry, starMaterial));
+
+            // === EARTH (textured globe in the distance) ===
+            createEarth();
+
+            // === CONTROLS ===
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.rotateSpeed = 0.4;
+            controls.minDistance = 3.2;
+            controls.maxDistance = 12;
+            controls.enablePan = false;
+            camera.position.set(0, 0.5, 5.5);
+
+            // Create nodes
+            NODE_DATABASE.forEach((data, index) => createNode(data, index));
+
+            // Update stats
+            document.getElementById('total-missions').textContent = NODE_DATABASE.filter(d => !d.isArk && d.agency !== 'FUTURE').length;
+            const nations = new Set(NODE_DATABASE.filter(d => !d.isArk && d.agency !== 'FUTURE').map(d => AGENCIES[d.agency].nation));
+            document.getElementById('total-nations').textContent = nations.size;
+
+            // Category tabs
+            document.querySelectorAll('.category-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentFilter = tab.dataset.filter;
+                    filterNodes();
+                });
+            });
+
+            // Initial filter
+            filterNodes();
+
+            // Focus on Ark initially
+            setTimeout(() => {
+                const arkNode = nodes.find(n => n.userData.isArk);
+                if (arkNode) {
+                    const arkNavItem = document.querySelector('.nav-item.ark-item');
+                    focusNode(arkNode, arkNavItem);
+                }
+            }, 2500);
+
+            // Create lunar feature labels (hidden by default)
+            createLunarLabels();
+
+            // Setup sun position from ephemeris + lunar phase badge
+            setupEphemeris();
+
+            // Setup phase inset mini-view
+            setupPhaseInset();
+
+            // Setup search
+            setupSearch();
+
+            // Setup raycasting events
+            setupRaycasting();
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function checkTexturesLoaded() {
+            texturesLoaded++;
+            if (texturesLoaded >= 2) {
+                setTimeout(() => {
+                    document.getElementById('loading').classList.add('hidden');
+                }, 800);
+            }
+        }
+
+        // ============================================================
+        // EARTH (textured globe in the distance)
+        // ============================================================
+        function createEarth() {
+            const earthGeom = new THREE.SphereGeometry(0.6, 32, 32);
+            const earthMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.8,
+                metalness: 0.0
+            });
+            earthMesh = new THREE.Mesh(earthGeom, earthMat);
+
+            // Load Earth texture
+            const earthLoader = new THREE.TextureLoader();
+            earthLoader.load('https://unpkg.com/three-globe@2.31.1/example/img/earth-blue-marble.jpg', (texture) => {
+                earthMat.map = texture;
+                earthMat.needsUpdate = true;
+            });
+
+            // Atmosphere glow
+            const glowGeom = new THREE.SphereGeometry(0.66, 32, 32);
+            const glowMat = new THREE.MeshBasicMaterial({
+                color: 0x4488ff,
+                transparent: true,
+                opacity: 0.08,
+                side: THREE.BackSide
+            });
+            const glow = new THREE.Mesh(glowGeom, glowMat);
+            earthMesh.add(glow);
+
+            // Position will be set by ephemeris
+            earthMesh.position.set(-30, 15, -20);
+            scene.add(earthMesh);
+        }
+
+        // ============================================================
+        // EPHEMERIS (Sun position + Lunar Phase)
+        // ============================================================
+        function setupEphemeris() {
+            // Calculate approximate lunar phase from current date
+            // Reference: Jan 29, 2025 was a New Moon
+            const REF_NEW_MOON = new Date(2025, 0, 29).getTime();
+            const SYNODIC_PERIOD = 29.530588853 * 24 * 60 * 60 * 1000; // ms
+            const now = Date.now();
+            const elapsed = now - REF_NEW_MOON;
+            lunarPhase = ((elapsed % SYNODIC_PERIOD + SYNODIC_PERIOD) % SYNODIC_PERIOD) / SYNODIC_PERIOD;
+
+            // Position sun based on lunar phase
+            // Phase 0 = new moon (sun behind moon from Earth view)
+            // Phase 0.5 = full moon (sun in front / behind Earth)
+            const sunAngle = lunarPhase * Math.PI * 2;
+            sunLight.position.set(
+                Math.cos(sunAngle) * 10,
+                2,
+                Math.sin(sunAngle) * 10
+            );
+
+            // Position Earth roughly opposite to sun (simplified)
+            // From the Moon, Earth is roughly in the direction opposite to the sun during full moon
+            const earthAngle = sunAngle + Math.PI;
+            earthMesh.position.set(
+                Math.cos(earthAngle) * 35,
+                12 + Math.sin(earthAngle * 0.3) * 5,
+                Math.sin(earthAngle) * 30
+            );
+
+            // Update phase badge UI
+            updatePhaseBadge();
+        }
+
+        function updatePhaseBadge() {
+            const phaseNames = [
+                { min: 0.0,  max: 0.03, name: 'New Moon',        icon: '\uD83C\uDF11' },
+                { min: 0.03, max: 0.22, name: 'Waxing Crescent', icon: '\uD83C\uDF12' },
+                { min: 0.22, max: 0.28, name: 'First Quarter',   icon: '\uD83C\uDF13' },
+                { min: 0.28, max: 0.47, name: 'Waxing Gibbous',  icon: '\uD83C\uDF14' },
+                { min: 0.47, max: 0.53, name: 'Full Moon',       icon: '\uD83C\uDF15' },
+                { min: 0.53, max: 0.72, name: 'Waning Gibbous',  icon: '\uD83C\uDF16' },
+                { min: 0.72, max: 0.78, name: 'Last Quarter',    icon: '\uD83C\uDF17' },
+                { min: 0.78, max: 0.97, name: 'Waning Crescent', icon: '\uD83C\uDF18' },
+                { min: 0.97, max: 1.0,  name: 'New Moon',        icon: '\uD83C\uDF11' }
+            ];
+
+            const phase = phaseNames.find(p => lunarPhase >= p.min && lunarPhase < p.max) || phaseNames[0];
+            document.getElementById('phase-icon').textContent = phase.icon;
+            document.getElementById('phase-name').textContent = `${phase.name} \u00b7 Day ${Math.round(lunarPhase * 29.5)}`;
+            const insetNameEl = document.getElementById('phase-inset-name');
+            if (insetNameEl) insetNameEl.textContent = phase.name;
+        }
+
+        // ============================================================
+        // PHASE INSET (Earth-view mini moon)
+        // ============================================================
+        function setupPhaseInset() {
+            const container = document.getElementById('phase-inset');
+            phaseInsetScene = new THREE.Scene();
+            phaseInsetCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+            phaseInsetCamera.position.set(0, 0, 3.5);
+
+            phaseInsetRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            phaseInsetRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            phaseInsetRenderer.setSize(100, 100);
+            phaseInsetRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+            phaseInsetRenderer.toneMappingExposure = 0.8;
+            container.appendChild(phaseInsetRenderer.domElement);
+
+            // Mini moon sphere
+            const geom = new THREE.SphereGeometry(1, 64, 64);
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.95,
+                metalness: 0.0
+            });
+            phaseInsetMoon = new THREE.Mesh(geom, mat);
+            phaseInsetScene.add(phaseInsetMoon);
+
+            // Reuse same textures
+            loader.load(TEXTURE_CONFIG.colorMap, (texture) => {
+                mat.map = texture;
+                mat.needsUpdate = true;
+            });
+            loader.load(TEXTURE_CONFIG.bumpMap, (texture) => {
+                mat.bumpMap = texture;
+                mat.bumpScale = 0.02;
+                mat.needsUpdate = true;
+            });
+
+            // Sun light matching the phase angle (from Earth's viewpoint)
+            const sunAngle = lunarPhase * Math.PI * 2;
+            const insetSun = new THREE.DirectionalLight(0xfff8e7, 1.8);
+            // From Earth, sun is at angle relative to the moon
+            insetSun.position.set(Math.sin(sunAngle) * 5, 1, Math.cos(sunAngle) * 5);
+            phaseInsetScene.add(insetSun);
+            phaseInsetScene.userData.insetSun = insetSun;
+
+            // Very dim ambient
+            const amb = new THREE.AmbientLight(0x303050, 0.05);
+            phaseInsetScene.add(amb);
+        }
+
+        function renderPhaseInset() {
+            if (!phaseInsetRenderer) return;
+            phaseInsetRenderer.render(phaseInsetScene, phaseInsetCamera);
+        }
+
+        // ============================================================
+        // NODE CREATION
+        // ============================================================
+        function createNode(data, index) {
+            const agencyInfo = AGENCIES[data.agency];
+            const phi = (90 - data.lat) * (Math.PI / 180);
+            const theta = (data.lon + 180) * (Math.PI / 180);
+            const r = data.isArk ? 2.03 : 2.01;
+
+            const pos = new THREE.Vector3(
+                -(r * Math.sin(phi) * Math.cos(theta)),
+                (r * Math.cos(phi)),
+                (r * Math.sin(phi) * Math.sin(theta))
+            );
+
+            const group = new THREE.Group();
+
+            // Main dot (larger for Ark)
+            const dotSize = data.isArk ? 0.035 : 0.018;
+            const dotGeometry = new THREE.SphereGeometry(dotSize, 16, 16);
+            const dotMaterial = new THREE.MeshBasicMaterial({
+                color: data.isArk ? 0x06b6d4 : agencyInfo.color
+            });
+            const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+            dot.position.copy(pos);
+
+            // Invisible larger hitbox for easier raycasting
+            const hitboxGeom = new THREE.SphereGeometry(0.06, 8, 8);
+            const hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
+            const hitbox = new THREE.Mesh(hitboxGeom, hitboxMat);
+            hitbox.position.copy(pos);
+            hitbox.userData.isHitbox = true;
+
+            // Glow ring
+            const ringGeometry = new THREE.RingGeometry(0.03, 0.05, 32);
+            const ringMaterial = new THREE.MeshBasicMaterial({
+                color: data.isArk ? 0x06b6d4 : agencyInfo.color,
+                transparent: true,
+                opacity: data.isArk ? 0.6 : 0,
+                side: THREE.DoubleSide
+            });
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+            ring.position.copy(pos);
+            ring.lookAt(0, 0, 0);
+
+            // Extra ring for Ark
+            if (data.isArk) {
+                const outerRingGeometry = new THREE.RingGeometry(0.06, 0.08, 32);
+                const outerRingMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x8b5cf6,
+                    transparent: true,
+                    opacity: 0.4,
+                    side: THREE.DoubleSide
+                });
+                const outerRing = new THREE.Mesh(outerRingGeometry, outerRingMaterial);
+                outerRing.position.copy(pos);
+                outerRing.lookAt(0, 0, 0);
+                group.add(outerRing);
+                group.userData.outerRing = outerRing;
+            }
+
+            group.add(dot, ring, hitbox);
+            group.userData = { ...data, pos, ring, dot, hitbox, agency: agencyInfo, index };
+            moon.add(group);
+            nodes.push(group);
+
+            // Sidebar nav item
+            const item = document.createElement('div');
+            item.className = `nav-item${data.isArk ? ' ark-item' : ''}`;
+            item.dataset.category = agencyInfo.category;
+            item.dataset.index = index;
+
+            const dotClass = data.isArk ? 'nav-dot ark-marker' : 'nav-dot';
+            const tagStyle = `background: ${agencyInfo.color}15; color: ${agencyInfo.color}; border: 1px solid ${agencyInfo.color}30;`;
+
+            item.innerHTML = `
+                <div class="${dotClass}" style="background: ${agencyInfo.color}; color: ${agencyInfo.color};"></div>
+                <div class="nav-content">
+                    <div class="tag" style="${tagStyle}">${agencyInfo.label}</div>
+                    <div class="mission-title">${data.title}</div>
+                    <div class="mission-meta">${data.year}${data.isArk ? ' \u00b7 Target Date' : ''} \u00b7 ${data.location}</div>
+                </div>
+            `;
+
+            item.onclick = () => focusNode(group, item);
+            document.getElementById('nav-list').appendChild(item);
+
+            // Mission dot label (HTML overlay on the globe)
+            const dotLabel = document.createElement('div');
+            dotLabel.className = `mission-dot-label${data.isArk ? ' ark-dot-label' : ''}`;
+            dotLabel.textContent = data.title;
+            dotLabel.style.opacity = '0';
+            dotLabel.style.display = 'none';
+            document.getElementById('mission-dot-labels-container').appendChild(dotLabel);
+            missionDotLabels.push({ el: dotLabel, pos, data, agencyInfo, nodeIndex: index });
+        }
+
+        // ============================================================
+        // RAYCASTING (3D Click + Hover)
+        // ============================================================
+        function setupRaycasting() {
+            const canvas = renderer.domElement;
+            const tooltip = document.getElementById('hover-tooltip');
+
+            canvas.addEventListener('mousemove', (e) => {
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+
+                // Gather all hitbox meshes
+                const hitboxes = [];
+                nodes.forEach(node => {
+                    if (node.visible) {
+                        const hb = node.userData.hitbox;
+                        if (hb) hitboxes.push(hb);
+                    }
+                });
+
+                const intersects = raycaster.intersectObjects(hitboxes, false);
+
+                if (intersects.length > 0) {
+                    const hitMesh = intersects[0].object;
+                    const parentGroup = hitMesh.parent;
+                    const data = parentGroup.userData;
+
+                    if (hoveredNode !== parentGroup) {
+                        hoveredNode = parentGroup;
+                        canvas.style.cursor = 'pointer';
+
+                        // Scale up the dot
+                        if (data.dot) {
+                            gsap.to(data.dot.scale, { x: 1.8, y: 1.8, z: 1.8, duration: 0.2 });
+                        }
+                    }
+
+                    // Update tooltip position & content
+                    const tooltipTitle = document.getElementById('tooltip-title');
+                    const tooltipMeta = document.getElementById('tooltip-meta');
+                    tooltipTitle.innerHTML = `<span class="hover-tooltip-dot" style="background:${data.agency.color}"></span>${data.title}`;
+                    tooltipMeta.textContent = `${data.year} \u00b7 ${data.location}`;
+                    tooltip.style.left = e.clientX + 'px';
+                    tooltip.style.top = e.clientY + 'px';
+                    tooltip.classList.add('visible');
+                } else {
+                    if (hoveredNode) {
+                        const data = hoveredNode.userData;
+                        if (data.dot) {
+                            gsap.to(data.dot.scale, { x: 1, y: 1, z: 1, duration: 0.2 });
+                        }
+                        hoveredNode = null;
+                    }
+                    canvas.style.cursor = 'grab';
+                    tooltip.classList.remove('visible');
+                }
+            });
+
+            canvas.addEventListener('click', (e) => {
+                if (!hoveredNode) return;
+
+                const data = hoveredNode.userData;
+                const navItem = document.querySelector(`.nav-item[data-index="${data.index}"]`);
+
+                // Make sure the node's category tab is active
+                const category = data.agency.category;
+                if (currentFilter !== 'all' && currentFilter !== category) {
+                    document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                    const allTab = document.querySelector('.category-tab[data-filter="all"]');
+                    if (allTab) {
+                        allTab.classList.add('active');
+                        currentFilter = 'all';
+                        filterNodes();
+                    }
+                }
+
+                focusNode(hoveredNode, navItem);
+
+                // Scroll sidebar to the item
+                if (navItem) {
+                    navItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+
+            // Hide tooltip when leaving canvas
+            canvas.addEventListener('mouseleave', () => {
+                tooltip.classList.remove('visible');
+                if (hoveredNode) {
+                    const data = hoveredNode.userData;
+                    if (data.dot) {
+                        gsap.to(data.dot.scale, { x: 1, y: 1, z: 1, duration: 0.2 });
+                    }
+                    hoveredNode = null;
+                }
+            });
+        }
+
+        // ============================================================
+        // SEARCH
+        // ============================================================
+        function setupSearch() {
+            const toggle = document.getElementById('search-toggle');
+            const container = document.getElementById('search-container');
+            const input = document.getElementById('search-input');
+            const results = document.getElementById('search-results');
+
+            toggle.addEventListener('click', () => {
+                container.classList.toggle('open');
+                if (container.classList.contains('open')) {
+                    input.focus();
+                } else {
+                    input.value = '';
+                    results.classList.remove('visible');
+                }
+            });
+
+            input.addEventListener('input', () => {
+                const query = input.value.trim().toLowerCase();
+                if (query.length < 1) {
+                    results.classList.remove('visible');
+                    return;
+                }
+
+                const matches = NODE_DATABASE.map((data, idx) => {
+                    const agencyInfo = AGENCIES[data.agency];
+                    const searchable = [
+                        data.title, data.location, data.desc,
+                        agencyInfo.label, agencyInfo.nation,
+                        data.crew || '', String(data.year),
+                        data.agency
+                    ].join(' ').toLowerCase();
+
+                    if (searchable.includes(query)) {
+                        return { data, idx, agencyInfo };
+                    }
+                    return null;
+                }).filter(Boolean);
+
+                if (matches.length === 0) {
+                    results.innerHTML = '<div class="search-no-results">No missions found</div>';
+                    results.classList.add('visible');
+                    return;
+                }
+
+                results.innerHTML = matches.map(m => `
+                    <div class="search-result-item" data-idx="${m.idx}">
+                        <div class="search-result-dot" style="background:${m.agencyInfo.color}; box-shadow: 0 0 8px ${m.agencyInfo.color}"></div>
+                        <div class="search-result-info">
+                            <div class="search-result-title">${m.data.title}</div>
+                            <div class="search-result-meta">${m.agencyInfo.label} \u00b7 ${m.data.year} \u00b7 ${m.data.location}</div>
+                        </div>
+                    </div>
+                `).join('');
+
+                results.querySelectorAll('.search-result-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const idx = parseInt(item.dataset.idx);
+                        const node = nodes[idx];
+                        const navItem = document.querySelector(`.nav-item[data-index="${idx}"]`);
+
+                        // Switch to All filter to ensure visibility
+                        document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                        const allTab = document.querySelector('.category-tab[data-filter="all"]');
+                        if (allTab) {
+                            allTab.classList.add('active');
+                            currentFilter = 'all';
+                            filterNodes();
+                        }
+
+                        focusNode(node, navItem);
+                        if (navItem) navItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                        // Close search
+                        container.classList.remove('open');
+                        input.value = '';
+                        results.classList.remove('visible');
+                    });
+                });
+
+                results.classList.add('visible');
+            });
+
+            // Close search on click outside
+            document.addEventListener('click', (e) => {
+                if (!container.contains(e.target)) {
+                    container.classList.remove('open');
+                    input.value = '';
+                    results.classList.remove('visible');
+                }
+            });
+
+            // Keyboard shortcut: Ctrl+K or / to open search
+            document.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey && e.key === 'k') || (e.key === '/' && document.activeElement.tagName !== 'INPUT')) {
+                    e.preventDefault();
+                    container.classList.add('open');
+                    input.focus();
+                }
+                if (e.key === 'Escape') {
+                    container.classList.remove('open');
+                    input.value = '';
+                    results.classList.remove('visible');
+                }
+            });
+        }
+
+        // ============================================================
+        // LUNAR FEATURE LABELS
+        // ============================================================
+        let activeFeaturePopup = null;
+
+        function createLunarLabels() {
+            const container = document.getElementById('lunar-labels-container');
+            LUNAR_FEATURES.forEach((feature, idx) => {
+                const el = document.createElement('div');
+                el.className = `lunar-label lunar-label-${feature.type}`;
+                el.textContent = feature.name;
+                el.style.opacity = '0';
+                el.style.display = 'none';
+
+                // Click to show info popup
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showFeaturePopup(feature, e.clientX, e.clientY);
+                });
+
+                container.appendChild(el);
+
+                const phi = (90 - feature.lat) * (Math.PI / 180);
+                const theta = (feature.lon + 180) * (Math.PI / 180);
+                const r = 2.08;
+                const pos = new THREE.Vector3(
+                    -(r * Math.sin(phi) * Math.cos(theta)),
+                    (r * Math.cos(phi)),
+                    (r * Math.sin(phi) * Math.sin(theta))
+                );
+
+                labelElements.push({ el, pos, feature });
+            });
+        }
+
+        function showFeaturePopup(feature, clickX, clickY) {
+            const popup = document.getElementById('feature-popup');
+            const typeEl = document.getElementById('fp-type');
+            const nameEl = document.getElementById('fp-name');
+            const descEl = document.getElementById('fp-desc');
+            const statsEl = document.getElementById('fp-stats');
+
+            // Set type badge
+            typeEl.textContent = feature.type === 'mare' ? 'LUNAR MARE' : 'IMPACT CRATER';
+            typeEl.className = `feature-popup-type ${feature.type}`;
+
+            // Set name & description
+            nameEl.textContent = feature.name;
+            descEl.textContent = feature.desc || 'No description available.';
+
+            // Build stats grid
+            let statsHTML = `
+                <div class="feature-popup-stat">
+                    <div class="feature-popup-stat-label">Coordinates</div>
+                    <div class="feature-popup-stat-value">${Math.abs(feature.lat).toFixed(1)}\u00b0${feature.lat >= 0 ? 'N' : 'S'}, ${Math.abs(feature.lon).toFixed(1)}\u00b0${feature.lon >= 0 ? 'E' : 'W'}</div>
+                </div>
+            `;
+
+            if (feature.diameter) {
+                statsHTML += `
+                    <div class="feature-popup-stat">
+                        <div class="feature-popup-stat-label">Diameter</div>
+                        <div class="feature-popup-stat-value">${feature.diameter}</div>
+                    </div>
+                `;
+            }
+
+            if (feature.depth) {
+                statsHTML += `
+                    <div class="feature-popup-stat">
+                        <div class="feature-popup-stat-label">Depth</div>
+                        <div class="feature-popup-stat-value">${feature.depth}</div>
+                    </div>
+                `;
+            }
+
+            if (feature.age) {
+                statsHTML += `
+                    <div class="feature-popup-stat">
+                        <div class="feature-popup-stat-label">Age</div>
+                        <div class="feature-popup-stat-value">${feature.age}</div>
+                    </div>
+                `;
+            }
+
+            if (feature.origin) {
+                statsHTML += `
+                    <div class="feature-popup-stat">
+                        <div class="feature-popup-stat-label">Origin</div>
+                        <div class="feature-popup-stat-value">${feature.origin}</div>
+                    </div>
+                `;
+            }
+
+            statsEl.innerHTML = statsHTML;
+
+            // Position popup near click, but keep on screen
+            let left = clickX + 16;
+            let top = clickY - 20;
+            if (left + 320 > window.innerWidth) left = clickX - 320;
+            if (top + 300 > window.innerHeight) top = window.innerHeight - 310;
+            if (top < 70) top = 70;
+
+            popup.style.left = left + 'px';
+            popup.style.top = top + 'px';
+            popup.classList.add('visible');
+            activeFeaturePopup = feature;
+        }
+
+        function closeFeaturePopup() {
+            document.getElementById('feature-popup').classList.remove('visible');
+            activeFeaturePopup = null;
+        }
+
+        // Close popup when clicking elsewhere
+        document.addEventListener('click', (e) => {
+            const popup = document.getElementById('feature-popup');
+            if (activeFeaturePopup && !popup.contains(e.target) && !e.target.classList.contains('lunar-label')) {
+                closeFeaturePopup();
+            }
+        });
+
+        function toggleLabels() {
+            labelsVisible = !labelsVisible;
+            document.getElementById('toggle-labels').classList.toggle('active', labelsVisible);
+            // Feature labels (mare/crater names)
+            labelElements.forEach(l => {
+                l.el.style.display = labelsVisible ? 'block' : 'none';
+            });
+            // Mission dot labels
+            missionDotLabels.forEach(l => {
+                l.el.style.display = labelsVisible ? 'block' : 'none';
+            });
+            if (!labelsVisible) closeFeaturePopup();
+        }
+
+        function updateLabelPositions() {
+            if (!labelsVisible) return;
+
+            const halfWidth = window.innerWidth / 2;
+            const halfHeight = window.innerHeight / 2;
+            const dist = camera.position.length();
+            const distFade = dist < 6 ? 1 : Math.max(0, 1 - (dist - 6) / 4);
+
+            // Feature labels (mare/craters)
+            labelElements.forEach(({ el, pos }) => {
+                const worldPos = pos.clone();
+                moon.localToWorld(worldPos);
+                const camDir = worldPos.clone().sub(camera.position).normalize();
+                const surfaceNormal = worldPos.clone().normalize();
+                const dot = camDir.dot(surfaceNormal);
+
+                if (dot > 0.15) { el.style.opacity = '0'; return; }
+
+                const projected = worldPos.clone().project(camera);
+                const x = (projected.x * halfWidth) + halfWidth;
+                const y = -(projected.y * halfHeight) + halfHeight;
+
+                if (x < -100 || x > window.innerWidth + 100 || y < -50 || y > window.innerHeight + 50) {
+                    el.style.opacity = '0'; return;
+                }
+
+                const fade = Math.min(1, Math.max(0, (-dot - 0.15) * 3));
+                el.style.transform = `translate(-50%, -50%)`;
+                el.style.left = x + 'px';
+                el.style.top = y + 'px';
+                el.style.opacity = (fade * distFade * 0.9).toFixed(2);
+            });
+
+            // Mission dot labels
+            missionDotLabels.forEach(({ el, pos, data, nodeIndex }) => {
+                // Check if node is visible (filter)
+                const nodeGroup = nodes[nodeIndex];
+                if (nodeGroup && !nodeGroup.visible) { el.style.opacity = '0'; return; }
+
+                const worldPos = pos.clone();
+                moon.localToWorld(worldPos);
+                const camDir = worldPos.clone().sub(camera.position).normalize();
+                const surfaceNormal = worldPos.clone().normalize();
+                const dot = camDir.dot(surfaceNormal);
+
+                if (dot > 0.1) { el.style.opacity = '0'; return; }
+
+                const projected = worldPos.clone().project(camera);
+                const x = (projected.x * halfWidth) + halfWidth;
+                const y = -(projected.y * halfHeight) + halfHeight;
+
+                if (x < -50 || x > window.innerWidth + 50 || y < -30 || y > window.innerHeight + 30) {
+                    el.style.opacity = '0'; return;
+                }
+
+                const fade = Math.min(1, Math.max(0, (-dot - 0.1) * 3));
+                el.style.transform = `translate(-50%, -130%)`;
+                el.style.left = x + 'px';
+                el.style.top = y + 'px';
+                el.style.opacity = (fade * distFade * 0.85).toFixed(2);
+            });
+        }
+
+
+        // ============================================================
+        // FILTERING
+        // ============================================================
+        function filterNodes() {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                const category = item.dataset.category;
+                const show = currentFilter === 'all' || category === currentFilter;
+                item.style.display = show ? 'flex' : 'none';
+            });
+
+            nodes.forEach(node => {
+                const category = node.userData.agency.category;
+                node.visible = currentFilter === 'all' || category === currentFilter;
+            });
+        }
+
+        // ============================================================
+        // FOCUS & DETAIL
+        // ============================================================
+        function focusNode(node, navItem) {
+            const data = node.userData;
+
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            if (navItem) navItem.classList.add('active');
+
+            if (activeNode && activeNode !== node) {
+                activeNode.userData.ring.material.opacity = activeNode.userData.isArk ? 0.6 : 0;
+            }
+            activeNode = node;
+
+            // Camera animation — convert node local pos to world space
+            const worldPos = data.pos.clone();
+            moon.localToWorld(worldPos);
+            const targetPos = worldPos.clone().normalize().multiplyScalar(5);
+
+            // Also animate the orbit controls target to center on the node
+            const targetCenter = worldPos.clone().normalize().multiplyScalar(0.1);
+            gsap.to(controls.target, {
+                x: targetCenter.x,
+                y: targetCenter.y,
+                z: targetCenter.z,
+                duration: 1.8,
+                ease: "power2.inOut"
+            });
+            gsap.to(camera.position, {
+                x: targetPos.x,
+                y: targetPos.y,
+                z: targetPos.z,
+                duration: 1.8,
+                ease: "power2.inOut"
+            });
+
+            // Populate detail panel
+            document.getElementById('right-sidebar').style.display = 'flex';
+            document.getElementById('d-img').src = data.img;
+            document.getElementById('d-title').innerText = data.title;
+
+            const agencyEl = document.getElementById('d-agency');
+            agencyEl.innerText = data.agency.label;
+            agencyEl.style.background = data.agency.color + '15';
+            agencyEl.style.color = data.agency.color;
+            agencyEl.style.border = '1px solid ' + data.agency.color + '30';
+
+            document.getElementById('d-desc').innerText = data.desc;
+
+            let metaHTML = `
+                <div class="meta-item">
+                    <div class="meta-label">${data.isArk ? 'Target Date' : 'Date'}</div>
+                    <div class="meta-value">${data.date}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="meta-label">Location</div>
+                    <div class="meta-value">${data.location}</div>
+                </div>
+                <div class="meta-item">
+                    <div class="meta-label">Coordinates</div>
+                    <div class="meta-value">${Math.abs(data.lat).toFixed(2)}\u00b0${data.lat >= 0 ? 'N' : 'S'}, ${Math.abs(data.lon).toFixed(2)}\u00b0${data.lon >= 0 ? 'E' : 'W'}</div>
+                </div>
+            `;
+
+            if (data.isArk) {
+                metaHTML += `
+                    <div class="meta-item">
+                        <div class="meta-label">Capacity</div>
+                        <div class="meta-value">${data.specs}</div>
+                    </div>
+                    <div class="meta-item" style="grid-column: span 2; background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.1)); border-color: rgba(6, 182, 212, 0.2);">
+                        <div class="meta-label" style="color: var(--accent-cyan);">Status</div>
+                        <div class="meta-value" style="color: var(--accent-cyan);">${data.status}</div>
+                    </div>
+                `;
+            } else if (data.status) {
+                metaHTML += `
+                    <div class="meta-item">
+                        <div class="meta-label">Status</div>
+                        <div class="meta-value">${data.status}</div>
+                    </div>
+                `;
+            } else {
+                if (data.surfaceTime) {
+                    metaHTML += `
+                        <div class="meta-item">
+                            <div class="meta-label">Surface Time</div>
+                            <div class="meta-value">${data.surfaceTime}</div>
+                        </div>
+                    `;
+                }
+                if (data.samples) {
+                    metaHTML += `
+                        <div class="meta-item">
+                            <div class="meta-label">Samples</div>
+                            <div class="meta-value">${data.samples}</div>
+                        </div>
+                    `;
+                }
+                if (data.crew) {
+                    metaHTML += `
+                        <div class="meta-item" style="grid-column: span 2;">
+                            <div class="meta-label">Crew</div>
+                            <div class="meta-value">${data.crew}</div>
+                        </div>
+                    `;
+                }
+            }
+
+            document.getElementById('d-meta').innerHTML = metaHTML;
+        }
+
+        function closeDetail() {
+            document.getElementById('right-sidebar').style.display = 'none';
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            if (activeNode && !activeNode.userData.isArk) {
+                activeNode.userData.ring.material.opacity = 0;
+            }
+            activeNode = null;
+            // Reset orbit target back to origin
+            gsap.to(controls.target, { x: 0, y: 0, z: 0, duration: 1, ease: "power2.out" });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ============================================================
+        // ANIMATION LOOP
+        // ============================================================
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Pulse effect for active node
+            if (activeNode) {
+                const ring = activeNode.userData.ring;
+                ring.scale.multiplyScalar(1.012);
+                ring.material.opacity -= 0.012;
+                if (ring.material.opacity <= 0) {
+                    ring.scale.set(1, 1, 1);
+                    ring.material.opacity = 0.6;
+                }
+            }
+
+            // Always pulse Ark marker
+            const arkNode = nodes.find(n => n.userData.isArk);
+            if (arkNode && arkNode !== activeNode) {
+                const ring = arkNode.userData.ring;
+                ring.scale.multiplyScalar(1.008);
+                ring.material.opacity -= 0.008;
+                if (ring.material.opacity <= 0) {
+                    ring.scale.set(1, 1, 1);
+                    ring.material.opacity = 0.5;
+                }
+            }
+
+            // Slow rotation
+            moon.rotation.y += 0.0001;
+
+            // Earth: slow rotation + gentle bob
+            if (earthMesh) {
+                earthMesh.rotation.y += 0.001;
+                const baseY = earthMesh.position.y;
+                earthMesh.position.y += Math.sin(Date.now() * 0.0003) * 0.005;
+            }
+
+            // Update label positions
+            updateLabelPositions();
+
+            renderer.render(scene, camera);
+            renderPhaseInset();
+        }
+
+        // Shimmer effect for sidebar
+        document.addEventListener('mousemove', (e) => {
+            document.querySelectorAll('.sidebar').forEach(sidebar => {
+                const rect = sidebar.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                sidebar.style.setProperty('--mouse-x', `${x}px`);
+                sidebar.style.setProperty('--mouse-y', `${y}px`);
+            });
+        });
+
+        // Initialize
+        init();
+    </script>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+  <!-- FOOTER -->
+  <!-- ═══════════════════════════════════════════════════════════════════════════════ -->
+  <footer style="border-top:1px solid rgba(255,255,255,0.05); background:rgba(0,0,0,0.6); padding:3rem 1.5rem; backdrop-filter:blur(12px); position:relative; z-index:50;">
+    <div style="max-width:72rem; margin:0 auto;">
+      <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:1.5rem; margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <svg style="width:1.25rem; height:1.25rem; color:#9ca3af;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+          <span style="color:#9ca3af; font-family:'Orbitron', sans-serif; letter-spacing:0.2em;">LUNAR ARK</span>
+        </div>
+        <nav style="display:flex; flex-wrap:wrap; justify-content:center; gap:1.25rem; font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:0.15em;">
+          <a href="index.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">CODEX</a>
+          <a href="sanctuary.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">SANCTUARY</a>
+          <a href="research.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">RESEARCH</a>
+          <a href="simulation.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">SIMULATION</a>
+          <a href="intel.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">INTEL</a>
+          <a href="about.html" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">ABOUT</a>
+          <a href="status.html" style="color:#6b7280; text-decoration:none;">STATUS</a>
+        </nav>
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,0.05); padding-top:1.5rem; display:flex; flex-wrap:wrap; justify-content:space-between; gap:1rem; font-family:'JetBrains Mono', monospace; font-size:11px; color:#6b7280;">
+        <div>An open codex of a future lunar settlement · Volume I · 2026<br><span style="color:#4b5563;">Chetan Hansraj · Mumbai · India</span></div>
+        <div style="text-align:right;"><a href="mailto:contribute@lunarark.com" style="color:#6b7280; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#6b7280'">contribute@lunarark.com</a><br><a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener" style="color:#4b5563; text-decoration:none;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#4b5563'">CC-BY-SA 4.0</a></div>
+      </div>
+      <div style="text-align:center; color:#4b5563; font-size:10px; font-family:'JetBrains Mono', monospace; margin-top:1.25rem; font-style:italic;">Independent open project · not affiliated with any space agency</div>
+    </div>
+  </footer>
+</body>
+</html>
