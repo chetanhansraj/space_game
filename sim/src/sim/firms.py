@@ -40,6 +40,7 @@ class Role(str, Enum):
     REFINER = "refiner"       # buys feedstock, sells a processed good
     CONSUMER = "consumer"     # buys and consumes; the settlement's demand
     TRADER = "trader"         # quotes both sides, lives on the spread
+    HAULER = "hauler"         # owns a ship, moves goods between nodes
 
 
 #: docs/seed-data.md volatility column, given two mechanical meanings, because
@@ -50,15 +51,30 @@ class Role(str, Enum):
 #: off target -- the shock-sensitivity half.
 #:
 #: REVERSION is how strongly the going rate is pulled back toward the seed
-#: anchor -- the mean-reversion half. It runs *inverse* to volatility: a stable
-#: commodity is dragged back to its anchor hard, a volatile one is free to roam.
+#: anchor -- the mean-reversion half, and the leash that keeps a market from
+#: running away.
 #:
-#: Reversion is not optional decoration. Without it the reference price is
-#: purely the last trade, so a market where most firms are short ratchets
-#: upward without limit: each deficit buyer bids above the last print, that
-#: print becomes the next reference, and the loop has no ceiling. The first
-#: run of this world put water ice at 1,670 credits against a 400 anchor
-#: before this existed.
+#: **These two are not independent, and the relationship is not a matter of
+#: taste.** A short buyer bids ``ref x (1 + e)``; that print becomes the next
+#: reference, pulled back toward the anchor by ``r``. Iterating,
+#:
+#:     ref' = ref x (1 + e) x (1 - r) + anchor x r
+#:
+#: which converges only when ``(1 + e)(1 - r) < 1``, that is:
+#:
+#:     r > e / (1 + e)
+#:
+#: Below that threshold there is no equilibrium price at all -- the market
+#: diverges, and it does so quietly. Propellant at Peary Ridge climbed to
+#: 18,018 against an 1,800 anchor and then stopped trading entirely, because
+#: nobody could afford a bid; the frozen price was the last trade before the
+#: market died. Its elasticity of 0.35 needed reversion above 0.259 and had
+#: 0.12. Helium-3 needed 0.333 and had 0.06.
+#:
+#: So reversion rises with elasticity rather than falling with it. Volatility
+#: still shows up as bigger per-trade swings -- that is what elasticity does
+#: -- but a market that swings harder needs a shorter leash, not a longer one.
+#: ``test_pricing.py`` asserts the condition for every class.
 ELASTICITY = {
     "low": 0.10,
     "medium": 0.20,
@@ -66,12 +82,18 @@ ELASTICITY = {
     "very high": 0.50,
 }
 
+#: e/(1+e) plus a margin of 0.10, so no class sits on the boundary.
 REVERSION = {
-    "low": 0.30,
-    "medium": 0.20,
-    "high": 0.12,
-    "very high": 0.06,
+    "low": 0.19,
+    "medium": 0.27,
+    "high": 0.36,
+    "very high": 0.43,
 }
+
+
+def is_stable(elasticity: float, reversion: float) -> bool:
+    """Does this pairing converge to a price, or run away?"""
+    return (1.0 + elasticity) * (1.0 - reversion) < 1.0
 
 
 @dataclass

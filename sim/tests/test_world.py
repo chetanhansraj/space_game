@@ -20,9 +20,20 @@ MEDIUM = 120
 CHAIN = 90
 
 
-def test_the_v1_roster_matches_the_bible(world):
-    """"fifty bulk agents and five named ones." The named five are voice/."""
-    assert len(world.firms) == 50
+def test_the_roster_is_fifty_bulk_agents_plus_the_freight(world):
+    """"fifty bulk agents and five named ones" is the bible's v1.
+
+    The named five speak rather than trade, so they are voice/'s concern.
+    The six haulers are the v2 addition -- the ships that turn two prices
+    into a trade -- and are counted separately so the bulk population stays
+    the number the design documents actually specify.
+    """
+    from sim.firms import Role
+
+    bulk = [f for f in world.firms if f.role is not Role.HAULER]
+    haulers = [f for f in world.firms if f.role is Role.HAULER]
+    assert len(bulk) == 50
+    assert len(haulers) == len(world.ships) == 6
     assert set(world.books) == {SHACKLETON, PEARY, TRANQUILLITATIS}
 
 

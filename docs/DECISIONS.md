@@ -761,6 +761,94 @@ between ticks rather than discarded.
 
 ---
 
+## Ships and freight
+
+### D41 — Kestrel dry mass 30 t, tank 40 t
+*`seed-data.md` gave the hold, crew and upkeep, and nothing else.*
+
+Chosen so the tradeoff bites at the right place. A fully loaded Kestrel has
+181 km/s of delta-v and an empty one 339, which means a favourable 30-day Mars
+crossing at 182 km/s is *just* reachable and costs 40 t of propellant to carry
+39.8 t of cargo — the ship is at its limit and knows it. The same run at 120
+days costs 6.5 t and carries a full hold.
+
+Nothing enforces the bible's "no strictly best ship, only ships suited to
+particular routes". It is the rocket equation: a tonne of propellant is a
+tonne that is not cargo, so range and payload are one quantity spent two ways.
+
+### D42 — Fuel is a stock the ship carries, not a purchase at departure
+
+This looked like an implementation detail and is a design decision. Peary
+Ridge produces no propellant, so under a buy-at-departure model every hauler
+based there was permanently stranded: it could never buy the fuel it needed
+to reach the only place selling fuel. Ships now fill up where they can and
+spend the tank where they must.
+
+The same mistake in another form: propellant was excluded from haulable cargo,
+on the reasoning that a ship hauling fuel to fund a trip to buy fuel is a loop
+with no cargo in it. Wrong — freight to a place that cannot make its own fuel
+is most of what freight is *for*. Propellant now flows Shackleton to Peary and
+ice flows back, which is a two-way route nobody designed.
+
+---
+
+## Simulation findings, third run: freight
+
+### F6 — Price formation has a stability condition, and I had it backwards
+
+The most consequential thing found so far.
+
+A short buyer bids `ref × (1 + e)`. That print becomes the next reference,
+pulled back toward the seed anchor by `r`. Iterating:
+
+    ref' = ref × (1 + e) × (1 - r) + anchor × r
+
+which converges **only when `(1 + e)(1 - r) < 1`**, that is:
+
+    r > e / (1 + e)
+
+Below that threshold there is no equilibrium price at all. The market does not
+oscillate or overshoot — it walks away and never comes back.
+
+The original reversion values were chosen on the intuition that a volatile
+commodity should be "free to roam", so reversion ran *inverse* to elasticity.
+That is exactly wrong. Propellant, at elasticity 0.35, needed reversion above
+0.259 and had 0.12. Helium-3 needed 0.333 and had 0.06. Both were divergent by
+construction.
+
+**How it presented**: propellant at Peary Ridge reached 18,018 credits against
+an 1,800 anchor and then froze at precisely that number for three hundred
+ticks. The frozen price was the last trade before the market died — nothing
+could afford a bid, so nothing traded, so the price never moved again. Every
+other indicator looked healthy: conservation held, no firm was insolvent, the
+other books were fine.
+
+Reversion now rises with elasticity, sits a clear 0.10 above the threshold for
+every class, and `test_pricing.py` asserts the condition rather than the
+values. Volatility still produces bigger per-trade swings — that is what
+elasticity does — but a market that swings harder needs a shorter leash.
+
+### F7 — Freight closes the gap it feeds on, and stops
+
+The prediction was that arbitrage would narrow the ice spread toward the cost
+of the run without collapsing it. Measured over 600 ticks:
+
+| | Shackleton | Peary | gap |
+|---|---|---|---|
+| No ships | 657 | 333 | **1.97×** |
+| Six Kestrels | ~430 | ~348 | **1.23×** |
+
+Which is the merchant profession working exactly as the bible describes it,
+and it settles rather than running to parity — freight is not free, so a gap
+survives. `test_haulage.py` asserts both halves: the gap must narrow, and it
+must stay above 1.02.
+
+Propellant at Peary holds a standing premium of roughly 3× the anchor, because
+it is a node that cannot make its own fuel. That is not a defect. It is what
+pays for the freight.
+
+---
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -772,10 +860,7 @@ Deliberately not decided, because these are yours.
    screenshots, so its hex values are eyeballed. Replacing them with the
    actual stylesheet is a five-minute job once the site is reachable — the
    structure holds either way. `moon_sim.html` has still not been seen.
-3. **Ship stats beyond the drive.** *Kestrel* has cargo capacity and upkeep;
-   it needs dry mass, tank capacity and hull rating before D2's propellant
-   fractions become playable numbers.
-4. **"Heavy hulls only"** for hard burns — undefined threshold.
+3. **"Heavy hulls only"** for hard burns — undefined threshold.
 5. **Starting cash against first-outpost cost** — 120,000 cr against
    2,565,000 cr, and see D14 on runway. `seed-data.md` already flags this.
 6. **Depletion curve shape, Ark Authority spread, agent counts, shock

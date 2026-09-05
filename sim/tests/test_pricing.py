@@ -46,8 +46,44 @@ def test_volatile_goods_move_further():
     assert wild > calm
 
 
-def test_reversion_runs_inverse_to_volatility():
-    """A stable good is dragged back to its anchor hard; a volatile one roams."""
-    assert REVERSION["low"] > REVERSION["medium"] > REVERSION["high"] \
-        > REVERSION["very high"]
+def test_reversion_rises_with_volatility():
+    """A market that swings harder needs a shorter leash, not a longer one.
+
+    This asserted the opposite until propellant proved otherwise. The
+    intuition that a volatile commodity should be "free to roam" is right
+    about the *swings*, which elasticity produces -- but reversion is what
+    keeps those swings around a price instead of walking away from one, and
+    the bigger the swing the stronger it has to be. See the convergence
+    condition below.
+    """
+    assert REVERSION["low"] < REVERSION["medium"] < REVERSION["high"] \
+        < REVERSION["very high"]
     assert set(REVERSION) == set(ELASTICITY)
+
+
+def test_every_volatility_class_converges_to_a_price():
+    """The condition that keeps a market from running away.
+
+    A short buyer bids ref x (1+e); that print becomes the next reference,
+    pulled back toward the anchor by r. The iteration converges only when
+    (1+e)(1-r) < 1, that is r > e/(1+e).
+
+    Below the threshold there is no equilibrium at all, and the failure is
+    silent until the market dies: propellant at Peary Ridge reached 18,018
+    against an 1,800 anchor and then stopped trading entirely, because
+    nothing could afford a bid. Its elasticity of 0.35 wanted reversion above
+    0.259 and had 0.12.
+    """
+    from sim.firms import is_stable
+
+    for name, e in ELASTICITY.items():
+        r = REVERSION[name]
+        assert r > e / (1 + e), f"{name}: reversion {r} <= threshold {e/(1+e):.3f}"
+        assert is_stable(e, r)
+
+
+def test_the_stability_check_rejects_a_divergent_pairing():
+    from sim.firms import is_stable
+
+    assert not is_stable(0.35, 0.12)   # the pairing that killed Peary
+    assert not is_stable(0.50, 0.06)

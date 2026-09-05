@@ -15,15 +15,21 @@ Every number is either from seed-data or recorded in docs/DECISIONS.md.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from market.authority import ArkAuthority
 from market.book import OrderBook
 from market.db import transaction
 from market.ledger import Ledger
 from market.seed import seed_assets
+from orbital.anchors import AnchorRegistry
+from orbital.ephemeris import get_backend
 
 from .deposits import Deposit
 from .earth import EarthMarket
 from .firms import Firm, Role
+from .routes import RouteBook
+from .ships import KESTREL, Ship
 from .world import World
 
 TONNE = 1_000
@@ -186,12 +192,46 @@ def build(db, seed: int = 20260904, game_time: str = "2190-01-01T00:00:00Z"
                            targets={"HE3": 12}, upkeep_per_day=4_000))
         capital[fid] = 8_000_000
 
+    # -- haulers: the v2 addition ---------------------------------------
+    #
+    # The bible's v1 is fifty bulk agents and no ships. These six are what
+    # turns two prices into a trade: "the moment there are two places with
+    # different prices, the game becomes trade, and that is the real
+    # product." Two based at each node so no single depot owns the traffic.
+    ships: list[Ship] = []
+    for node, n in ((SHACKLETON, 2), (PEARY, 2), (TRANQUILLITATIS, 2)):
+        for i in range(n):
+            fid = f"hauler_{node.split('_')[0]}_{i}"
+            firms.append(_firm(fid, Role.HAULER, node,
+                               upkeep_per_day=KESTREL.upkeep_per_day))
+            capital[fid] = 900_000
+            ships.append(Ship(id=f"{fid}_kestrel", owner=fid,
+                              account=f"agent:{fid}", ship_class=KESTREL,
+                              location=node))
+
     # -- open and fund every account ------------------------------------
     with transaction(db):
         for firm in firms:
             ledger.open_account(firm.account, "agent", game_time, label=firm.id)
             ledger.mint(firm.account, capital[firm.id], game_time,
                         memo=f"{firm.id} opening capital")
+
+        # Ships arrive in the world fuelled. A hauler that has to buy its
+        # first tank before it can reach anywhere selling fuel never moves.
+        for ship in ships:
+            ledger.extract(ship.account, "PROP", ship.ship_class.tank_capacity_kg,
+                           game_time, memo=f"{ship.id} opening tank")
+
+        # Settlements open with stores of what they burn. Without this, a
+        # node with no local supply spends its first game day bidding into an
+        # empty book, and the ratchet that produces sets a price the market
+        # then anchors to: Peary propellant reached 17,874 against an 1,800
+        # anchor before the first delivery ever arrived.
+        for firm in firms:
+            if firm.role is Role.CONSUMER and firm.consumes:
+                ledger.extract(firm.account, firm.consumes,
+                               firm.targets.get(firm.consumes, 0), game_time,
+                               memo=f"{firm.id} opening stores")
 
         for node in NODES:
             authorities[node].establish(game_time, treasury=40_000_000)
@@ -216,6 +256,12 @@ def build(db, seed: int = 20260904, game_time: str = "2190-01-01T00:00:00Z"
     world = World(
         ledger=ledger, books=books, authorities=authorities, earth=earth,
         firms=firms, deposits=deposits, seed=seed,
+        ships=ships,
+        routes=RouteBook(AnchorRegistry.load(
+            get_backend("auto"),
+            Path(__file__).resolve().parents[3] / "orbital/data/anchors.toml",
+            Path(__file__).resolve().parents[3] / "orbital/data/smallbody_elements.json",
+        )),
         volatility=VOLATILITY,
         earth_assets={TRANQUILLITATIS: "HE3"},
         quoted_assets={

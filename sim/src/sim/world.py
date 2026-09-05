@@ -32,8 +32,10 @@ from .deposits import Deposit
 from .earth import EarthMarket
 from .estate import Receiver
 from .firms import ELASTICITY, REVERSION, Firm, FirmBehaviour, Role
+from .haulage import Haulier
 from .rng import Streams
 from .shocks import REPAIR_COST, Event, Weather
+from .ships import Ship, ShipState
 
 #: How often institutions replace their standing quotes, in ticks.
 QUOTE_REFRESH_TICKS = 6
@@ -55,6 +57,9 @@ class World:
     quoted_assets: dict[str, list[str]] = field(default_factory=dict)
     starting_capital: dict[str, int] = field(default_factory=dict)
 
+    ships: list[Ship] = field(default_factory=list)
+    routes: object | None = None
+
     tick: int = 0
     events: list[Event] = field(default_factory=list)
     _spinoff_count: int = 0
@@ -65,6 +70,7 @@ class World:
         self.receiver = Receiver(self.ledger, self.books)
         self.behaviour = FirmBehaviour(self.ledger, self.books,
                                        TICKS_PER_GAME_DAY)
+        self.haulier = Haulier(self)
 
     # -- time ----------------------------------------------------------
 
@@ -92,6 +98,11 @@ class World:
         produced += self.weather.roll(self.tick,
                                       [f.id for f in self.active_firms()])
 
+        # Arrivals first: a ship that docks this hour puts its cargo on the
+        # book before anyone quotes against it, which is what lets an
+        # incoming shipment actually move the local price.
+        produced += self._land_arrivals(now)
+
         for firm in self.active_firms():
             self._produce(firm, now)
         for firm in self.active_firms():
@@ -105,6 +116,10 @@ class World:
 
         if self.tick % QUOTE_REFRESH_TICKS == 0:
             self._refresh_institutions(now)
+
+        # Dispatch last, so a hauler decides against a book that already has
+        # this hour's production and quotes in it rather than yesterday's.
+        produced += self._dispatch_idle(now)
 
         produced += self._wind_up_failures(now)
         produced += self._spin_off_successes(now)
@@ -333,6 +348,55 @@ class World:
                     pass
         for node, asset in self.earth_assets.items():
             self.earth.refresh(node, asset, now)
+
+    # -- ships -------------------------------------------------------------
+
+    #: What haulers are willing to carry, propellant included.
+    #:
+    #: It was excluded at first, on the reasoning that a ship hauling fuel to
+    #: fund a trip to buy fuel is a loop with no cargo in it. That was wrong,
+    #: and it broke the network: Peary Ridge produces no propellant, so with
+    #: nobody willing to carry any there, every hauler based at Peary sat
+    #: permanently dry. Freight to a place that cannot make its own fuel is
+    #: not a degenerate case -- it is most of what freight is for.
+    HAULED = ("ICE", "PROP", "REGOLITH", "HE3", "IRON", "VOLATILE", "GOODS", "FOOD")
+
+    def _land_arrivals(self, now: str) -> list[Event]:
+        events: list[Event] = []
+        for ship in self.ships:
+            if ship.state is not ShipState.IN_TRANSIT:
+                continue
+            if self.tick < (ship.arrive_tick or 0):
+                continue
+            node = ship.destination
+            realised = self.haulier.arrive(ship, self.tick, now)
+            events.append(Event(
+                tick=self.tick, kind="arrival", subject=ship.id,
+                detail=f"docked at {node}, realised {realised:,} cr",
+            ))
+        return events
+
+    def _dispatch_idle(self, now: str) -> list[Event]:
+        events: list[Event] = []
+        for ship in self.ships:
+            if ship.state is not ShipState.DOCKED:
+                continue
+            self.haulier.unload(ship, now)
+            self.haulier.refuel(ship, now)
+            plan = self.haulier.survey(ship, self.HAULED)
+            if plan is None:
+                continue
+            if self.haulier.dispatch(ship, plan, self.tick, now):
+                events.append(Event(
+                    tick=self.tick, kind="departure", subject=ship.id,
+                    detail=(f"{plan.cargo_kg//1000} t {plan.asset} "
+                            f"{ship.location} to {plan.destination}, "
+                            f"margin {plan.margin:,} cr"),
+                ))
+        return events
+
+    def ships_in_transit(self) -> list[Ship]:
+        return [s for s in self.ships if s.state is ShipState.IN_TRANSIT]
 
     # -- failure and renewal ---------------------------------------------
 
