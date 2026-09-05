@@ -11,6 +11,11 @@ Real orbital mechanics, deterministic economy, one shared clock at 60× real tim
 | `CLAUDE.md` | Engineering invariants and working rules. Read before writing code. |
 | `docs/BIBLE.md` | Design reasoning — the world, markets, agents, player arc. Why things are the way they are. |
 | `docs/seed-data.md` | Locations, commodities, modules. The numbers everything descends from. |
+| `docs/DECISIONS.md` | Every call made on what the above left ambiguous, contradictory or unset. |
+| `docs/DESIGN-LANGUAGE.md` | The lunarark.com visual system, as tokens. What `web/` gets built against. |
+| `orbital/README.md` | The transfer service: accuracy, how to build a table, how to run it. |
+| `market/README.md` | The ledger and order books: why conservation is structural. |
+| `sim/README.md` | The world tick: price formation, the macro loop, the v1 roster. |
 
 ## Layout
 
@@ -25,14 +30,84 @@ web/       Client. Rendering only.
 
 ## Running locally
 
+Python 3.11 or 3.12. **Not 3.13+ yet** — `lamberthub` needs `numba`, which
+lags new Python releases. The `market/` package has no such constraint.
+
+macOS and Linux:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e './orbital[offline,serve,dev]' -e './market[dev]'
+.venv/bin/python -m pytest -q                        # 188 tests
 ```
-# TODO: fill in as services land
+
+Windows, **Git Bash** — forward slashes, but the Windows `Scripts` folder.
+Backslashes are escape characters in bash and will silently mangle the path:
+
+```bash
+python -m venv .venv
+.venv/Scripts/python -m pip install -e "./orbital[offline,serve,dev]" -e "./market[dev]"
+.venv/Scripts/python -m pytest -q
+```
+
+Windows, **PowerShell**:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install -e ".\orbital[offline,serve,dev]" -e ".\market[dev]"
+.venv\Scripts\python -m pytest -q
+```
+
+Then, to generate and serve a transfer table (paths below are the Unix form):
+
+```bash
+.venv/bin/python orbital/scripts/fetch_sbdb.py       # refresh asteroid elements
+.venv/bin/python orbital/scripts/build_table.py      # generate transfer table
+ORBITAL_TABLE=orbital/data/transfers.sqlite .venv/bin/uvicorn orbital.api.app:app
 ```
 
 Ephemeris kernels (JPL DE440) are fetched at build time into `orbital/kernels/` and are not committed — they are large and reproducible.
 
+## See it working
+
+Nothing is playable yet — `sim/` and `web/` are empty. Two demo scripts show
+the finished pieces actually running:
+
+```bash
+.venv/bin/python scripts/demo_market.py --ticks 40   # a live spot market
+.venv/bin/python scripts/demo_routes.py              # transfer costs and windows
+```
+
+On Windows substitute `.venv/Scripts/python` (Git Bash) or
+`.venv\Scripts\python` (PowerShell). `demo_market.py` needs only the
+`market` package, so it runs even if the orbital install failed.
+
+`demo_market.py` runs miners, refineries and haulers against the real ledger
+and order books at Shackleton Depot, printing the book, the tape and a
+conservation check every few ticks. `demo_routes.py` prints the delta-v
+against transit-time curve for a route, and a bar chart of how the
+minimum-energy cost moves across a synodic cycle.
+
+Both are demo harnesses, not `sim/`. The agents are deliberately stupid.
+
 ## Status
 
-Pre-v1. Building the orbital service first; everything else depends on its output.
+Pre-v1. The orbital service is built and returns validated numbers: it
+reproduces the launch energies of four real NASA Mars missions to between
+0.0% and 5.6%, and two independent ephemerides agree to 15 arcseconds against
+an arcminute target.
+
+`market/` is built: an append-only double-entry ledger where conservation is
+structural rather than tested, escrowed limit order books with price-time
+priority, and the Ark Authority quoting a floor and ceiling from a finite
+treasury. A Hypothesis state machine checks after every step of every
+generated trade sequence that nothing was created or destroyed.
+
+`sim/` is built: the world tick, 50 bulk agents across three lunar nodes,
+exponential depletion, solar flares and rig failures, and price formation from
+inventory pressure. Shackleton ice settles near 650 and Peary ice near 333 —
+two prices for one good, which is what v1 exists to produce.
+
+`api/`, `voice/` and `web/` are empty.
 
 Roadmap is in `docs/BIBLE.md` §10. Short version: one lunar node and one market, then ships, then the Belt, then Mars industry, then the political layer.

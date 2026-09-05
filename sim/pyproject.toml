@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sim"
+version = "0.1.0"
+description = "The world tick: agents, production, depletion, price formation, shocks."
+requires-python = ">=3.11"
+
+# sim needs `market`, but that dependency is deliberately NOT declared here.
+#
+# There is an unrelated package called `market` on PyPI. Declaring a bare
+# `market` requirement means a clean `pip install -e ./sim` resolves it from
+# the index and installs a stranger's code:
+#
+#     Collecting market (from sim==0.1.0)
+#     Using cached market-0.0-py3-none-any.whl
+#     Would install market-0.0 sim-0.1.0
+#
+# That is dependency confusion, and it was verified rather than theorised.
+# CI only avoided it by installing the local editable `market` first, which
+# happened to satisfy the requirement -- luck of ordering, not a guarantee.
+#
+# None of these packages are published, so there is no version of this name
+# that is safe to request from an index. They are always installed together
+# from paths, and the README and CI workflow do exactly that. Re-add a
+# dependency here only if these are ever published under a namespace we own.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "hypothesis>=6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
