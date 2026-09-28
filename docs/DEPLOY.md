@@ -43,11 +43,22 @@ press **Add key**.
 command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }; grep -q github-lunarark ~/.ssh/config 2>/dev/null || printf 'Host github-lunarark\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/lunarark\n  StrictHostKeyChecking accept-new\n' >> ~/.ssh/config; [ -d /opt/lunarark ] || git clone git@github-lunarark:chetanhansraj/space_game.git /opt/lunarark; bash /opt/lunarark/deploy/install.sh
 ```
 
-It checks the server, waits for the DNS record if it has not arrived yet,
-installs Docker, builds and starts the world, gets the HTTPS certificate,
-schedules daily backups, and finishes by printing the address and the
-**access code** people need to join. If anything goes wrong it stops and says
-so — copy what it printed and send it to Claude.
+It checks the server first and picks the right way to install:
+
+- **A server that already runs websites with nginx** (lunarark.com's server
+  does — it also serves kundali.app) gets `deploy/install-nginx.sh`. No Docker.
+  The game runs as a small capped service on `127.0.0.1` (about 80 MB of RAM,
+  at most 60% of one CPU, low priority), nginx gets one new block for
+  `play.lunarark.com`, and the certbot that already renews your other
+  certificates adds one more. Ports 80/443, the firewall and the other sites
+  are not touched, and nginx is reloaded only if `nginx -t` passes.
+- **An empty server** gets Docker with Caddy for HTTPS (`deploy/install.sh`).
+
+Either way it waits for the DNS record if it has not arrived yet, schedules
+daily backups (three kept, never taken if it would leave less than 3 GB
+free), and finishes by printing the address and the **access code** people
+need to join. If anything goes wrong it stops and says so — copy what it
+printed and send it to Claude.
 
 The rest of this page is what the installer does, step by step, for doing it
 by hand or understanding it.
@@ -174,7 +185,8 @@ Backups land in `data/backups/`. Copy one off the server now and then.
 ## Updating
 
 ```bash
-cd /opt/lunarark && ./deploy/update.sh
+bash /opt/lunarark/deploy/update-nginx.sh     # installed alongside nginx
+bash /opt/lunarark/deploy/update.sh           # installed with Docker
 ```
 
 It backs up, pulls, rebuilds and restarts. The world is untouched — it lives in
@@ -185,16 +197,20 @@ is absent, not paused.
 
 | | |
 |---|---|
-| Is it running? | `docker compose ps` |
-| Logs | `docker compose logs -f game` |
-| Is it on time? | `curl -s 127.0.0.1:8000/api/health` — `behind` should be 0 |
+| Is it running? | `systemctl status lunarark` (or `docker compose ps` for the Docker install) |
+| Logs | `journalctl -u lunarark -f` (or `docker compose logs -f game`) |
+| Is it on time? | `curl -s 127.0.0.1:8740/api/health` (8000 for Docker) — `behind` should be 0 |
 | Disk | `du -sh data/` — see below |
 | Stop / start | `docker compose stop` / `docker compose --profile https up -d` |
 
 **Disk.** The ledger is append-only by design, and the world writes about
 **150 MB a day** — every order every firm places is a permanent record. A
 50 GB VPS holds several months. That is fine for a playtest, and it is the
-first thing to solve before a public launch (DECISIONS.md, D49).
+first thing to solve before a public launch (DECISIONS.md, D49). Two brakes
+protect anything else on the server: backups are skipped rather than taken
+when they would leave less than 3 GB free, and below 3 GB free the world
+itself stops advancing and reports `"holding_for_disk": true` on its health
+check, until space is freed and it catches up (D51).
 
 **Never run two copies against the same `data/`.** One world, one process: a
 second one would be a second, diverging world writing into the same ledger.

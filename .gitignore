@@ -17,3 +17,5 @@ market/data/*.sqlite
 # The live world and its backups, on a server
 data/
 .env
+.python/
+.cache/

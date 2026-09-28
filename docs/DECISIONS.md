@@ -990,6 +990,34 @@ Shackleton), Sol Adeyemi (Peary Ridge Ice Cooperative), Dr Ines Halloran
 Yusuf Brandt (Ark Development Office) — plus the Archivist. *Invented.* A
 character is the face; the balance sheet is the firm's.
 
+### D51 — On a shared server the world is a guest: capped, local, and it stops before the disk fills
+
+Found by checking the real VPS before anything was run on it: lunarark.com's
+server already serves **two** production sites (lunarark.com and kundali.app)
+through nginx and certbot, on one vCPU with no swap. The Docker plan would
+have stopped at the port check, and the backup plan was wrong: fourteen daily
+copies of a database growing 150 MB a day fill 46 GB in about six weeks.
+
+So on a server that already runs nginx:
+
+- **No Docker.** The game is a systemd service in a Python 3.11 virtualenv,
+  bound to `127.0.0.1`, running as its own user who can write only
+  `data/`. Measured: about 80 MB of RAM, and ~30 ms of CPU a minute after an
+  8-second warm-up. Capped anyway at 60% of one CPU and 600 MB, at low
+  priority, so the sites beside it always win.
+- **nginx and certbot as they already are.** One new server block, reloaded
+  only if `nginx -t` passes (otherwise removed again), and one more
+  certificate on the existing renewal schedule. Ports 80/443 and the firewall
+  are not touched.
+- **Backups are bounded.** Three kept, and a backup that would leave less
+  than 3 GB free is skipped and logged instead.
+- **The world holds rather than fill the disk.** Below `SOLAR_MIN_FREE_GB`
+  (3 GB) the ticker stops advancing, logs an error every ten minutes and
+  reports `holding_for_disk` on `/api/health`. This is a deliberate exception
+  to invariant 5: a world that keeps writing to a full disk takes other
+  people's websites down with it. When space is freed it catches up on every
+  held hour, so the only cost is lateness.
+
 ### F8 — What the first playtest found
 
 Driven in a headless browser against a live server:
