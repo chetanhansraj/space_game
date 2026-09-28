@@ -14,6 +14,46 @@ password or SSH key, and access to the DNS for lunarark.com.
 
 ---
 
+## The easy way: two pastes
+
+Everything below is done for you by `deploy/install.sh`. You only need three
+things from Hostinger's website, and nothing installed on your own computer.
+
+**A. The DNS record.** hPanel → **Domains → lunarark.com → DNS / Nameservers**
+→ add an **A** record: Name `play`, Points to *your VPS IP* (hPanel → VPS →
+Overview), TTL 3600. Leave every other record alone.
+
+**B. Open the terminal.** hPanel → **VPS → your server → Browser terminal**
+(it logs you in as root).
+
+**C. First paste** — makes a key that lets the server read the private code:
+
+```bash
+mkdir -p ~/.ssh && { [ -f ~/.ssh/lunarark ] || ssh-keygen -t ed25519 -N "" -q -f ~/.ssh/lunarark; } && echo && cat ~/.ssh/lunarark.pub
+```
+
+It prints one line starting `ssh-ed25519`. Copy that whole line, open
+**https://github.com/chetanhansraj/space_game/settings/keys/new**, give it the
+title `VPS`, paste the line into *Key*, leave *Allow write access* unticked, and
+press **Add key**.
+
+**D. Second paste** — fetches the code and runs the installer:
+
+```bash
+command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }; grep -q github-lunarark ~/.ssh/config 2>/dev/null || printf 'Host github-lunarark\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/lunarark\n  StrictHostKeyChecking accept-new\n' >> ~/.ssh/config; [ -d /opt/lunarark ] || git clone git@github-lunarark:chetanhansraj/space_game.git /opt/lunarark; bash /opt/lunarark/deploy/install.sh
+```
+
+It checks the server, waits for the DNS record if it has not arrived yet,
+installs Docker, builds and starts the world, gets the HTTPS certificate,
+schedules daily backups, and finishes by printing the address and the
+**access code** people need to join. If anything goes wrong it stops and says
+so — copy what it printed and send it to Claude.
+
+The rest of this page is what the installer does, step by step, for doing it
+by hand or understanding it.
+
+---
+
 ## 1. Point the name at the server
 
 In Hostinger hPanel → **Domains → lunarark.com → DNS / Nameservers → Manage DNS
@@ -74,8 +114,8 @@ Host github-space-game
   HostName github.com
   IdentityFile ~/.ssh/space_game
 EOF
-git clone git@github-space-game:chetanhansraj/space_game.git
-cd space_game
+git clone git@github-space-game:chetanhansraj/space_game.git /opt/lunarark
+cd /opt/lunarark
 ```
 
 ## 5. Configure
@@ -126,7 +166,7 @@ Back up the world every day, keeping two weeks:
 ```bash
 crontab -e
 # add this line:
-15 4 * * * /root/space_game/deploy/backup.sh >> /root/space_game/data/backup.log 2>&1
+15 4 * * * /opt/lunarark/deploy/backup.sh >> /opt/lunarark/data/backup.log 2>&1
 ```
 
 Backups land in `data/backups/`. Copy one off the server now and then.
@@ -134,7 +174,7 @@ Backups land in `data/backups/`. Copy one off the server now and then.
 ## Updating
 
 ```bash
-cd ~/space_game && ./deploy/update.sh
+cd /opt/lunarark && ./deploy/update.sh
 ```
 
 It backs up, pulls, rebuilds and restarts. The world is untouched — it lives in
