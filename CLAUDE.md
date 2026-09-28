@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Project instructions for this repository. Read `docs/BIBLE.md` for the design reasoning and `docs/DECISIONS.md` for the calls made on everything those documents left ambiguous, contradictory or unset. This file holds the rules that must not be broken while implementing it.
+Project instructions for this repository. Read `docs/VISION.md` for where the game is going, `docs/BIBLE.md` for the design reasoning and `docs/DECISIONS.md` for the calls made on everything those documents left ambiguous, contradictory or unset. This file holds the rules that must not be broken while implementing it.
 
 ---
 

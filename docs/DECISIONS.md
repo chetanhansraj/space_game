@@ -849,6 +849,31 @@ pays for the freight.
 
 ---
 
+## Direction
+
+### D43 — The solar system is rendered, and the domains are windows onto one world
+
+*Decided by Chetan. Recorded in full in `docs/VISION.md`.*
+
+The bible said *"Not a rendered solar system. Orbits are solved, not drawn,"*
+and treated a 3D view as an optional skin to come later. That line was written
+defensively, as a guard against building a flight simulator before an economy.
+The economy now exists, and the direction has changed: the solar system is
+drawn, explorable down to real terrain, with the camera moving and the player
+never piloting.
+
+The physics does not change. `orbital/` still solves; the renderer only shows
+where things are. Invariant 6 is untouched.
+
+The domains are windows onto one shared world — one server, one ledger, one
+clock — and map onto the bible's four institutions: lunarark.com and the Ark
+Council, asteroidbelt.app and the Belt Claims Registry, marsbase.app and the
+Mars Industrial Board, helium3.app and the Helium Cartel. helium3.app is the
+exchange rather than a region. lunarark.ai is the Archivist, which is voice
+only and never a cause of any economic change (invariant 2).
+
+---
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
