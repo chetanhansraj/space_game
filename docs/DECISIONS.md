@@ -1018,6 +1018,28 @@ So on a server that already runs nginx:
   people's websites down with it. When space is freed it catches up on every
   held hour, so the only cost is lateness.
 
+### D52 — The installer never takes over what it did not create; signup fails closed
+
+A second review, of the scripts themselves on the real server, found that the
+first installer would have overwritten the lunarark.com Codex's own service.
+It used the name `lunarark` for the service, the user and the folder, and the
+Codex already runs as `lunarark.service` from `/opt/lunarark` — the only place
+its admin token is stored. It would also have reused the Codex's `.env`
+(its API keys, and no access code), and with no access code set the game
+accepted every signup.
+
+The fix is a rule, not only a rename:
+
+- Everything the game's installer creates is named `arkgame` and lives in
+  `/opt/arkgame`, and every file it writes carries a marker line.
+- Before changing anything it refuses if the folder is not a clone of this
+  repository, if a service, user, `.env` or nginx block with its name exists
+  without its marker, or if another service or site uses its folder. Each
+  case is tested against a stub server.
+- `CHECK_ONLY=1` runs every check and changes nothing.
+- **Signup fails closed.** With no `SOLAR_ACCESS_CODE`, the charter office is
+  shut; open signup needs `SOLAR_OPEN_SIGNUP=1`, asked for by name.
+
 ### F8 — What the first playtest found
 
 Driven in a headless browser against a live server:

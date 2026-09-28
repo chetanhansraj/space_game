@@ -2,7 +2,7 @@
 # Install the Lunar Ark world on a server that ALREADY serves websites with
 # nginx and certbot -- without touching them.
 #
-#   bash /opt/lunarark/deploy/install-nginx.sh [domain]
+#   bash /opt/arkgame/deploy/install-nginx.sh [domain]
 #
 # The pattern is the one such a server already uses for its own apps: the
 # game runs as a plain service bound to 127.0.0.1, nginx proxies one new
@@ -16,13 +16,23 @@
 # The service is capped (60% of one CPU, 600 MB, low priority) so a busy
 # game can never starve the sites beside it; it uses about 80 MB running.
 # Safe to run again: each step checks whether it is already done.
+#
+# It never takes over anything it did not create. Everything it writes
+# carries the marker below, and before changing anything it refuses if the
+# service name, the user, the settings file or the nginx block already
+# exist without that marker, or if another service or site uses this
+# directory. (The first version used the name "lunarark" -- which is what
+# the lunarark.com Codex service on the target server is called. A review
+# of the real server caught it before it ran.)
 set -euo pipefail
 
 DOMAIN="${1:-play.lunarark.com}"
 PORT="${SOLAR_PORT:-8740}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-SERVICE=lunarark
-RUNAS=lunarark
+SERVICE="${ARKGAME_SERVICE:-arkgame}"
+RUNAS="${ARKGAME_USER:-arkgame}"
+MARK="Written by the Lunar Ark game installer (arkgame)"
+UNIT="/etc/systemd/system/$SERVICE.service"
 cd "$HERE"
 
 say()  { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
@@ -34,8 +44,37 @@ stop() {
   exit 1
 }
 health() { curl -fsS --max-time 3 "http://127.0.0.1:$PORT/api/health" 2>/dev/null; }
+ours() { [ -f "$1" ] && grep -qF "$MARK" "$1"; }
+ours_user() { getent passwd "$RUNAS" | cut -d: -f5 | grep -qF "arkgame installer"; }
+CHECK_ONLY="${CHECK_ONLY:-0}"
 
 [ "$(id -u)" = 0 ] || stop "this needs to run as root."
+
+# -- 0 -------------------------------------------------------------------------
+say "0/8  Making sure nothing here belongs to something else"
+for f in api/src/api/server.py sim/src/sim/game.py deploy/install-nginx.sh; do
+  [ -f "$f" ] || stop "$HERE does not look like the game's code (no $f). Nothing was changed."
+done
+grep -q "space_game" .git/config 2>/dev/null \
+  || stop "$HERE is not a clone of the space_game repository. Nothing was changed."
+ok "$HERE is the game's own clone."
+if [ -f "$UNIT" ] && ! ours "$UNIT"; then
+  stop "a service called '$SERVICE' already exists and was not made by this installer. Re-run with ARKGAME_SERVICE=<another name> in front."
+fi
+ok "Service name '$SERVICE' is free (or already ours)."
+if id "$RUNAS" >/dev/null 2>&1 && ! ours_user; then
+  stop "a user called '$RUNAS' already exists and was not made by this installer. Re-run with ARKGAME_USER=<another name> in front."
+fi
+ok "User name '$RUNAS' is free (or already ours)."
+OTHERS="$(grep -lsF "$HERE" /etc/systemd/system/*.service /lib/systemd/system/*.service 2>/dev/null | grep -vxF "$UNIT" || true)"
+[ -z "$OTHERS" ] || stop "$HERE is used by another service: $OTHERS"
+NGINX_USERS="$(grep -rlsF "$HERE" /etc/nginx 2>/dev/null || true)"
+for f in $NGINX_USERS; do ours "$f" || stop "$HERE is used by nginx config $f"; done
+ok "No other service or website uses $HERE."
+if [ -f .env ]; then
+  ours .env || stop "$HERE/.env exists and was not made by this installer. Nothing was changed."
+  grep -qE '^SOLAR_ACCESS_CODE=.+' .env || stop "$HERE/.env has no access code. Nothing was changed."
+fi
 
 # -- 1 -------------------------------------------------------------------------
 say "1/8  Looking at this server (changing nothing)"
@@ -54,6 +93,15 @@ if [ -n "$(ss -ltnH "( sport = :$PORT )" 2>/dev/null || true)" ] && ! health >/d
   stop "port $PORT is used by something else. Re-run with SOLAR_PORT=<another port> in front."
 fi
 ok "Port $PORT on 127.0.0.1 is free for the game."
+
+if [ "$CHECK_ONLY" = 1 ]; then
+  DNS="$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk '{print $1; exit}' || true)"
+  [ "$DNS" = "$IP" ] && ok "$DOMAIN -> $IP" || warn "$DOMAIN points to '${DNS:-nothing yet}', not $IP."
+  printf '\n\033[1;32m== Check passed. Nothing was changed.\033[0m\n'
+  printf '   Would create: user %s, service %s (127.0.0.1:%s), %s/.env,\n' "$RUNAS" "$SERVICE" "$PORT" "$HERE"
+  printf '   an nginx block for %s, its certificate, and a daily backup in cron.\n\n' "$DOMAIN"
+  exit 0
+fi
 
 # -- 2 -------------------------------------------------------------------------
 say "2/8  Checking that $DOMAIN points here"
@@ -81,7 +129,8 @@ ok "Installed: $(.venv/bin/python --version)"
 
 # -- 4 -------------------------------------------------------------------------
 say "4/8  A service account that owns only the world's data"
-id "$RUNAS" >/dev/null 2>&1 || useradd --system --home-dir "$HERE" --no-create-home --shell /usr/sbin/nologin "$RUNAS"
+id "$RUNAS" >/dev/null 2>&1 || useradd --system --home-dir "$HERE" --no-create-home \
+  --shell /usr/sbin/nologin --comment "Lunar Ark game (arkgame installer)" "$RUNAS"
 mkdir -p data
 chown "$RUNAS:$RUNAS" data && chmod 750 data
 ok "User '$RUNAS' can write $HERE/data and nothing else."
@@ -93,6 +142,8 @@ if [ -f .env ]; then
 else
   CODE="ark-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')"
   cat > .env <<EOF
+# $MARK
+ARKGAME_SERVICE=$SERVICE
 SOLAR_DOMAIN=$DOMAIN
 SOLAR_ACCESS_CODE=$CODE
 SOLAR_WARMUP_TICKS=168
@@ -106,7 +157,8 @@ fi
 
 # -- 6 -------------------------------------------------------------------------
 say "6/8  Starting the world as a service"
-cat > "/etc/systemd/system/$SERVICE.service" <<EOF
+cat > "$UNIT" <<EOF
+# $MARK
 [Unit]
 Description=Lunar Ark world ($DOMAIN)
 After=network.target
@@ -154,11 +206,13 @@ if [ -d /etc/nginx/sites-enabled ]; then
 else
   SITE="/etc/nginx/conf.d/$DOMAIN.conf"; LINK=""
 fi
-if [ -f "$SITE" ]; then
-  ok "Keeping the existing nginx block for $DOMAIN ($SITE)."
+if [ -f "$SITE" ] && ! ours "$SITE"; then
+  stop "nginx already has a block for $DOMAIN ($SITE) that this installer did not write."
+elif [ -f "$SITE" ]; then
+  ok "Keeping the nginx block for $DOMAIN written on a previous run."
 else
   cat > "$SITE" <<EOF
-# Lunar Ark: written by $HERE/deploy/install-nginx.sh
+# $MARK, from $HERE
 server {
     listen 80;
     server_name $DOMAIN;
@@ -174,8 +228,8 @@ server {
 }
 EOF
   [ -n "$LINK" ] && ln -sf "$SITE" "$LINK"
-  if ! nginx -t 2>/tmp/lunarark-nginx-test; then
-    cat /tmp/lunarark-nginx-test
+  if ! nginx -t 2>/tmp/arkgame-nginx-test; then
+    cat /tmp/arkgame-nginx-test
     rm -f "$SITE"; [ -n "$LINK" ] && rm -f "$LINK"
     stop "nginx rejected the new block, so it was removed again and nginx was not reloaded."
   fi

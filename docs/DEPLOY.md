@@ -14,51 +14,64 @@ password or SSH key, and access to the DNS for lunarark.com.
 
 ---
 
-## The easy way: two pastes
+## The easy way
 
-Everything below is done for you by `deploy/install.sh`. You only need three
-things from Hostinger's website, and nothing installed on your own computer.
+Everything below is done for you by the installer. It runs from Hostinger's
+browser terminal, and nothing needs installing on your own computer.
 
 **A. The DNS record.** hPanel → **Domains → lunarark.com → DNS / Nameservers**
 → add an **A** record: Name `play`, Points to *your VPS IP* (hPanel → VPS →
 Overview), TTL 3600. Leave every other record alone.
 
-**B. Open the terminal.** hPanel → **VPS → your server → Browser terminal**
-(it logs you in as root).
+**B. Open the terminal.** hPanel → **VPS → your server → Browser terminal**.
 
-**C. First paste** — makes a key that lets the server read the private code:
-
-```bash
-mkdir -p ~/.ssh && { [ -f ~/.ssh/lunarark ] || ssh-keygen -t ed25519 -N "" -q -f ~/.ssh/lunarark; } && echo && cat ~/.ssh/lunarark.pub
-```
-
-It prints one line starting `ssh-ed25519`. Copy that whole line, open
-**https://github.com/chetanhansraj/space_game/settings/keys/new**, give it the
-title `VPS`, paste the line into *Key*, leave *Allow write access* unticked, and
-press **Add key**.
-
-**D. Second paste** — fetches the code and runs the installer:
+**C. Check first — changes nothing.** This fetches the game into its own
+folder, `/opt/arkgame`, and reports whether anything on the server would
+collide with it:
 
 ```bash
-command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }; grep -q github-lunarark ~/.ssh/config 2>/dev/null || printf 'Host github-lunarark\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/lunarark\n  StrictHostKeyChecking accept-new\n' >> ~/.ssh/config; [ -d /opt/lunarark ] || git clone git@github-lunarark:chetanhansraj/space_game.git /opt/lunarark; bash /opt/lunarark/deploy/install.sh
+command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }; [ -e /opt/arkgame ] || git clone -q https://github.com/chetanhansraj/space_game.git /opt/arkgame; if [ -f /opt/arkgame/deploy/install-nginx.sh ]; then CHECK_ONLY=1 bash /opt/arkgame/deploy/install-nginx.sh; else echo "/opt/arkgame exists and is not the game. Nothing was changed."; fi
 ```
 
-It checks the server first and picks the right way to install:
+It should end with **"Check passed. Nothing was changed."**
 
-- **A server that already runs websites with nginx** (lunarark.com's server
-  does — it also serves kundali.app) gets `deploy/install-nginx.sh`. No Docker.
-  The game runs as a small capped service on `127.0.0.1` (about 80 MB of RAM,
-  at most 60% of one CPU, low priority), nginx gets one new block for
-  `play.lunarark.com`, and the certbot that already renews your other
-  certificates adds one more. Ports 80/443, the firewall and the other sites
-  are not touched, and nginx is reloaded only if `nginx -t` passes.
-- **An empty server** gets Docker with Caddy for HTTPS (`deploy/install.sh`).
+**D. Install.**
 
-Either way it waits for the DNS record if it has not arrived yet, schedules
-daily backups (three kept, never taken if it would leave less than 3 GB
-free), and finishes by printing the address and the **access code** people
-need to join. If anything goes wrong it stops and says so — copy what it
-printed and send it to Claude.
+```bash
+bash /opt/arkgame/deploy/install-nginx.sh
+```
+
+It finishes by printing the address and the **access code** people need to
+join. If anything goes wrong it stops and says so — copy what it printed and
+send it to Claude.
+
+### What it will and will not touch
+
+It creates only things named `arkgame`, and every file it writes carries the
+line *"Written by the Lunar Ark game installer (arkgame)"*. Before changing
+anything it **refuses** if:
+
+- the folder is not a clone of this repository;
+- a service or user with its name already exists and it did not make it;
+- another service or nginx site already uses its folder;
+- a settings file (`.env`) is there that it did not write, or has no access code;
+- an nginx block for the domain exists that it did not write.
+
+On a server that already runs websites with nginx — lunarark.com's server
+serves lunarark.com and kundali.app — it uses no Docker. The game is a small
+service on `127.0.0.1:8740` (about 80 MB of RAM, at most 60% of one CPU, low
+priority) running as its own user who can write only `/opt/arkgame/data`.
+nginx gets one new block, reloaded only if `nginx -t` passes, and the certbot
+that already renews your other certificates adds one more. Ports 80/443, the
+firewall and every other site are left as they are.
+
+Backups run daily: three kept, and never taken if they would leave less than
+3 GB free. The game also refuses new companies unless an access code is set,
+so a missing setting can never leave it open to anyone.
+
+On a server with no web server at all, `deploy/install.sh` uses Docker with
+Caddy for HTTPS instead, and hands over to the nginx installer by itself if
+it finds nginx.
 
 The rest of this page is what the installer does, step by step, for doing it
 by hand or understanding it.
@@ -125,8 +138,8 @@ Host github-space-game
   HostName github.com
   IdentityFile ~/.ssh/space_game
 EOF
-git clone git@github-space-game:chetanhansraj/space_game.git /opt/lunarark
-cd /opt/lunarark
+git clone git@github-space-game:chetanhansraj/space_game.git /opt/arkgame
+cd /opt/arkgame
 ```
 
 ## 5. Configure
@@ -177,7 +190,7 @@ Back up the world every day, keeping two weeks:
 ```bash
 crontab -e
 # add this line:
-15 4 * * * /opt/lunarark/deploy/backup.sh >> /opt/lunarark/data/backup.log 2>&1
+15 4 * * * /opt/arkgame/deploy/backup.sh >> /opt/arkgame/data/backup.log 2>&1
 ```
 
 Backups land in `data/backups/`. Copy one off the server now and then.
@@ -185,8 +198,8 @@ Backups land in `data/backups/`. Copy one off the server now and then.
 ## Updating
 
 ```bash
-bash /opt/lunarark/deploy/update-nginx.sh     # installed alongside nginx
-bash /opt/lunarark/deploy/update.sh           # installed with Docker
+bash /opt/arkgame/deploy/update-nginx.sh     # installed alongside nginx
+bash /opt/arkgame/deploy/update.sh           # installed with Docker
 ```
 
 It backs up, pulls, rebuilds and restarts. The world is untouched — it lives in
@@ -197,8 +210,8 @@ is absent, not paused.
 
 | | |
 |---|---|
-| Is it running? | `systemctl status lunarark` (or `docker compose ps` for the Docker install) |
-| Logs | `journalctl -u lunarark -f` (or `docker compose logs -f game`) |
+| Is it running? | `systemctl status arkgame` (or `docker compose ps` for the Docker install) |
+| Logs | `journalctl -u arkgame -f` (or `docker compose logs -f game`) |
 | Is it on time? | `curl -s 127.0.0.1:8740/api/health` (8000 for Docker) — `behind` should be 0 |
 | Disk | `du -sh data/` — see below |
 | Stop / start | `docker compose stop` / `docker compose --profile https up -d` |
