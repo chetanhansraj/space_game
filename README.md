@@ -17,6 +17,7 @@ Real orbital mechanics, deterministic economy, one shared clock at 60× real tim
 | `orbital/README.md` | The transfer service: accuracy, how to build a table, how to run it. |
 | `market/README.md` | The ledger and order books: why conservation is structural. |
 | `sim/README.md` | The world tick: price formation, the macro loop, the v1 roster. |
+| `docs/DEPLOY.md` | Putting the world on a server, step by step. |
 
 ## Layout
 
@@ -38,8 +39,9 @@ macOS and Linux:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e './orbital[offline,serve,dev]' -e './market[dev]'
-.venv/bin/python -m pytest -q                        # 188 tests
+.venv/bin/python -m pip install -e './orbital[offline,serve,dev]' -e './market[dev]' \
+    -e './sim[dev]' -e './voice[dev]' -e './api[dev]'
+.venv/bin/python -m pytest -q
 ```
 
 Windows, **Git Bash** — forward slashes, but the Windows `Scripts` folder.
@@ -47,7 +49,7 @@ Backslashes are escape characters in bash and will silently mangle the path:
 
 ```bash
 python -m venv .venv
-.venv/Scripts/python -m pip install -e "./orbital[offline,serve,dev]" -e "./market[dev]"
+.venv/Scripts/python -m pip install -e "./orbital[offline,serve,dev]" -e "./market[dev]" -e "./sim[dev]" -e "./voice[dev]" -e "./api[dev]"
 .venv/Scripts/python -m pytest -q
 ```
 
@@ -55,9 +57,22 @@ Windows, **PowerShell**:
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python -m pip install -e ".\orbital[offline,serve,dev]" -e ".\market[dev]"
+.venv\Scripts\python -m pip install -e ".\orbital[offline,serve,dev]" -e ".\market[dev]" -e ".\sim[dev]" -e ".\voice[dev]" -e ".\api[dev]"
 .venv\Scripts\python -m pytest -q
 ```
+
+## Play it
+
+```bash
+SOLAR_DB=data/world.db .venv/bin/python -m api
+```
+
+Open http://127.0.0.1:8000. The first start runs a game week of history
+(about ten seconds) so the markets have prices; after that the world keeps
+time with the wall clock, one game hour per real minute, and catches up on any
+hours it missed while stopped. Set `SOLAR_ACCESS_CODE` to require an
+invitation code to found a company. To put it on a server, see
+`docs/DEPLOY.md`.
 
 Then, to generate and serve a transfer table (paths below are the Unix form):
 
@@ -68,28 +83,6 @@ ORBITAL_TABLE=orbital/data/transfers.sqlite .venv/bin/uvicorn orbital.api.app:ap
 ```
 
 Ephemeris kernels (JPL DE440) are fetched at build time into `orbital/kernels/` and are not committed — they are large and reproducible.
-
-## See it working
-
-Nothing is playable yet — `sim/` and `web/` are empty. Two demo scripts show
-the finished pieces actually running:
-
-```bash
-.venv/bin/python scripts/demo_market.py --ticks 40   # a live spot market
-.venv/bin/python scripts/demo_routes.py              # transfer costs and windows
-```
-
-On Windows substitute `.venv/Scripts/python` (Git Bash) or
-`.venv\Scripts\python` (PowerShell). `demo_market.py` needs only the
-`market` package, so it runs even if the orbital install failed.
-
-`demo_market.py` runs miners, refineries and haulers against the real ledger
-and order books at Shackleton Depot, printing the book, the tape and a
-conservation check every few ticks. `demo_routes.py` prints the delta-v
-against transit-time curve for a route, and a bar chart of how the
-minimum-energy cost moves across a synodic cycle.
-
-Both are demo harnesses, not `sim/`. The agents are deliberately stupid.
 
 ## Status
 
@@ -104,11 +97,15 @@ priority, and the Ark Authority quoting a floor and ceiling from a finite
 treasury. A Hypothesis state machine checks after every step of every
 generated trade sequence that nothing was created or destroyed.
 
-`sim/` is built: the world tick, 50 bulk agents across three lunar nodes,
-exponential depletion, solar flares and rig failures, and price formation from
-inventory pressure. Shackleton ice settles near 650 and Peary ice near 333 —
-two prices for one good, which is what v1 exists to produce.
+`sim/` is built: the world tick, 56 agents and 6 ships across three lunar
+nodes, exponential depletion, solar flares and rig failures, price formation
+from inventory pressure, and freight closing the gap between ports. It
+persists every tick atomically and survives restarts.
 
-`api/`, `voice/` and `web/` are empty.
+**The first playable loop exists.** Found a company, take the Ark's charter on
+a Kestrel, buy where it is cheap, fly a real suborbital hop, sell where it is
+dear, take supply contracts from five named characters, and come back to find
+out what happened while you were away — on the real Moon, lit where the Sun
+really is. `api/` serves it; `voice/` writes its letters; `web/` draws it.
 
 Roadmap is in `docs/BIBLE.md` §10. Short version: one lunar node and one market, then ships, then the Belt, then Mars industry, then the political layer.

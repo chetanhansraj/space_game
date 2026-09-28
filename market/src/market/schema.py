@@ -138,7 +138,7 @@ MIGRATIONS: list[tuple[int, str]] = [
         -- balance anywhere" -- so it is worth being exact about why it is
         -- not a second source of truth.
         --
-        -- A live world writes roughly 800,000 postings per game day. Summing
+        -- A live world writes roughly 800,000 postings per real day. Summing
         -- an account's whole history on every balance read was a few
         -- microseconds in a test and would be seconds per tick within weeks.
         --
