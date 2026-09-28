@@ -23,6 +23,7 @@ import datetime
 import logging
 import os
 import secrets
+import shutil
 import threading
 import time
 from collections import defaultdict, deque
@@ -70,8 +71,40 @@ class ReadIn(BaseModel):
     upto: int | None = None
 
 
+#: The world stops advancing when the disk holding it has less than this
+#: free. docs/DECISIONS.md D51.
+MIN_FREE_BYTES = int(float(os.environ.get("SOLAR_MIN_FREE_GB", "3")) * 1e9)
+
+
+def free_bytes(game: Game) -> int | None:
+    """Free space on the disk holding the world, or None if it is in memory."""
+    row = game.db.execute("PRAGMA database_list").fetchone()
+    path = row["file"] if row else ""
+    if not path:
+        return None
+    return shutil.disk_usage(os.path.dirname(path)).free
+
+
+def disk_low(game: Game, minimum: int | None = None) -> bool:
+    free = free_bytes(game)
+    return free is not None and free < (MIN_FREE_BYTES if minimum is None
+                                        else minimum)
+
+
+class _Hold(Exception):
+    """Internal: skip this turn of the ticker loop without counting a failure."""
+
+
 class Ticker(threading.Thread):
-    """Keeps the world on the clock."""
+    """Keeps the world on the clock.
+
+    With one exception to invariant 5: if the disk the world lives on is
+    nearly full, the ticker stops advancing and says so, loudly, in the log
+    and in /api/health. The world lives on a server shared with other
+    sites, and a ledger that fills the disk takes them down with it. Once
+    space is freed the world catches up on every hour it held, so nothing
+    is lost -- it only arrives late.
+    """
 
     def __init__(self, game_ref, lock: threading.RLock) -> None:
         super().__init__(name="ticker", daemon=True)
@@ -79,12 +112,24 @@ class Ticker(threading.Thread):
         self.lock = lock
         self.halt = threading.Event()
         self.failures = 0
+        self.held = False
+        self.warned = 0.0
 
     def run(self) -> None:
         while not self.halt.is_set():
             try:
                 with self.lock:
                     game = self.game_ref()
+                    if disk_low(game):
+                        self.held = True
+                        now = time.monotonic()
+                        if now - self.warned > 600:
+                            log.error("disk nearly full: the world is holding "
+                                      "at tick %d until space is freed",
+                                      game.world.tick)
+                            self.warned = now
+                        raise _Hold()
+                    self.held = False
                     due = game.due_tick()
                     if game.world.tick < due:
                         game.step()
@@ -92,6 +137,9 @@ class Ticker(threading.Thread):
                         continue
                     wait = (game.tick_starts_at(game.world.tick + 1)
                             .timestamp() - time.time())
+            except _Hold:
+                self.halt.wait(60)
+                continue
             except Exception:
                 # A tick that fails has rolled back completely, so the world
                 # is intact. Log it loudly and back off, rather than spin on
@@ -162,8 +210,12 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
     def health():
         with lock:
             game = the_game()
-            return {"ok": True, "tick": game.world.tick,
-                    "behind": game.due_tick() - game.world.tick}
+            free = free_bytes(game)
+            return {"ok": not disk_low(game), "tick": game.world.tick,
+                    "behind": game.due_tick() - game.world.tick,
+                    "disk_free_gb": None if free is None
+                    else round(free / 1e9, 1),
+                    "holding_for_disk": disk_low(game)}
 
     @app.get("/api/world")
     def world():

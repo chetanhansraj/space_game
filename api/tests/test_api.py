@@ -119,3 +119,20 @@ def test_fly_somewhere_and_hear_about_it(client, game):
     assert letters[0]["subject"].startswith("Docked at Peary Ridge")
     feed = client.get("/api/world").json()["feed"]
     assert any("Peary Ridge" in e["text"] for e in feed)
+
+
+def test_a_nearly_full_disk_holds_the_world_and_says_so(tmp_path, routes):
+    """The world shares a server with other sites; it must not fill the disk."""
+    from api import server
+
+    g = Game.open(str(tmp_path / "world.db"), now=T0, routes=routes,
+                  threadsafe=True)
+    assert server.free_bytes(g) > 0
+    assert not server.disk_low(g, minimum=1)
+    assert server.disk_low(g, minimum=10**18)
+    g.db.close()
+
+
+def test_health_reports_disk(client):
+    body = client.get("/api/health").json()
+    assert "holding_for_disk" in body and body["ok"] is True

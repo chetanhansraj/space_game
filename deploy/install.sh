@@ -28,6 +28,15 @@ stop() {
 
 [ "$(id -u)" = 0 ] || stop "this needs to run as root (the browser terminal logs in as root)."
 
+# A server that already serves websites with nginx gets the version that
+# leaves them alone: no Docker, no change to ports 80/443, the existing
+# certbot. See install-nginx.sh.
+if command -v nginx >/dev/null && systemctl is-active --quiet nginx; then
+  printf '\nThis server already runs nginx, so your existing sites stay exactly as they are.\n'
+  printf 'Switching to the installer made for that: deploy/install-nginx.sh\n'
+  exec bash "$HERE/deploy/install-nginx.sh" "$DOMAIN"
+fi
+
 # -- 1. the server --------------------------------------------------------------
 say "1/7  Looking at this server"
 . /etc/os-release 2>/dev/null && ok "System: ${PRETTY_NAME:-unknown}"
