@@ -24,6 +24,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from . import TICKS_PER_GAME_DAY
+
 #: Below this richness a site is not worth the power to run, and is abandoned.
 ABANDON_RICHNESS = 0.05
 
@@ -63,7 +65,11 @@ class Deposit:
         if mass_kg < 0:
             raise ValueError("cannot un-mine a deposit")
         self.extracted_kg += mass_kg
-        self.history.append((tick, self.richness))
+        # One sample a game day is plenty for a chart, and a list that gains
+        # an entry every hour for the life of a persistent world is a leak.
+        if tick % TICKS_PER_GAME_DAY == 0:
+            self.history.append((tick, self.richness))
+            del self.history[:-365]
 
     def half_life_kg(self) -> float:
         """Mass extracted before output halves. The number to quote to players."""

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "api"
+version = "0.1.0"
+description = "Thin HTTP layer: validation, authorisation, and calls into sim."
+requires-python = ">=3.11"
+# The game's own packages (orbital, market, sim, voice) are deliberately not
+# listed -- see sim/pyproject.toml on dependency confusion. They are always
+# installed together from paths.
+dependencies = ["fastapi>=0.110", "uvicorn>=0.29"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -40,6 +40,9 @@ from .ships import Ship, ShipState
 #: How often institutions replace their standing quotes, in ticks.
 QUOTE_REFRESH_TICKS = 6
 
+#: Recent events held in memory. The full history is the game's event log.
+EVENTS_KEPT = 2_000
+
 
 @dataclass
 class World:
@@ -128,6 +131,9 @@ class World:
         self.ledger.assert_conserved()
 
         self.events.extend(produced)
+        # The persistent record is the game's event log. This is a window
+        # onto recent history, and must not grow for the life of the world.
+        del self.events[:-EVENTS_KEPT]
         return produced
 
     # -- production and consumption --------------------------------------
@@ -369,17 +375,50 @@ class World:
             if self.tick < (ship.arrive_tick or 0):
                 continue
             node = ship.destination
+            if ship.player_owned:
+                events.append(self._dock_player_ship(ship))
+                continue
             realised = self.haulier.arrive(ship, self.tick, now)
             events.append(Event(
                 tick=self.tick, kind="arrival", subject=ship.id,
                 detail=f"docked at {node}, realised {realised:,} cr",
+                data={"ship": ship.id, "owner": ship.owner, "node": node,
+                      "realised": realised},
             ))
         return events
 
+    def _dock_player_ship(self, ship: Ship) -> Event:
+        """Bring a player's ship in, and do nothing else.
+
+        What happens to the cargo -- contracts delivered, the rest sold or
+        kept -- is the player's business and is settled by the game layer on
+        the same tick, from the event this returns. The docking fee was paid
+        at departure.
+        """
+        origin = ship.location
+        node = ship.destination or ship.location
+        ship.location = node
+        ship.state = ShipState.DOCKED
+        ship.destination = None
+        ship.voyages += 1
+        ship.log.append(f"T{self.tick} arrive {node}")
+        del ship.log[:-20]
+        return Event(
+            tick=self.tick, kind="player_arrival", subject=ship.id,
+            detail=f"{ship.id} docked at {node}",
+            data={"ship": ship.id, "owner": ship.owner, "node": node,
+                  "origin": origin, "fee": ship.prepaid_fee,
+                  "sell": ship.sell_on_arrival},
+        )
+
     def _dispatch_idle(self, now: str) -> list[Event]:
         events: list[Event] = []
+        # A flare halts transit as well as surface work. Nobody launches into
+        # a proton storm, agent or player.
+        if self.weather.flaring(self.tick):
+            return events
         for ship in self.ships:
-            if ship.state is not ShipState.DOCKED:
+            if ship.state is not ShipState.DOCKED or ship.player_owned:
                 continue
             self.haulier.unload(ship, now)
             self.haulier.refuel(ship, now)
@@ -392,6 +431,11 @@ class World:
                     detail=(f"{plan.cargo_kg//1000} t {plan.asset} "
                             f"{ship.location} to {plan.destination}, "
                             f"margin {plan.margin:,} cr"),
+                    data={"ship": ship.id, "owner": ship.owner,
+                          "origin": ship.location,
+                          "destination": plan.destination,
+                          "asset": plan.asset, "kg": plan.cargo_kg,
+                          "margin": plan.margin},
                 ))
         return events
 
@@ -410,6 +454,8 @@ class World:
                 tick=self.tick, kind="insolvency", subject=firm.id,
                 detail=(f"wound up; {result.orders_cancelled} orders cancelled, "
                         f"estate listed: {result.assets_listed or 'nothing'}"),
+                data={"firm": firm.id, "node": firm.node,
+                      "listed": result.assets_listed},
             ))
         return events
 
@@ -440,5 +486,7 @@ class World:
             events.append(Event(
                 tick=self.tick, kind="spinoff", subject=firm.id,
                 detail=f"capitalises {child_id} with {child.capital:,} cr",
+                data={"firm": firm.id, "child": child_id, "node": firm.node,
+                      "capital": child.capital},
             ))
         return events

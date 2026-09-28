@@ -241,27 +241,32 @@ interesting consequences. If a screen needs explaining, it is wrong.
 |---|---|
 | `orbital/` | Real transfer costs from JPL ephemerides; reproduces four NASA Mars missions to 0–6% |
 | `market/` | Append-only ledger where conservation is structural; escrowed order books; the Ark Authority |
-| `sim/` | 56 agents and 6 ships across three lunar markets; emergent freight routes; the price gap closing to the cost of the run |
-| `web/` | The system map prototype, in the lunarark.com visual language |
-| `api/`, `voice/` | Not started |
+| `sim/` | 56 agents and 6 ships across three lunar markets; players, contracts, a persistent clock |
+| `voice/` | Five named characters and the Archivist, as templates |
+| `api/` | One world behind one lock, on the shared clock |
+| `web/` | The Moon, the three ports, every ship, the solar system — and the loop |
 
-**The world exists. The game does not yet** — there is no player, and nothing
-lets a person make a decision.
+**The game exists.** A person can open it, meet the Archivist, read a letter
+from Mira Vance, take a job, fly propellant across the Moon, close the tab, and
+come back to find out how it went.
 
-### Next: the first playable loop
+### Done: the first playable loop
 
 > A person opens the game, meets the Archivist, reads a message from a named
 > character, accepts a job, dispatches their ship, closes the tab — and comes
 > back thirty minutes later to find out how it went.
 
-That needs a player in the simulation, a thin `api/`, the inbox screen, the
-first named agents and the Archivist's voice, and the zoom from the system map
-down to Shackleton.
+Built, and running continuously on a server (`docs/DEPLOY.md`). What it taught
+is in DECISIONS.md F8.
 
-It also needs the world to keep running when nobody is watching. *Offline is
-absent, not paused* means a real server and a real database running
-continuously. Today the simulation lives in memory and stops when the script
-ends. That is the difference between a demo and a world.
+### Next
+
+- **Standing orders**, so a company trades while its owner sleeps — the
+  check-in loop the vision is built on.
+- **Real identity** before the world opens to the public (D48).
+- **A second ship**, and with it the first taste of a company rather than a
+  pilot.
+- **NASA's CGI Moon Kit** terrain for the close-up view of Shackleton.
 
 ---
 
@@ -274,4 +279,5 @@ ends. That is the difference between a demo and a world.
 - **Who plays, and where.** Someone checking in on a phone between meetings, or
   someone sitting down for an evening at a desk. It changes the inbox, the
   layout and the information density. lunarark.com currently leans desktop.
-- **Hosting.** Where the world runs continuously, and on what database.
+- **Hosting.** Decided for the playtest: one VPS, SQLite, `play.lunarark.com`
+  (D49). The ledger's growth needs an archival design before a public launch.

@@ -874,6 +874,139 @@ only and never a cause of any economic change (invariant 2).
 
 ---
 
+## The first playable loop
+
+Everything below was decided under the delegated authority of D43 onward,
+while building the first version a person can actually play. **Invented**
+marks a number with no source in the design documents.
+
+### D44 — New companies are staked by a finite Ark development fund
+
+`seed-data.md` gives a new player 120,000 cr and a Kestrel, and says nothing
+about where either comes from. Minting 120,000 cr per signup would make every
+new account a credit faucet, which is invariant 3's failure in its purest form.
+
+So the Ark has a **development office**, funded once at world creation from
+genesis in a single auditable transaction — **30,000,000 cr and 10,000 t of
+propellant** (*invented*: 250 companies' worth). A new company's 120,000 cr and
+full 40 t tank are transfers out of it. When it runs out, the charter office
+closes and signup says so. The Kestrel is *chartered* from the Ark rather than
+owned, which is why no credit is spent creating it.
+
+The matching sinks, per invariant 7: the Kestrel's **400 cr/day charter fee**
+(the seed-data upkeep, taken at game midnight) and **docking fees, prepaid at
+launch** so an arrival can never fail for want of money. A fee that cannot be
+paid is recorded as owed and grounds the ship until settled; the ledger never
+goes negative and the charge becomes a ledger entry only when paid.
+
+### D45 — Player orders are immediate-or-cancel in v1
+
+A player's buy or sell fills against the book now, up to their limit, and any
+remainder is cancelled. Players are offline most of the time; a resting order
+left while they sleep is escrow they forgot about, and a stale bid that fills
+at 3am is a support ticket. Standing orders are the bible's design and come
+back with the standing-instruction editor, where they can be shown and managed.
+
+### D46 — Supply contracts: firms that are short say so, with the money down
+
+The bible's first act is a named agent writing with "two or three things the
+player could take on." Those are supply contracts:
+
+- Posted by a consumer or refiner that is genuinely short of a tonne-lot good,
+  checked every 6 ticks with a 50% chance per port, at most 3 open per port.
+- Priced at the local going rate **+12%** for certainty of supply, sized 8–30 t,
+  with a **72 game-hour** deadline (72 real minutes). *All invented.*
+- The payment is **escrowed at posting** from the issuer's own account, and an
+  issuer never commits more than a fifth of its cash. Expiry returns it.
+- Only goods that can be bought at *another* port are asked for, and never for
+  less than 5,000 cr — see F8.
+- Goods must be **carried**: delivery happens on docking, or by hand for goods
+  that came in aboard. Goods bought at the issuer's own door do not count,
+  or the premium would be a free 12% on anything sold locally.
+
+Players take contracts; agents do not, yet. An untaken contract expires and
+the issuer stays short, which is what happens to a firm nobody will supply.
+
+### D47 — The world is saved every tick, and a tick is all-or-nothing
+
+The ledger always persisted itself. The rest — firms, deposits, ships, weather
+— is now one JSON snapshot written in the **same transaction** as the tick that
+produced it, so the two can never disagree about which hour it is. Transactions
+nest as savepoints: an order refused inside a tick leaves no trace, while a
+tick that fails rolls back completely, in the database and in memory. A server
+killed mid-hour loses the hour cleanly and runs it again.
+
+On start-up the world runs every hour the wall clock says it missed, however
+many. There is no cap: offline is absent, not paused. A new world runs **one
+game week** (168 ticks, *invented*) of real history before it opens, with its
+clock started that far back, because at tick zero the only propellant for sale
+is the Ark's ceiling (F8).
+
+Balances read from a **checkpoint** plus the postings since it (market
+migration 3). The checkpoint is derived, written only from postings, and
+verifiable at any time; the property tests take checkpoints at random points
+and require every balance to equal the raw sum.
+
+### D48 — Access is a key and an invitation code, for now
+
+A company signs in with a random key, shown once and stored only as a hash.
+Founding a company needs `SOLAR_ACCESS_CODE` when it is set, and one address
+may found three per hour.
+
+**This does not satisfy invariant 8** (one account per person). It slows a
+script down; it does not stop a person with two browsers. Real identity —
+email verification at minimum, ideally a sign-in the person already has — is
+required before the world is open to the public. Until then the access code is
+the gate, and the development fund's finiteness bounds the damage.
+
+### D49 — One server, one process, SQLite, at play.lunarark.com
+
+The world runs as a single process holding one SQLite connection behind one
+lock, with a ticker thread keeping it on the clock. At this scale a tick costs
+about 30 ms, and a single writer makes the concurrency story one sentence long.
+It must never run as two workers: that would be two worlds.
+
+It is served at `play.lunarark.com` — the Moon's domain, since v1 is the Moon,
+on a subdomain so the research codex keeps its own front page (VISION.md, open
+questions). `docs/DEPLOY.md` has the steps.
+
+**Known limit:** the append-only ledger grows about **150 MB per real day**,
+almost all of it agents' cancel-and-replace quotes. Months of playtest fit on
+a VPS; a public world does not. Before launch this needs a design — most
+likely closing each game month into an archived ledger file with carried-
+forward balances, which keeps every entry and the ability to reconstruct any
+balance, while the live file stays small.
+
+### D50 — voice/ ships templates first, and five characters front real firms
+
+No language model yet. Letters and the feed are templates filled from
+structured facts, chosen as a pure function of the message id so a letter
+reads the same every time. That is the fallback CLAUDE.md requires; built
+first, a model added later can only improve the words.
+
+Five named characters front the v1 firms — Mira Vance (Vance Propellant,
+Shackleton), Sol Adeyemi (Peary Ridge Ice Cooperative), Dr Ines Halloran
+(Halloran Isotopes, Tranquillitatis), Tomas Okafor (Peary Ridge settlement) and
+Yusuf Brandt (Ark Development Office) — plus the Archivist. *Invented.* A
+character is the face; the balance sheet is the firm's.
+
+### F8 — What the first playtest found
+
+Driven in a headless browser against a live server:
+
+- **The board asked for the impossible.** Regolith contracts at Tranquillitatis,
+  the only regolith source on the Moon, for 1,915 cr against a 400 cr docking
+  fee. Fixed by D46's two filters.
+- **The first pilot paid the ceiling.** At tick zero the only propellant ask at
+  Shackleton was the Ark's 3,150 (175% of anchor); a week later it trades at
+  about 1,750. Fixed by D47's warm-up.
+- **The loop pays.** Propellant bought at Shackleton for ~1,760 and sold at
+  Peary Ridge for ~3,180 after one real minute of flight. That spread is the
+  one the agent haulers leave on the table, and it should narrow as players
+  work it — F7's prediction, now with people in it.
+
+---
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -881,10 +1014,14 @@ Deliberately not decided, because these are yours.
 1. **The corpus export endpoint** — see D27. Everything else about the Ark
    integration is decided; this is the one piece that has to come from the
    lunarark.com side.
-2. **Real design tokens.** `docs/DESIGN-LANGUAGE.md` was extracted from
-   screenshots, so its hex values are eyeballed. Replacing them with the
-   actual stylesheet is a five-minute job once the site is reachable — the
-   structure holds either way. `moon_sim.html` has still not been seen.
+2. **Real design tokens.** Resolved for the game: `web/index.html` uses
+   lunarark.com's own stylesheet values from `lunarark_files/` (`#030014`,
+   glass `rgba(15,23,42,.6)`, violet `#8b5cf6`, cyan `#06b6d4`, Orbitron /
+   Rajdhani / Space Mono). `docs/DESIGN-LANGUAGE.md` and the prototype
+   terminal still carry the older eyeballed values.
+7. **Real identity before a public launch** — D48. How should a person prove
+   they are one person: email, a Google or Apple sign-in, something else?
+8. **Ledger archival before a public launch** — D49.
 3. **"Heavy hulls only"** for hard burns — undefined threshold.
 5. **Starting cash against first-outpost cost** — 120,000 cr against
    2,565,000 cr, and see D14 on runway. `seed-data.md` already flags this.

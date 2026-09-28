@@ -116,6 +116,55 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE INDEX idx_trade_tape ON trade (node, asset, id);
         """,
     ),
+    (
+        2,
+        """
+        -- Found when planning a world that runs continuously rather than for
+        -- a test's few hundred ticks. Every order placement takes the next
+        -- sequence number with MAX(seq), and with no index on seq that is a
+        -- scan of every order ever placed. Fine for a test, and a slowdown
+        -- that grows without bound for a server that runs for months.
+        CREATE INDEX idx_book_seq ON book_order (seq);
+
+        -- A firm's own open orders are cancelled and replaced every tick.
+        -- Without this the lookup filters the open-order index by account.
+        CREATE INDEX idx_book_account ON book_order (account_id, status);
+        """,
+    ),
+    (
+        3,
+        """
+        -- A derived cache of balances, and the one exception to "no stored
+        -- balance anywhere" -- so it is worth being exact about why it is
+        -- not a second source of truth.
+        --
+        -- A live world writes roughly 800,000 postings per real day. Summing
+        -- an account's whole history on every balance read was a few
+        -- microseconds in a test and would be seconds per tick within weeks.
+        --
+        -- Every row here is the sum of every posting for that account and
+        -- asset up to ``checkpoint_mark.through_posting``, written only by
+        -- ``Ledger.checkpoint`` in a single statement that reads postings
+        -- and nothing else. Nothing ever edits a row by hand, a balance is
+        -- still checkpoint plus the postings after the mark, and
+        -- ``Ledger.verify_checkpoints`` recomputes the whole table from the
+        -- raw ledger and compares. The postings remain the truth; delete
+        -- this table and every balance is still recoverable.
+        CREATE TABLE balance_checkpoint (
+            account_id TEXT NOT NULL,
+            asset      TEXT NOT NULL,
+            amount     INTEGER NOT NULL,
+            PRIMARY KEY (account_id, asset)
+        ) WITHOUT ROWID;
+        CREATE INDEX idx_checkpoint_asset ON balance_checkpoint (asset);
+
+        CREATE TABLE checkpoint_mark (
+            id              INTEGER PRIMARY KEY CHECK (id = 1),
+            through_posting INTEGER NOT NULL
+        );
+        INSERT INTO checkpoint_mark (id, through_posting) VALUES (1, 0);
+        """,
+    ),
 ]
 
 

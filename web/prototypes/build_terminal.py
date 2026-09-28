@@ -21,7 +21,7 @@ import html
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "sim" / "src"), str(ROOT / "market" / "src")]
 
 from market.book import ASK, BID                                      # noqa: E402
@@ -474,7 +474,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=20260904)
     parser.add_argument("--ticks", type=int, default=480)
-    parser.add_argument("--out", default=str(ROOT / "web" / "terminal.html"))
+    parser.add_argument("--out", default=str(ROOT / "web" / "prototypes" / "terminal.html"))
     args = parser.parse_args()
 
     print(f"running {args.ticks} ticks, seed {args.seed} ...", flush=True)
