@@ -8,6 +8,7 @@ Real orbital mechanics, deterministic economy, one shared clock at 60× real tim
 
 | File | What it's for |
 |---|---|
+| `docs/VISION.md` | What the game is for and where it is going. Check hard decisions against it. |
 | `CLAUDE.md` | Engineering invariants and working rules. Read before writing code. |
 | `docs/BIBLE.md` | Design reasoning — the world, markets, agents, player arc. Why things are the way they are. |
 | `docs/seed-data.md` | Locations, commodities, modules. The numbers everything descends from. |
