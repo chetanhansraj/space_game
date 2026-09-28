@@ -123,3 +123,60 @@ def test_float_amounts_are_refused(db, ledger, trader):
                 Posting("alice", CREDIT, -0.5),
                 Posting("bob", CREDIT, 0.5),
             ])
+
+
+def test_a_nested_failure_rolls_back_only_itself(db, ledger, trader):
+    """An order refused inside a tick leaves no trace; the tick carries on."""
+    trader("alice", credits=1_000)
+    trader("bob")
+    with transaction(db):
+        ledger.transfer("alice", "bob", CREDIT, 300, kind="test", game_time=T0)
+        with pytest.raises(InsufficientFunds):
+            with transaction(db):
+                ledger.transfer("alice", "bob", CREDIT, 100, kind="test",
+                                game_time=T0)
+                ledger.transfer("alice", "bob", CREDIT, 5_000, kind="test",
+                                game_time=T0)
+        ledger.transfer("alice", "bob", CREDIT, 200, kind="test", game_time=T0)
+    assert ledger.balance("alice") == 500
+    assert ledger.balance("bob") == 500
+    ledger.assert_conserved()
+
+
+def test_an_outer_failure_rolls_back_everything_inside_it(db, ledger, trader):
+    """A tick that dies halfway leaves the world exactly where it was."""
+    trader("alice", credits=1_000)
+    trader("bob")
+    with pytest.raises(RuntimeError):
+        with transaction(db):
+            with transaction(db):
+                ledger.transfer("alice", "bob", CREDIT, 300, kind="test",
+                                game_time=T0)
+            raise RuntimeError("server killed mid-tick")
+    assert ledger.balance("alice") == 1_000
+    assert ledger.balance("bob") == 0
+
+
+def test_the_balance_cache_is_checked_against_the_raw_ledger(db, ledger, trader):
+    """A cache that drifted from the postings is caught, not believed."""
+    trader("alice", credits=1_000)
+    with transaction(db):
+        ledger.checkpoint()
+    assert ledger.verify_checkpoints() == []
+    db.execute("UPDATE balance_checkpoint SET amount = 9999 "
+               "WHERE account_id = 'alice'")
+    assert ledger.verify_checkpoints() == [("alice", CREDIT, 9_999, 1_000)]
+
+
+def test_balances_read_the_same_either_side_of_a_checkpoint(db, ledger, trader):
+    trader("alice", credits=1_000, ICE=5_000)
+    trader("bob")
+    before = (ledger.balance("alice"), ledger.holdings("alice"))
+    with transaction(db):
+        ledger.checkpoint()
+    assert (ledger.balance("alice"), ledger.holdings("alice")) == before
+    with transaction(db):
+        ledger.transfer("alice", "bob", CREDIT, 400, kind="test", game_time=T0)
+    assert ledger.balance("alice") == 600
+    assert ledger.balance("bob") == 400
+    ledger.assert_conserved()

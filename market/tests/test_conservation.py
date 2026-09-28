@@ -123,7 +123,29 @@ class Exchange(RuleBasedStateMachine):
         except MarketError:
             pass
 
+    @rule()
+    def take_a_checkpoint(self):
+        """The server folds the ledger into its balance cache once a game day.
+
+        Interleaved with everything else here, so a checkpoint lands between
+        a bid and its cancel, mid-way through partial fills, and on top of
+        escrow accounts that are about to close.
+        """
+        with transaction(self.db):
+            self.ledger.checkpoint()
+
     # -- what must always be true ----------------------------------------
+
+    @invariant()
+    def the_balance_cache_agrees_with_the_raw_ledger(self):
+        assert self.ledger.verify_checkpoints() == []
+        for who in TRADERS + (ARK,):
+            for asset in (CREDIT,) + TRADED:
+                raw = self.db.execute(
+                    "SELECT COALESCE(SUM(amount), 0) FROM posting "
+                    "WHERE account_id = ? AND asset = ?", (who, asset),
+                ).fetchone()[0]
+                assert self.ledger.balance(who, asset) == raw
 
     @invariant()
     def nothing_is_created_or_destroyed(self):

@@ -27,9 +27,11 @@ created and every credit ever destroyed is a queryable number:
 ``world:consumption``  The sink for consumed commodities -- life support,
                        propellant burned, food eaten.
 
-Balances are never stored. Asking for a balance sums the postings. This is
-slower than a cached column and it is not close to being a bottleneck, and it
-means there is exactly one source of truth about what an account holds.
+Balances are never stored as a source of truth. Asking for a balance sums the
+postings -- the ones since the last checkpoint, on top of a checkpoint that is
+itself nothing but a sum of the postings before it (schema migration 3). The
+postings are the one source of truth about what an account holds, and
+``verify_checkpoints`` proves the cache agrees with them.
 """
 
 from __future__ import annotations
@@ -124,29 +126,104 @@ class Ledger:
 
     # -- reading -------------------------------------------------------
 
+    def _mark(self) -> int:
+        return int(self.db.execute(
+            "SELECT through_posting FROM checkpoint_mark WHERE id = 1"
+        ).fetchone()[0])
+
     def balance(self, account_id: str, asset: str = CREDIT) -> int:
+        """Checkpoint plus every posting since. See schema migration 3."""
         row = self.db.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS b FROM posting "
-            "WHERE account_id = ? AND asset = ?",
-            (account_id, asset),
+            "SELECT"
+            " COALESCE((SELECT amount FROM balance_checkpoint"
+            "           WHERE account_id = :a AND asset = :s), 0)"
+            " + COALESCE((SELECT SUM(amount) FROM posting"
+            "           WHERE account_id = :a AND asset = :s AND id >"
+            "           (SELECT through_posting FROM checkpoint_mark"
+            "            WHERE id = 1)), 0) AS b",
+            {"a": account_id, "s": asset},
         ).fetchone()
         return int(row["b"])
 
     def holdings(self, account_id: str) -> dict[str, int]:
         """Every non-zero balance an account holds."""
         rows = self.db.execute(
-            "SELECT asset, SUM(amount) AS b FROM posting WHERE account_id = ? "
-            "GROUP BY asset HAVING b != 0",
-            (account_id,),
+            "SELECT asset, SUM(amount) AS b FROM ("
+            "  SELECT asset, amount FROM balance_checkpoint"
+            "  WHERE account_id = :a"
+            "  UNION ALL"
+            "  SELECT asset, amount FROM posting WHERE account_id = :a"
+            "  AND id > (SELECT through_posting FROM checkpoint_mark"
+            "            WHERE id = 1)"
+            ") GROUP BY asset HAVING b != 0",
+            {"a": account_id},
         ).fetchall()
         return {r["asset"]: int(r["b"]) for r in rows}
 
     def total_by_asset(self) -> dict[str, int]:
         """Sum of every posting, per asset. Must be zero for all of them."""
         rows = self.db.execute(
-            "SELECT asset, SUM(amount) AS total FROM posting GROUP BY asset"
+            "SELECT asset, SUM(amount) AS total FROM ("
+            "  SELECT asset, amount FROM balance_checkpoint"
+            "  UNION ALL"
+            "  SELECT asset, amount FROM posting"
+            "  WHERE id > (SELECT through_posting FROM checkpoint_mark"
+            "              WHERE id = 1)"
+            ") GROUP BY asset"
         ).fetchall()
         return {r["asset"]: int(r["total"]) for r in rows}
+
+    def checkpoint(self) -> int:
+        """Fold every posting since the last mark into the checkpoint.
+
+        Must run inside a transaction, like every other write here. The new
+        mark is the highest posting id that exists at the moment it runs, so
+        a transaction can never straddle it: postings are only ever read
+        after their transaction committed or from inside it.
+
+        Returns how many postings were folded in.
+        """
+        lo = self._mark()
+        hi = int(self.db.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM posting").fetchone()[0])
+        if hi <= lo:
+            return 0
+        self.db.execute(
+            "INSERT INTO balance_checkpoint (account_id, asset, amount) "
+            "SELECT account_id, asset, SUM(amount) FROM posting "
+            "WHERE id > ? AND id <= ? GROUP BY account_id, asset "
+            "ON CONFLICT (account_id, asset) "
+            "DO UPDATE SET amount = amount + excluded.amount",
+            (lo, hi),
+        )
+        # A missing row means zero. Every closed escrow account would
+        # otherwise leave a row behind forever.
+        self.db.execute("DELETE FROM balance_checkpoint WHERE amount = 0")
+        self.db.execute(
+            "UPDATE checkpoint_mark SET through_posting = ? WHERE id = 1",
+            (hi,))
+        return hi - lo
+
+    def verify_checkpoints(self) -> list[tuple[str, str, int, int]]:
+        """Recompute the checkpoint from the raw ledger and compare.
+
+        Returns every (account, asset, cached, true) that disagrees -- which
+        must always be an empty list. Slow on purpose: it reads the whole
+        history. For tests and for audits, never for the tick.
+        """
+        mark = self._mark()
+        rows = self.db.execute(
+            "SELECT account_id, asset, SUM(c) AS cached, SUM(t) AS truth"
+            " FROM ("
+            "  SELECT account_id, asset, amount AS c, 0 AS t"
+            "  FROM balance_checkpoint"
+            "  UNION ALL"
+            "  SELECT account_id, asset, 0, amount FROM posting WHERE id <= ?"
+            ") GROUP BY account_id, asset HAVING SUM(c) != SUM(t)",
+            (mark,),
+        ).fetchall()
+        return [(r["account_id"], r["asset"], int(r["cached"]), int(r["truth"]))
+                for r in rows]
 
     def assert_conserved(self) -> None:
         """The invariant, checkable at any moment.
