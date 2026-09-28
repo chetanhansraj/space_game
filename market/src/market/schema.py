@@ -116,6 +116,21 @@ MIGRATIONS: list[tuple[int, str]] = [
         CREATE INDEX idx_trade_tape ON trade (node, asset, id);
         """,
     ),
+    (
+        2,
+        """
+        -- Found when planning a world that runs continuously rather than for
+        -- a test's few hundred ticks. Every order placement takes the next
+        -- sequence number with MAX(seq), and with no index on seq that is a
+        -- scan of every order ever placed. Fine for a test, and a slowdown
+        -- that grows without bound for a server that runs for months.
+        CREATE INDEX idx_book_seq ON book_order (seq);
+
+        -- A firm's own open orders are cancelled and replaced every tick.
+        -- Without this the lookup filters the open-order index by account.
+        CREATE INDEX idx_book_account ON book_order (account_id, status);
+        """,
+    ),
 ]
 
 
