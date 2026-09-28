@@ -15,19 +15,16 @@ Every number is either from seed-data or recorded in docs/DECISIONS.md.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from market.authority import ArkAuthority
 from market.book import OrderBook
 from market.db import transaction
 from market.ledger import Ledger
 from market.seed import seed_assets
-from orbital.anchors import AnchorRegistry
-from orbital.ephemeris import get_backend
 
 from .deposits import Deposit
 from .earth import EarthMarket
 from .firms import Firm, Role
+from .persist import default_routes
 from .routes import RouteBook
 from .ships import KESTREL, Ship
 from .world import World
@@ -81,8 +78,8 @@ def _firm(fid, role, node, **kw) -> Firm:
     return Firm(id=fid, role=role, node=node, account=f"agent:{fid}", **kw)
 
 
-def build(db, seed: int = 20260904, game_time: str = "2190-01-01T00:00:00Z"
-          ) -> World:
+def build(db, seed: int = 20260904, game_time: str = "2190-01-01T00:00:00Z",
+          routes: RouteBook | None = None) -> World:
     """Create the v1 world. Deterministic for a given seed."""
     ledger = Ledger(db)
     with transaction(db):
@@ -257,11 +254,7 @@ def build(db, seed: int = 20260904, game_time: str = "2190-01-01T00:00:00Z"
         ledger=ledger, books=books, authorities=authorities, earth=earth,
         firms=firms, deposits=deposits, seed=seed,
         ships=ships,
-        routes=RouteBook(AnchorRegistry.load(
-            get_backend("auto"),
-            Path(__file__).resolve().parents[3] / "orbital/data/anchors.toml",
-            Path(__file__).resolve().parents[3] / "orbital/data/smallbody_elements.json",
-        )),
+        routes=routes or default_routes(),
         volatility=VOLATILITY,
         earth_assets={TRANQUILLITATIS: "HE3"},
         quoted_assets={

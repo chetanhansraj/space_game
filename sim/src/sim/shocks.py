@@ -15,7 +15,7 @@ is replayable exactly, without simulating the 4,119 ticks before it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .rng import Streams
 
@@ -35,13 +35,20 @@ REPAIR_COST = 25_000
 
 @dataclass
 class Event:
-    """Something that happened. `voice/` turns these into prose."""
+    """Something that happened. `voice/` turns these into prose.
+
+    ``detail`` is a plain English line for logs and tests. ``data`` carries
+    the same facts as structured values, which is what `voice/` writes from
+    and what the game client reads -- so no one ever has to parse a number
+    back out of a sentence.
+    """
 
     tick: int
     kind: str
     subject: str
     detail: str
     until_tick: int | None = None
+    data: dict = field(default_factory=dict)
 
 
 class Weather:
@@ -72,6 +79,7 @@ class Weather:
                 tick=tick, kind="solar_flare", subject="all_nodes",
                 detail=f"surface work halted for {hours} game hours",
                 until_tick=self.flare_until,
+                data={"hours": hours},
             ))
 
         for firm_id in firm_ids:
@@ -88,6 +96,7 @@ class Weather:
                 tick=tick, kind="equipment_failure", subject=firm_id,
                 detail=f"rig down for {hours} game hours, {REPAIR_COST:,} cr to repair",
                 until_tick=tick + hours,
+                data={"hours": hours, "repair_cost": REPAIR_COST},
             ))
 
         return events

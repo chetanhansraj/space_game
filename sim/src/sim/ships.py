@@ -119,6 +119,22 @@ class Ship:
     voyages: int = 0
     log: list[str] = field(default_factory=list)
 
+    #: Flown by a person rather than by the hauling agent. The world tick
+    #: moves a player's ship and docks it, and nothing else: it never picks
+    #: a cargo, buys fuel or sells on a player's behalf unless they asked.
+    player_owned: bool = False
+    #: The player's standing instruction for arrival: sell the hold at the
+    #: best bid on docking, or keep it aboard.
+    sell_on_arrival: bool = True
+    #: Docking fee paid in advance at departure, so an arrival can never
+    #: fail for want of money. Recorded so the arrival report can say so.
+    prepaid_fee: int = 0
+    #: Kilograms bought at the current dock since arriving, by asset. Goods
+    #: bought here cannot be handed over here against a delivery contract:
+    #: a contract pays for carrying something, and buying it at the door is
+    #: not carrying it. Cleared on departure.
+    loaded: dict[str, int] = field(default_factory=dict)
+
     def progress(self, tick: int) -> float:
         """0 at departure, 1 on arrival. What the map draws."""
         if self.state is not ShipState.IN_TRANSIT:

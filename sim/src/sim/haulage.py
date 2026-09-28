@@ -276,6 +276,7 @@ class Haulier:
         ship.manifest = (plan.asset, cargo)
         ship.log.append(f"T{tick} depart {ship.location} -> {plan.destination}"
                         f" with {cargo//1000} t {plan.asset}")
+        del ship.log[:-20]      # a ship in a world that never stops
         return True
 
     def arrive(self, ship: Ship, tick: int, now: str) -> int:
@@ -316,6 +317,7 @@ class Haulier:
         ship.manifest = None
         realised = self.w.ledger.balance(ship.account, CREDIT) - before
         ship.log.append(f"T{tick} arrive {node}, sold for {realised:,} cr")
+        del ship.log[:-20]
         return realised
 
     def _cancel(self, ship: Ship, now: str) -> None:
