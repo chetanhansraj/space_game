@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A consistent copy of the live world, taken without stopping it (SQLite's
 # online backup), kept for 14 days. Run daily from cron:
-#   15 4 * * * /root/space_game/deploy/backup.sh >> /root/space_game/data/backup.log 2>&1
+#   15 4 * * * /opt/lunarark/deploy/backup.sh >> /opt/lunarark/data/backup.log 2>&1
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p data/backups

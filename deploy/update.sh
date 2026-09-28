@@ -5,7 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ./deploy/backup.sh
 git pull --ff-only
-if docker compose --profile https ps --services --status running | grep -q caddy; then
+RUNNING="$(docker compose --profile https ps --services --status running 2>/dev/null || true)"
+if grep -qx caddy <<<"$RUNNING"; then
   docker compose --profile https up -d --build
 else
   docker compose up -d --build
