@@ -19,6 +19,7 @@ catching up after downtime still answers requests between hours.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import secrets
@@ -39,6 +40,10 @@ from voice import render_event, render_letter, speaker
 from . import sky
 
 log = logging.getLogger("solar.api")
+
+
+def _now() -> str:
+    return datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
 
 #: Signups allowed per client address per hour. The development fund is
 #: finite, and a script that registers a thousand companies drains it.
@@ -119,7 +124,9 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
         if holder["game"] is None:
             path = db_path or os.environ.get("SOLAR_DB", "data/world.db")
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            holder["game"] = Game.open(path, threadsafe=True)
+            holder["game"] = Game.open(
+                path, threadsafe=True,
+                warmup_ticks=int(os.environ.get("SOLAR_WARMUP_TICKS", "168")))
             log.info("world open at %s, tick %d", path,
                      holder["game"].world.tick)
         ticker = Ticker(the_game, lock) if run_ticker else None
@@ -170,7 +177,7 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
                     {**e, "text": render_event(e, companies)}
                     for e in game.feed(limit=30)]
                 cache["world"], cache["world_key"] = view, key
-            return cache["world"]
+            return {**cache["world"], "server_time": _now()}
 
     @app.get("/api/sky")
     def sky_view():
@@ -231,6 +238,8 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
         with lock:
             game = the_game()
             view = game.company_view(player)
+            for c in view["contracts"] + view["history"]:
+                c["issuer_character"] = speaker(c["issuer"]).as_dict()
             view["unread"] = game.db.execute(
                 "SELECT COUNT(*) FROM message WHERE player_id = ? AND read = 0",
                 (player.id,)).fetchone()[0]

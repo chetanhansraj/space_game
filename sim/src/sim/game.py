@@ -135,8 +135,16 @@ class Game:
     @classmethod
     def open(cls, path: str = ":memory:", seed: int = DEFAULT_SEED,
              now: _dt.datetime | None = None, routes=None,
-             threadsafe: bool = False) -> "Game":
-        """Open the world at ``path``, creating it if it does not exist."""
+             threadsafe: bool = False, warmup_ticks: int = 0) -> "Game":
+        """Open the world at ``path``, creating it if it does not exist.
+
+        ``warmup_ticks`` gives a new world a history before anyone arrives.
+        A world at tick zero has no trades yet, so the only propellant for
+        sale is the Ark's ceiling at 175% of anchor, and the first pilot in
+        pays it. The warm-up hours are run for real -- same tick, same
+        ledger -- and the clock is started that many hours in the past, so
+        the world is exactly on time the moment it opens.
+        """
         db = connect(path, threadsafe=threadsafe)
         schema.migrate(db)
         row = db.execute(
@@ -146,7 +154,8 @@ class Game:
             launch = _dt.datetime.fromisoformat(cls._meta(db, "launch_real"))
             return cls(db, world, launch)
 
-        launch = (now or _dt.datetime.now(tz=_UTC)).astimezone(_UTC)
+        now = (now or _dt.datetime.now(tz=_UTC)).astimezone(_UTC)
+        launch = now - _dt.timedelta(seconds=warmup_ticks * TICK_REAL_SECONDS)
         # World creation is one transaction, like a tick: a server killed
         # half-way through founding the world leaves no world at all.
         with transaction(db):
@@ -167,6 +176,8 @@ class Game:
             game.version = 0
             text = game._write_snapshot()
         game._saved = text
+        for _ in range(warmup_ticks):
+            game.step()
         return game
 
     @staticmethod
@@ -605,10 +616,14 @@ class Game:
                                                             asset))
 
         for asset, held in ledger.holdings(player.account).items():
-            if asset not in (CREDIT, "PROP") and held > 0:
+            if asset == "PROP":
+                held -= KESTREL.tank_capacity_kg   # the tank is not cargo
+            # Less than a trading lot is dust in the hold, not unsold cargo.
+            if asset != CREDIT and held >= ledger.asset(asset).lot_mass_kg:
                 report["kept"][asset] = held
+        prop = ledger.balance(player.account, "PROP")
         report["credits"] = ledger.balance(player.account, CREDIT)
-        report["fuel_kg"] = ledger.balance(player.account, "PROP")
+        report["fuel_kg"] = min(prop, KESTREL.tank_capacity_kg)
         self._message(pid, f"port:{node}", "arrival", report)
         return out
 

@@ -299,3 +299,12 @@ def test_unpaid_upkeep_grounds_the_ship_and_never_overdraws(game):
     with pytest.raises(GameError, match="Grounded"):
         game.dispatch(me, PEARY)
     assert any(m["kind"] == "arrears" for m in game.inbox(me))
+
+
+def test_a_new_world_can_open_with_a_history_and_on_time(routes):
+    g = Game.open(":memory:", now=T0, routes=routes, warmup_ticks=6)
+    assert g.world.tick == 6
+    assert g.due_tick(T0) == 6          # exactly on time, not ahead or behind
+    assert g.catch_up(T0) == 0
+    g.world.ledger.assert_conserved()
+    g.db.close()
