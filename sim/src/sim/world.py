@@ -40,6 +40,9 @@ from .ships import Ship, ShipState
 #: How often institutions replace their standing quotes, in ticks.
 QUOTE_REFRESH_TICKS = 6
 
+#: Recent events held in memory. The full history is the game's event log.
+EVENTS_KEPT = 2_000
+
 
 @dataclass
 class World:
@@ -128,6 +131,9 @@ class World:
         self.ledger.assert_conserved()
 
         self.events.extend(produced)
+        # The persistent record is the game's event log. This is a window
+        # onto recent history, and must not grow for the life of the world.
+        del self.events[:-EVENTS_KEPT]
         return produced
 
     # -- production and consumption --------------------------------------
