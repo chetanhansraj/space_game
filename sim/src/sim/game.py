@@ -127,6 +127,8 @@ class Game:
         self.launch_real = launch_real
         self.board = ContractBoard(world, db)
         self._saved = persist.dumps(world)
+        #: Bumped on every committed change, so readers can cache views.
+        self.version = 0
 
     # -- opening ---------------------------------------------------------
 
@@ -162,6 +164,7 @@ class Game:
             game = cls.__new__(cls)
             game.db, game.world, game.launch_real = db, world, launch
             game.board = ContractBoard(world, db)
+            game.version = 0
             text = game._write_snapshot()
         game._saved = text
         return game
@@ -220,6 +223,7 @@ class Game:
             self._reload()
             raise
         self._saved = text
+        self.version += 1
 
     def _reload(self) -> None:
         self.world = persist.loads(self.db, self._saved,
