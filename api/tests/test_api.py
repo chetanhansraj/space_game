@@ -136,3 +136,23 @@ def test_a_nearly_full_disk_holds_the_world_and_says_so(tmp_path, routes):
 def test_health_reports_disk(client):
     body = client.get("/api/health").json()
     assert "holding_for_disk" in body and body["ok"] is True
+
+
+def test_signup_is_closed_when_no_access_code_is_set(game, tmp_path, monkeypatch):
+    """A missing setting must never mean an open door."""
+    monkeypatch.delenv("SOLAR_ACCESS_CODE", raising=False)
+    monkeypatch.delenv("SOLAR_OPEN_SIGNUP", raising=False)
+    app = create_app(game, web_dir=str(tmp_path), run_ticker=False)
+    with TestClient(app) as c:
+        r = c.post("/api/signup", json={"name": "Walk In", "access_code": ""})
+        assert r.status_code == 403
+        assert "closed" in r.json()["detail"]
+
+
+def test_open_signup_must_be_asked_for_by_name(game, tmp_path, monkeypatch):
+    monkeypatch.delenv("SOLAR_ACCESS_CODE", raising=False)
+    monkeypatch.setenv("SOLAR_OPEN_SIGNUP", "1")
+    app = create_app(game, web_dir=str(tmp_path), run_ticker=False)
+    with TestClient(app) as c:
+        r = c.post("/api/signup", json={"name": "Open Door", "access_code": ""})
+        assert r.status_code == 200

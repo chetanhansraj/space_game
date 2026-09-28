@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Put the Lunar Ark world on this server, start to finish.
 #
-#   bash /opt/lunarark/deploy/install.sh [domain]
+#   bash /opt/arkgame/deploy/install.sh [domain]
 #
 # Written to be run by someone who has never run a server, from Hostinger's
 # browser terminal, as root. It checks everything it can before changing

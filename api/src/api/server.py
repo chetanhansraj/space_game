@@ -160,7 +160,15 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
     lock = threading.RLock()
     holder: dict = {"game": game}
     access_code = (os.environ.get("SOLAR_ACCESS_CODE", "")
-                   if access_code is None else access_code)
+                   if access_code is None else access_code).strip()
+    # Fail closed. An unset access code used to mean "no gate", so a server
+    # whose settings file was missing or wrong went live open to anyone --
+    # found in review before the first deploy. Now signup stays shut unless
+    # there is a code, or open signup is asked for by name.
+    open_signup = os.environ.get("SOLAR_OPEN_SIGNUP", "") == "1"
+    if not access_code and not open_signup:
+        log.warning("SOLAR_ACCESS_CODE is not set: signup is closed. Set it, "
+                    "or SOLAR_OPEN_SIGNUP=1 to let anyone found a company.")
     signups: dict[str, deque] = defaultdict(deque)
     cache: dict = {}
 
@@ -265,6 +273,9 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
 
     @app.post("/api/signup")
     def signup(body: SignupIn, request: Request):
+        if not access_code and not open_signup:
+            raise HTTPException(403, "The charter office is closed. New "
+                                     "companies are not being founded yet.")
         if access_code and not secrets.compare_digest(
                 body.access_code.strip().encode(), access_code.encode()):
             raise HTTPException(403, "That access code is not right. The "
