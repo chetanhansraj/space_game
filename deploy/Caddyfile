@@ -1,0 +1,11 @@
+# Caddy fetches and renews the HTTPS certificate for SOLAR_DOMAIN itself.
+# The domain's A record must already point at this server.
+{$SOLAR_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy game:8000
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

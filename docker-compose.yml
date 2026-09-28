@@ -1,0 +1,39 @@
+# Lunar Ark on one server. See docs/DEPLOY.md.
+#
+#   docker compose --profile https up -d --build     # the game + automatic HTTPS
+#   docker compose up -d --build                     # the game only, for an
+#                                                    # existing nginx in front
+services:
+  game:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Only Caddy (or the host's nginx) can reach this port, so the address
+      # it forwards is trusted for the signup rate limit.
+      SOLAR_TRUSTED_PROXIES: "*"
+    volumes:
+      - ./data:/data
+    # Bound to the host's loopback only. Nothing reaches the game except
+    # through the proxy in front of it.
+    ports:
+      - "127.0.0.1:8000:8000"
+    stop_grace_period: 20s
+
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on: [game]
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
