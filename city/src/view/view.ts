@@ -1,0 +1,426 @@
+// The 2D isometric view. It reads the simulation state and draws it; it never
+// changes it. A 3D view can replace this file without touching the simulation.
+// Art is deliberately grey-box: flat-shaded prisms with two-letter labels.
+
+import { Application, Container, Graphics, Text } from './pixi';
+import { BUILDINGS, BuildingType, ZONES } from '../sim/buildings';
+import { ORES } from '../sim/world';
+import { State, GROUND, sunFactor, population, LUNAR_DAY, HALF } from '../sim/sim';
+
+const TW = 64, TH = 32;
+const iso = (x: number, y: number, z = 0): [number, number] => [(x - y) * (TW / 2), (x + y) * (TH / 2) - z];
+
+interface Look { top: number; hgt: number; inset: number; ink: number; cap?: number; }
+const LOOK: Record<BuildingType, Look> = {
+  lander: { top: 0xd2a84c, hgt: 24, inset: 0.12, ink: 0x2a1e05, cap: 0xe9e4d6 },
+  conduit: { top: 0x8f8ba6, hgt: 0, inset: 0, ink: 0 },
+  solar: { top: 0x234a8c, hgt: 4, inset: 0.05, ink: 0xcfe0ff },
+  battery: { top: 0x3f8f63, hgt: 12, inset: 0.18, ink: 0x06200f },
+  reactor: { top: 0x4a4858, hgt: 26, inset: 0.16, ink: 0xffd9a8, cap: 0xff8a3d },
+  habitat: { top: 0xe2ded5, hgt: 18, inset: 0.08, ink: 0x2b2a33 },
+  o2plant: { top: 0x69b4e3, hgt: 22, inset: 0.14, ink: 0x06202f },
+  recycler: { top: 0x3a9bb0, hgt: 14, inset: 0.2, ink: 0x031d22 },
+  o2tank: { top: 0xb5def4, hgt: 17, inset: 0.24, ink: 0x0b2836 },
+  watertank: { top: 0x4a78dc, hgt: 17, inset: 0.24, ink: 0xe6eeff },
+  printer: { top: 0xb47a3f, hgt: 15, inset: 0.1, ink: 0x2a1603 },
+  greenhouse: { top: 0x58b874, hgt: 13, inset: 0.07, ink: 0x06220f },
+  pad: { top: 0x5b5868, hgt: 2, inset: 0.03, ink: 0xf2efe6 },
+  lodge: { top: 0xe8c9a0, hgt: 20, inset: 0.1, ink: 0x3a2408, cap: 0x8fd0ff },
+  market: { top: 0x86b6ff, hgt: 16, inset: 0.09, ink: 0x0a1c38, cap: 0xffe2a8 },
+  garage: { top: 0x9aa3ad, hgt: 12, inset: 0.08, ink: 0x14181d },
+  garden: { top: 0x3fa66a, hgt: 10, inset: 0.06, ink: 0x06220f, cap: 0xb9f0c8 },
+  clinic: { top: 0xf4f1ea, hgt: 16, inset: 0.1, ink: 0x2b2a33, cap: 0xff6b6b },
+};
+
+const shade = (c: number, k: number) => {
+  const r = Math.min(255, ((c >> 16) & 255) * k) | 0, g = Math.min(255, ((c >> 8) & 255) * k) | 0, b = Math.min(255, (c & 255) * k) | 0;
+  return (r << 16) | (g << 8) | b;
+};
+const mix = (a: number, b: number, t: number) => {
+  const ch = (s: number) => (((a >> s) & 255) + (((b >> s) & 255) - ((a >> s) & 255)) * t) | 0;
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
+const hash = (x: number, y: number) => {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+};
+
+function prism(g: Graphics, x: number, y: number, w: number, h: number, z0: number, hgt: number, inset: number, top: number, alpha = 1) {
+  const a = iso(x + inset, y + inset, z0 + hgt), b = iso(x + w - inset, y + inset, z0 + hgt);
+  const c = iso(x + w - inset, y + h - inset, z0 + hgt), d = iso(x + inset, y + h - inset, z0 + hgt);
+  if (hgt > 0) {
+    g.poly([d[0], d[1], c[0], c[1], c[0], c[1] + hgt, d[0], d[1] + hgt]).fill({ color: shade(top, 0.62), alpha });
+    g.poly([c[0], c[1], b[0], b[1], b[0], b[1] + hgt, c[0], c[1] + hgt]).fill({ color: shade(top, 0.42), alpha });
+  }
+  g.poly([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]).fill({ color: top, alpha });
+}
+
+export class View {
+  app!: Application;
+  world = new Container();
+  private terrain = new Graphics();
+  private zones = new Graphics();
+  private findLabels = new Container();
+  private heat = new Graphics();
+  private heatRev = -1;
+  private objects = new Container();
+  private overlay = new Graphics();
+  private lights = new Graphics();
+  private ghost = new Graphics();
+  private stars = new Graphics();
+  private labels = new Container();
+  private fx = new Container();
+  private seenPop = 0;
+  private walkers: { ax: number; ay: number; bx: number; by: number; t: number; v: number }[] = [];
+  private spots: [number, number][] = [];
+  private lastNow = 0;
+  private drawnRev = -1;
+  private drawnSeed = -1;
+  scale = 1;
+
+  static async create(host: HTMLElement): Promise<View> {
+    const v = new View();
+    v.app = new Application();
+    await v.app.init({
+      resizeTo: host, backgroundAlpha: 0, antialias: true, preference: 'webgl',
+      resolution: Math.min(window.devicePixelRatio || 1, 2), autoDensity: true,
+    });
+    host.appendChild(v.app.canvas);
+    v.app.canvas.style.touchAction = 'none';
+    v.objects.sortableChildren = true;
+    v.lights.blendMode = 'add';
+    v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.objects, v.ghost, v.overlay, v.lights, v.fx);
+    v.app.stage.addChild(v.stars, v.world);
+    for (let i = 0; i < 260; i++) {
+      const r = hash(i, 7) < 0.9 ? 0.7 : 1.3;
+      v.stars.circle(hash(i, 1) * 2800, hash(i, 2) * 1700, r).fill({ color: 0xffffff, alpha: 0.25 + hash(i, 3) * 0.55 });
+    }
+    return v;
+  }
+
+  // ----- camera -----
+  centreOn(tx: number, ty: number) {
+    const [sx, sy] = iso(tx, ty);
+    this.world.scale.set(this.scale);
+    this.world.position.set(this.app.screen.width / 2 - sx * this.scale, this.app.screen.height / 2 - sy * this.scale);
+  }
+  panBy(dx: number, dy: number) { this.world.position.x += dx; this.world.position.y += dy; }
+  zoomAt(px: number, py: number, factor: number) {
+    const next = Math.max(0.45, Math.min(2.6, this.scale * factor));
+    const k = next / this.scale;
+    this.world.position.x = px - (px - this.world.position.x) * k;
+    this.world.position.y = py - (py - this.world.position.y) * k;
+    this.scale = next; this.world.scale.set(next);
+  }
+  screenToTile(px: number, py: number): { x: number; y: number } {
+    const wx = (px - this.world.position.x) / this.scale, wy = (py - this.world.position.y) / this.scale;
+    return { x: Math.floor((wx / (TW / 2) + wy / (TH / 2)) / 2), y: Math.floor((wy / (TH / 2) - wx / (TW / 2)) / 2) };
+  }
+
+  // ----- terrain, drawn once per site -----
+  private drawTerrain(s: State) {
+    const g = this.terrain; g.clear();
+    const n = s.size, depth = 16;
+    // the cut edges of the claim, so the site reads as a slab of regolith
+    const p0 = iso(0, n), p1 = iso(n, n), p2 = iso(n, 0);
+    g.poly([p0[0], p0[1], p1[0], p1[1], p1[0], p1[1] + depth, p0[0], p0[1] + depth]).fill(0x2c2a36);
+    g.poly([p1[0], p1[1], p2[0], p2[1], p2[0], p2[1] + depth, p1[0], p1[1] + depth]).fill(0x1f1d28);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const kind = s.ground[y * n + x];
+      const noise = hash(x, y);
+      let z = 0, col = mix(0x6f6c7a, 0x7d7a88, noise);
+      if (kind === GROUND.rim) { z = 5; col = mix(0x8d8a97, 0x9a97a4, noise); }
+      else if (kind === GROUND.floor) { z = -4; col = mix(0x4b4957, 0x565462, noise); }
+      else if (kind === GROUND.heritage) col = mix(0x8a836f, 0x938c78, noise);
+      const a = iso(x, y, z), b = iso(x + 1, y, z), c = iso(x + 1, y + 1, z), d = iso(x, y + 1, z);
+      if (z > 0) {
+        g.poly([d[0], d[1], c[0], c[1], c[0], c[1] + z, d[0], d[1] + z]).fill(shade(col, 0.7));
+        g.poly([c[0], c[1], b[0], b[1], b[0], b[1] + z, c[0], c[1] + z]).fill(shade(col, 0.5));
+      }
+      g.poly([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]).fill(col).stroke({ color: 0x000000, width: 1, alpha: kind === GROUND.flat ? 0.07 : 0.03 });
+      if (kind === GROUND.boulder) {
+        const m = iso(x + 0.5, y + 0.5), r = 5 + noise * 4;
+        g.poly([m[0] - r, m[1] + 2, m[0] - r * 0.4, m[1] - r * 0.9, m[0] + r * 0.7, m[1] - r * 0.6, m[0] + r, m[1] + 3, m[0], m[1] + 6]).fill(shade(col, 0.6));
+        g.poly([m[0] - r * 0.4, m[1] - r * 0.9, m[0] + r * 0.7, m[1] - r * 0.6, m[0] + r * 0.1, m[1]]).fill(shade(col, 1.15));
+      }
+    }
+    // Places rovers visit: crater names, and the 1969 landing site with its descent stage and flag.
+    for (const c of this.labels.removeChildren()) c.destroy();
+    for (const p of s.pois) {
+      const m = iso(p.x, p.y);
+      if (p.bonus > 1) {
+        prism(g, p.x - 0.45, p.y - 0.45, 0.9, 0.9, 0, 9, 0, 0xc9a24a);
+        const f = iso(p.x + 0.9, p.y - 0.3);
+        g.moveTo(f[0], f[1]).lineTo(f[0], f[1] - 22).stroke({ color: 0xe9e6f5, width: 1.5 });
+        g.rect(f[0], f[1] - 22, 11, 7).fill(0xf2efe6).rect(f[0], f[1] - 22, 5, 3.5).fill(0x3a5fc4);
+      } else g.circle(m[0], m[1], 3).fill({ color: 0xffc15e, alpha: 0.75 });
+      const t = new Text({ text: p.name.toUpperCase() + (p.bonus > 1 ? ' · 1969' : ''), style: { fontFamily: 'IBM Plex Mono, ui-monospace, monospace', fontSize: 10, fontWeight: '600', fill: p.bonus > 1 ? 0xffe2a8 : 0xe9e6f5, letterSpacing: 1 } });
+      t.anchor.set(0.5, 0); t.position.set(m[0], m[1] + (p.bonus > 1 ? 14 : 7)); t.alpha = p.bonus > 1 ? 0.95 : 0.6; t.resolution = 2;
+      this.labels.addChild(t);
+    }
+  }
+
+  // ----- buildings, redrawn when the set of buildings changes -----
+  private drawBuildings(s: State) {
+    for (const c of this.objects.removeChildren()) c.destroy({ children: true });
+    const n = s.size;
+    this.spots = s.buildings.filter(b => b.type !== 'conduit' && b.progress >= 1 && b.connected).map(b => [b.x + BUILDINGS[b.type].w + 0.15, b.y + BUILDINGS[b.type].h * 0.5] as [number, number]);
+    for (const b of s.buildings) {
+      const d = BUILDINGS[b.type], L = LOOK[b.type], H = L.hgt * (1 + 0.55 * ((b.level || 1) - 1));
+      const g = new Graphics();
+      const built = b.progress >= 1;
+      const alpha = built ? 1 : 0.42;
+      let top = L.top;
+      if (built && (!b.on || !b.connected)) top = mix(top, 0x5a5866, 0.65);
+      if (b.damaged) top = mix(top, 0x8f2a2a, 0.6);
+      if (b.type === 'conduit') {
+        const m = iso(b.x + 0.5, b.y + 0.5);
+        const col = built ? (b.connected ? 0xb9b4d6 : 0x77738a) : 0x55526a;
+        const link = (dx: number, dy: number) => {
+          const X = b.x + dx, Y = b.y + dy;
+          if (X < 0 || Y < 0 || X >= n || Y >= n || !s.occ[Y * n + X]) return;
+          const e = iso(b.x + 0.5 + dx * 0.5, b.y + 0.5 + dy * 0.5);
+          g.moveTo(m[0], m[1]).lineTo(e[0], e[1]).stroke({ color: 0x15131f, width: 7, alpha: 0.7 * alpha });
+          g.moveTo(m[0], m[1]).lineTo(e[0], e[1]).stroke({ color: col, width: 3.5, alpha });
+        };
+        link(1, 0); link(-1, 0); link(0, 1); link(0, -1);
+        g.circle(m[0], m[1], 4.5).fill({ color: 0x15131f, alpha }).circle(m[0], m[1], 3).fill({ color: col, alpha });
+        g.zIndex = (b.x + b.y) * 10;
+      } else {
+        // contact shadow
+        const sa = iso(b.x, b.y), sb = iso(b.x + d.w, b.y), sc = iso(b.x + d.w, b.y + d.h), sd = iso(b.x, b.y + d.h);
+        g.poly([sa[0], sa[1], sb[0], sb[1], sc[0], sc[1], sd[0], sd[1]]).fill({ color: 0x000000, alpha: 0.22 * alpha });
+        prism(g, b.x, b.y, d.w, d.h, 0, H, L.inset, top, alpha);
+        if (b.type === 'solar') {
+          for (let i = 1; i < 4; i++) {
+            const p = iso(b.x + L.inset + (i * (d.w - 2 * L.inset)) / 4, b.y + L.inset, H), q = iso(b.x + L.inset + (i * (d.w - 2 * L.inset)) / 4, b.y + d.h - L.inset, H);
+            g.moveTo(p[0], p[1]).lineTo(q[0], q[1]).stroke({ color: 0x9cc0ff, width: 1, alpha: 0.45 * alpha });
+            const r = iso(b.x + L.inset, b.y + L.inset + (i * (d.h - 2 * L.inset)) / 4, H), t = iso(b.x + d.w - L.inset, b.y + L.inset + (i * (d.h - 2 * L.inset)) / 4, H);
+            g.moveTo(r[0], r[1]).lineTo(t[0], t[1]).stroke({ color: 0x9cc0ff, width: 1, alpha: 0.45 * alpha });
+          }
+        }
+        if (L.cap !== undefined) prism(g, b.x + d.w * 0.28, b.y + d.h * 0.28, d.w * 0.44, d.h * 0.44, H, 9, 0, b.damaged ? mix(L.cap, 0x8f2a2a, 0.6) : L.cap, alpha);
+        if (b.type === 'pad') {
+          const m = iso(b.x + d.w / 2, b.y + d.h / 2, H);
+          g.ellipse(m[0], m[1], 44, 22).stroke({ color: 0xffc15e, width: 2, alpha: 0.8 * alpha });
+          g.ellipse(m[0], m[1], 22, 11).stroke({ color: 0xf2efe6, width: 1.5, alpha: 0.6 * alpha });
+        }
+        if (!built) {
+          const a = iso(b.x, b.y), bb = iso(b.x + d.w, b.y), c = iso(b.x + d.w, b.y + d.h), dd = iso(b.x, b.y + d.h);
+          g.poly([a[0], a[1], bb[0], bb[1], c[0], c[1], dd[0], dd[1]]).stroke({ color: 0xffc15e, width: 1.5, alpha: 0.8 });
+        }
+        g.zIndex = (b.x + d.w + b.y + d.h) * 10 + 1;
+        if (d.short && b.type !== 'pad') {
+          const capLift = L.cap !== undefined ? 9 : 0;
+          const m = iso(b.x + d.w / 2, b.y + d.h / 2, H + capLift);
+          const t = new Text({ text: d.short + (b.level > 1 ? b.level : ''), style: { fontFamily: 'IBM Plex Mono, ui-monospace, monospace', fontSize: d.w * d.h > 1 ? 13 : 10, fontWeight: '600', fill: L.cap !== undefined ? 0x2a1e05 : L.ink } });
+          t.anchor.set(0.5); t.position.set(m[0], m[1]); t.alpha = alpha; t.resolution = 2;
+          g.addChild(t);
+        }
+      }
+      this.objects.addChild(g);
+    }
+  }
+
+  // ----- every frame -----
+  frame(s: State, selected: number | null, tool: string | null, hover: { x: number; y: number } | null, hoverOk: 'ok' | 'warn' | 'bad', now: number, speed = 1, overlay = false) {
+    if (this.drawnSeed !== s.seed) { this.drawTerrain(s); this.drawnSeed = s.seed; this.drawnRev = -1; }
+    if (this.drawnRev !== s.rev) { this.drawBuildings(s); this.drawZones(s); this.drawnRev = s.rev; }
+    this.heat.visible = overlay;
+    if (overlay && this.heatRev !== s.rev) { this.drawHeat(s); this.heatRev = s.rev; }
+
+    // light: quick dawn and dusk, warm near the horizon, blue-black at night
+    // Daylight comes up fast after sunrise; a short twilight either side of the night keeps the cut from being abrupt.
+    const ph = s.t % LUNAR_DAY, sun = sunFactor(s.t);
+    const light = ph < HALF ? Math.min(1, 0.35 + sun * 10) : Math.max(0, 0.35 * (1 - (ph - HALF) / 8), 0.35 * (1 - (LUNAR_DAY - ph) / 8));
+    const tint = light < 0.5 ? mix(0x4c5a86, 0xffcf9a, light * 2) : mix(0xffcf9a, 0xffffff, (light - 0.5) * 2);
+    this.terrain.tint = tint; this.objects.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
+    const dark = 1 - light;
+
+    const o = this.overlay, l = this.lights; o.clear(); l.clear();
+    const blink = Math.floor(now / 420) % 2 === 0;
+    for (const b of s.buildings) {
+      const d = BUILDINGS[b.type], L = LOOK[b.type], H = L.hgt * (1 + 0.55 * ((b.level || 1) - 1));
+      if (b.type === 'conduit') continue;
+      const m = iso(b.x + d.w / 2, b.y + d.h / 2, H + (L.cap !== undefined ? 9 : 0));
+      const py = m[1] - 16;
+      if (b.progress < 1) {
+        o.rect(m[0] - 15, py - 2, 30, 5).fill({ color: 0x0b0a14, alpha: 0.85 });
+        o.rect(m[0] - 14, py - 1, 28 * b.progress, 3).fill(0xffc15e);
+        continue;
+      }
+      const needsPower = d.drawDay > 0 || d.drawNight > 0;
+      let pip = -1;
+      if (b.damaged) pip = blink || b.repair > 0 ? 0xff5a5f : -1;
+      else if (!b.connected) pip = 0xff9a3d;
+      else if (!b.on) pip = 0x8e8aa3;
+      else if (b.asleep) pip = 0x5f6fb5;
+      else if (needsPower && !b.powered) pip = blink ? 0xff5a5f : -1;
+      if (pip >= 0) {
+        o.circle(m[0], py, 5.5).fill(0x0b0a14).circle(m[0], py, 3.6).fill(pip);
+        if (b.damaged && b.repair > 0) o.circle(m[0], py, 7.5).stroke({ color: 0xffc15e, width: 1.5 });
+      }
+      if (dark > 0.05 && b.connected && !b.damaged && b.on && ((needsPower && b.powered) || (d.battery > 0 && s.charge > 1) || (d.gen > 0 && !d.solar))) {
+        const warm = b.type === 'habitat' || b.type === 'lander' || b.type === 'greenhouse';
+        const col = b.type === 'reactor' ? 0xff8a3d : warm ? 0xffd08a : 0x8fc2ff;
+        const cm = iso(b.x + d.w / 2, b.y + d.h / 2, H * 0.5);
+        const r = 16 + d.w * d.h * 5;
+        l.ellipse(cm[0], cm[1], r * 1.7, r).fill({ color: col, alpha: 0.1 * dark });
+        l.ellipse(cm[0], cm[1], r, r * 0.6).fill({ color: col, alpha: 0.16 * dark });
+        l.circle(m[0], m[1], 2.2).fill({ color: 0xffffff, alpha: 0.9 * dark });
+      }
+    }
+    this.actors(s, o, l, tint, dark, now, speed);
+    if (selected !== null) {
+      const b = s.buildings.find(q => q.uid === selected);
+      if (b) this.outline(o, b.x, b.y, BUILDINGS[b.type].w, BUILDINGS[b.type].h, 0xffffff, 2);
+    }
+
+    const gh = this.ghost; gh.clear();
+    if (tool && hover) {
+      const zone = tool.startsWith('zone') ? Number(tool.slice(4)) : -1;
+      const d = zone >= 0 ? { w: 1, h: 1 } : BUILDINGS[tool as BuildingType];
+      const zcol = zone > 0 ? ZONES[zone - 1].color : 0xffffff;
+      const col = hoverOk === 'bad' ? 0xff5a5f : zone >= 0 ? zcol : hoverOk === 'warn' ? 0xff9a3d : 0x62d394;
+      for (let j = 0; j < d.h; j++) for (let i = 0; i < d.w; i++) {
+        const a = iso(hover.x + i, hover.y + j), b = iso(hover.x + i + 1, hover.y + j), c = iso(hover.x + i + 1, hover.y + j + 1), e = iso(hover.x + i, hover.y + j + 1);
+        gh.poly([a[0], a[1], b[0], b[1], c[0], c[1], e[0], e[1]]).fill({ color: col, alpha: 0.38 });
+      }
+      this.outline(gh, hover.x, hover.y, d.w, d.h, col, 2);
+    }
+  }
+
+  // ----- zoned land: a wash of the zone's colour, fainter where it is cut off from the base -----
+  private drawZones(s: State) {
+    const g = this.zones, n = s.size; g.clear();
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const k = y * n + x, z = s.zone[k], ore = s.ore[k], built = s.occ[k] > 0;
+      if (!z && !ore) continue;
+      const a = iso(x, y), b = iso(x + 1, y), c = iso(x + 1, y + 1), d = iso(x, y + 1), m = iso(x + 0.5, y + 0.5);
+      if (z) {
+        const col = ZONES[z - 1].color, linked = s.linked[k] > 0, level = s.prep[k] >= 1;
+        // Raw ground is a faint outline strewn with rubble. Levelled ground is a clean, solid wash.
+        g.poly([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]).fill({ color: col, alpha: built ? 0.16 : !linked ? 0.1 : level ? 0.4 : 0.13 }).stroke({ color: col, width: 1, alpha: linked ? 0.55 : 0.2 });
+        if (!built && !level) {
+          const h = (x * 7 + y * 13) % 5;
+          for (const [dx, dy, r] of [[-9 + h, -2, 2.6], [6 - h, 3, 2.1], [1, -5 + h * 0.6, 1.7], [-3, 5, 1.5]]) g.poly([m[0] + dx - r, m[1] + dy + r * 0.5, m[0] + dx, m[1] + dy - r, m[0] + dx + r, m[1] + dy + r * 0.5]).fill({ color: 0x3a3848, alpha: 0.85 });
+        } else if (!built) {
+          const i1 = iso(x + 0.14, y + 0.14), i2 = iso(x + 0.86, y + 0.14), i3 = iso(x + 0.86, y + 0.86), i4 = iso(x + 0.14, y + 0.86);
+          g.poly([i1[0], i1[1], i2[0], i2[1], i3[0], i3[1], i4[0], i4[1]]).stroke({ color: 0xffffff, width: 1, alpha: 0.16 });
+        }
+      }
+      // A deposit the rovers found: a scatter of bright grains in the ore's colour.
+      if (ore && !built) {
+        const col = ORES[ore - 1].color, h = (x * 11 + y * 5) % 4;
+        for (const [dx, dy] of [[-10 + h * 2, 0], [-2, -5 + h], [7 - h, 1], [1, 5], [-6, 4 - h]]) g.poly([m[0] + dx, m[1] + dy - 2.2, m[0] + dx + 3, m[1] + dy, m[0] + dx, m[1] + dy + 2.2, m[0] + dx - 3, m[1] + dy]).fill({ color: col, alpha: 0.9 });
+      }
+    }
+    for (const c of this.findLabels.removeChildren()) c.destroy();
+    for (const f of s.finds) {
+      const m = iso(f.x, f.y), ore = ORES[f.kind];
+      const t = new Text({ text: `${ore.name.toUpperCase()} · +${Math.round(ore.bonus * 100)}%`, style: { fontFamily: 'IBM Plex Mono, ui-monospace, monospace', fontSize: 11, fontWeight: '600', fill: ore.color, letterSpacing: 1 } });
+      t.anchor.set(0.5, 0.5); t.position.set(m[0], m[1] - 30); t.resolution = 2;
+      const plate = new Graphics(); plate.roundRect(m[0] - t.width / 2 - 6, m[1] - 30 - 9, t.width + 12, 18, 4).fill({ color: 0x15131f, alpha: 0.78 });
+      this.findLabels.addChild(plate);
+      this.findLabels.addChild(t);
+    }
+  }
+
+  // ----- habitability map: red where nobody wants to live, green where they do -----
+  private drawHeat(s: State) {
+    const g = this.heat, n = s.size; g.clear();
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      if (s.ground[y * n + x] !== GROUND.flat) continue;
+      const h = s.hab[y * n + x];
+      const col = h < 50 ? mix(0xe5484d, 0xf5b83d, h / 50) : mix(0xf5b83d, 0x3ecf7a, (h - 50) / 50);
+      const a = iso(x, y), b = iso(x + 1, y), c = iso(x + 1, y + 1), d = iso(x, y + 1);
+      g.poly([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]).fill({ color: col, alpha: 0.5 });
+    }
+  }
+
+  // ----- things that move: people, rovers, the shuttle, credits earned -----
+  private actors(s: State, o: Graphics, l: Graphics, tint: number, dark: number, now: number, speed: number) {
+    const dt = Math.min(0.1, (now - this.lastNow) / 1000) * Math.min(speed, 4); this.lastNow = now;
+    const lit = (c: number) => mix(mix(0x000000, c, 0.55 + 0.45 * (1 - dark)), tint, 0.25);
+
+    // people walking between buildings
+    const want = this.spots.length >= 2 ? Math.min(36, Math.round(population(s) * 0.7)) : 0;
+    const pickSpot = () => this.spots[Math.floor(Math.random() * this.spots.length)];
+    while (this.walkers.length < want) { const a = pickSpot(), b = pickSpot(); this.walkers.push({ ax: a[0], ay: a[1], bx: b[0], by: b[1], t: Math.random(), v: 0.5 + Math.random() * 0.5 }); }
+    if (this.walkers.length > want) this.walkers.length = want;
+    for (const w of this.walkers) {
+      const dist = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+      w.t += (dt * w.v) / dist;
+      if (w.t >= 1) { const b = pickSpot(); w.ax = w.bx; w.ay = w.by; w.bx = b[0]; w.by = b[1]; w.t = 0; }
+      const p = iso(w.ax + (w.bx - w.ax) * w.t, w.ay + (w.by - w.ay) * w.t);
+      o.ellipse(p[0], p[1] + 1, 3.4, 1.7).fill({ color: 0x000000, alpha: 0.35 });
+      o.rect(p[0] - 1.6, p[1] - 7, 3.2, 7).fill(lit(0xf7f4ee));
+      o.circle(p[0], p[1] - 8.5, 2.2).fill(lit(0xffc15e));
+    }
+
+    // rovers
+    for (const r of s.rovers) {
+      if (r.phase === 'idle') continue;
+      const a = iso(r.hx, r.hy), b = iso(s.pois[r.poi].x, s.pois[r.poi].y), p = iso(r.x, r.y);
+      o.moveTo(a[0], a[1]).lineTo(b[0], b[1]).stroke({ color: 0xffc15e, width: 1, alpha: 0.16 });
+      o.ellipse(p[0], p[1] + 2, 9, 4.5).fill({ color: 0x000000, alpha: 0.3 });
+      prism(o, r.x - 0.22, r.y - 0.22, 0.44, 0.44, 2, 6, 0, lit(r.pax > 0 ? 0xffc15e : 0xe6e9ee));
+      prism(o, r.x - 0.12, r.y - 0.12, 0.24, 0.24, 8, 3, 0, lit(0x7fb6e8));
+      if (dark > 0.05) l.ellipse(p[0], p[1], 20, 10).fill({ color: 0xfff1c9, alpha: 0.22 * dark });
+    }
+
+    // graders: yellow machines that level zoned ground, throwing dust while they work
+    for (const gr of s.graders) {
+      const home = Math.hypot(gr.x - s.size / 2, gr.y - s.size / 2) < 0.2;
+      if (gr.phase === 'idle' && home) continue;
+      const p = iso(gr.x, gr.y);
+      o.ellipse(p[0], p[1] + 2, 10, 5).fill({ color: 0x000000, alpha: 0.3 });
+      prism(o, gr.x - 0.26, gr.y - 0.2, 0.52, 0.4, 2, 5, 0, lit(0xf2b632));
+      prism(o, gr.x - 0.08, gr.y - 0.12, 0.26, 0.24, 7, 4, 0, lit(0x2b2a33));
+      prism(o, gr.x - 0.34, gr.y - 0.26, 0.08, 0.52, 1, 4, 0, lit(0x9aa3ad));
+      if (gr.phase === 'work') {
+        for (let i = 0; i < 4; i++) {
+          const ph = (now / 900 + i * 0.25) % 1;
+          o.circle(p[0] - 8 + i * 5 + Math.sin(i * 2.1) * 3, p[1] - 4 - ph * 14, 3 + ph * 5).fill({ color: 0xb9b3a6, alpha: 0.32 * (1 - ph) });
+        }
+      }
+      if (dark > 0.05) l.ellipse(p[0], p[1], 18, 9).fill({ color: 0xffe9a8, alpha: 0.22 * dark });
+    }
+
+    // the shuttle
+    const sh = s.shuttle, pad = s.buildings.find(q => q.type === 'pad');
+    if (pad && sh.phase !== 'away') {
+      const k = sh.phase === 'landing' ? Math.max(0, sh.timer) / 3 : sh.phase === 'launching' ? 1 - Math.max(0, sh.timer) / 3 : 0;
+      const z = 460 * Math.pow(k, 1.6), cx = pad.x + 1.5, cy = pad.y + 1.5;
+      const g0 = iso(cx, cy, 2);
+      o.ellipse(g0[0], g0[1], 30 * (1 - k * 0.7), 15 * (1 - k * 0.7)).fill({ color: 0x000000, alpha: 0.35 * (1 - k * 0.8) });
+      for (const [dx, dy] of [[-0.55, -0.55], [0.55, -0.55], [0.55, 0.55], [-0.55, 0.55]]) { const f = iso(cx + dx, cy + dy, z + 2), c = iso(cx + dx * 0.5, cy + dy * 0.5, z + 10); o.moveTo(f[0], f[1]).lineTo(c[0], c[1]).stroke({ color: lit(0xb9bec8), width: 2 }); }
+      prism(o, cx - 0.5, cy - 0.5, 1, 1, z + 8, 26, 0, lit(0xe3e7ee));
+      prism(o, cx - 0.3, cy - 0.3, 0.6, 0.6, z + 34, 12, 0, lit(0xffc15e));
+      if (k > 0) { const e = iso(cx, cy, z + 4); l.ellipse(e[0], e[1] + 8, 16, 22).fill({ color: 0x9fd0ff, alpha: 0.5 }); l.ellipse(e[0], e[1] + 4, 8, 12).fill({ color: 0xffffff, alpha: 0.7 }); }
+    }
+
+    // credits floating up where they were earned
+    for (const pop of s.pops) {
+      if (pop.id <= this.seenPop) continue;
+      this.seenPop = pop.id;
+      const m = iso(pop.x, pop.y, 30);
+      const t = new Text({ text: pop.text, style: { fontFamily: 'IBM Plex Mono, ui-monospace, monospace', fontSize: 15, fontWeight: '600', fill: 0xffc15e, stroke: { color: 0x15131f, width: 3 } } });
+      t.anchor.set(0.5); t.position.set(m[0], m[1]); t.resolution = 2; (t as any).born = now;
+      this.fx.addChild(t);
+    }
+    for (const t of [...this.fx.children]) {
+      const age = (now - (t as any).born) / 1800;
+      if (age >= 1) { t.destroy(); continue; }
+      t.position.y -= 0.45; t.alpha = 1 - age * age;
+    }
+  }
+  resetActors(s: State) { this.seenPop = s.pops.length ? s.pops[s.pops.length - 1].id : 0; this.walkers.length = 0; for (const c of this.fx.removeChildren()) c.destroy(); }
+
+  private outline(g: Graphics, x: number, y: number, w: number, h: number, color: number, width: number) {
+    const a = iso(x, y), b = iso(x + w, y), c = iso(x + w, y + h), d = iso(x, y + h);
+    g.poly([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]).stroke({ color, width, alpha: 0.95 });
+  }
+}
+

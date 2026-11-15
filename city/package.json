@@ -1,0 +1,25 @@
+{
+  "name": "lunar-ark-city",
+  "version": "1.0.0",
+  "description": "Lunar Ark city builder (Tranquility)",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --minify --format=iife --target=es2020 --outfile=dist/game.js && cp src/index.html dist/index.html",
+    "dev": "esbuild src/main.ts --bundle --format=iife --sourcemap --outfile=dist/game.js --servedir=dist --watch",
+    "check": "tsc --noEmit",
+    "test": "esbuild test/bot.ts --bundle --platform=node --outfile=dist/bot.cjs --log-level=warning && node dist/bot.cjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "pixi.js": "8.22.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  },
+  "private": true
+}
