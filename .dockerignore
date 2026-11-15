@@ -9,3 +9,4 @@ data
 *.db-shm
 lunarark_files
 .env
+city
