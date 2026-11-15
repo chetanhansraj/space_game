@@ -155,8 +155,17 @@ else
 fi
 
 SCHEME=http; grep -q ssl_certificate "$SITE" && SCHEME=https
-CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 --resolve "$DOMAIN:80:127.0.0.1" "http://$DOMAIN/game.js" || true)"
-case "$CODE" in 200|301|308) ok "The server answers for $DOMAIN (HTTP $CODE).";; *) warn "The server answered HTTP ${CODE:-nothing} for $DOMAIN/game.js. Send this to Claude.";; esac
+# nginx swaps its workers a moment after a reload, so ask a few times before believing a wrong answer.
+CODE=""
+for _ in 1 2 3 4 5 6; do
+  CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 --resolve "$DOMAIN:80:127.0.0.1" "http://$DOMAIN/game.js" 2>/dev/null || true)"
+  case "$CODE" in 200|301|308) break;; esac
+  sleep 1
+done
+case "$CODE" in
+  200|301|308) ok "The server answers for $DOMAIN (HTTP $CODE).";;
+  *) warn "The server answered HTTP ${CODE:-nothing} for $DOMAIN/game.js. Send this to Claude.";;
+esac
 printf '\n\033[1;32m== Done.\033[0m\n\n'
 printf '   Play:          %s://%s\n' "$SCHEME" "$DOMAIN"
 printf '   Update later:  bash %s/deploy/update.sh\n' "$HERE"
