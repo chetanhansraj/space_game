@@ -49,3 +49,10 @@ the generator.
 The inbox, which the bible calls the permanent front door: *"A player does not
 open a map, a market, or a tutorial. They open a message."* Then the node
 graph, the base layout grid, and the standing-instruction editor.
+
+## The base
+
+`base/index.html` and `js/base.js` are the base altitude: one company's site,
+drawn on a 2D canvas from `/api/base`. Plain JavaScript, no build step. The
+page computes nothing but display; every click is a request the server may
+refuse. Scroll out and it rises to the Moon map. See `docs/DECISIONS.md` D63.

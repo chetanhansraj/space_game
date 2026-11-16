@@ -30,7 +30,7 @@ market/    Order books, settlement, escrow, exchange. Correctness-critical.
 api/       Thin request layer. No business logic.
 voice/     The only place LLM calls exist. Text generation only.
 web/       Client. Rendering only.
-city/      The city builder (sim.lunarark.com). A separate, browser-only game for now. See city/README.md.
+city/      The city builder (sim.lunarark.com). The fast, pausable Simulator; browser-only. See city/README.md.
 ```
 
 ## Running locally
@@ -111,5 +111,11 @@ a Kestrel, buy where it is cheap, fly a real suborbital hop, sell where it is
 dear, take supply contracts from five named characters, and come back to find
 out what happened while you were away — on the real Moon, lit where the Sun
 really is. `api/` serves it; `voice/` writes its letters; `web/` draws it.
+
+**The first base exists.** A company can take a charter on the Shackleton
+rim, stand a leased propellant works module by module, and sell what it makes
+at the Depot on the same ledger and clock as its ship. `sim/base.py` is the
+physics, `sim/basegame.py` joins it to the world, and `web/base/` draws it at
+`/base/`. `scripts/demo_base.py` plays one and prints the books.
 
 Roadmap is in `docs/BIBLE.md` §10. Short version: one lunar node and one market, then ships, then the Belt, then Mars industry, then the political layer.

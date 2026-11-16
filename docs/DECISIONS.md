@@ -1057,6 +1057,193 @@ Driven in a headless browser against a live server:
 
 ---
 
+## The base: one game, two altitudes
+
+*Direction decided by Chetan, 16 November 2026. Everything else in this
+section was decided under the authority he gave for it ("I leave it to you
+what is best for the game"), and every number marked invented is his to
+change.*
+
+### D53 — The arc is reversed: a company starts on the ground
+
+The bible's arc runs contractor, speculator, owner: a ship first, and an
+outpost after "roughly two good months of trading". The city builder at
+sim.lunarark.com showed that the base is the part Chetan wants to play first,
+and his own statement of the arc is the opposite one: *build the base, make
+industries, grow that piece of land or crater, then afford ships and trade the
+industrial products.* That is now the design. A base gives a company
+something to sell, which is the reason to want a ship at all.
+
+It is being built in three steps, each a complete game:
+
+1. **This one.** Any company may take a charter on a site and run a works
+   there, in the same world as its ship. Signup is unchanged, so a new company
+   still gets its Kestrel and its grant as before.
+2. Industry zones whose tenants are real firms, and residents who are real
+   households.
+3. Signup changes to land first, and the Kestrel becomes something a company
+   charters out of what its base earns.
+
+**The starter kit is leased, not granted.** The smallest works that turns a
+profit on seed-data's module prices is 9.6 million credits of plant. Against a
+120,000 cr stake it cannot be bought, and granting it would empty the
+development fund (D44) in three companies. So the Ark keeps ownership and
+charges a daily fee, exactly as it does for the Kestrel. Nothing is minted and
+nothing leaves the fund.
+
+**One site in build 1: the Shackleton rim.** Seed-data says solar gives "zero
+output through lunar night unless polar", so a polar site needs no night
+model, and VISION's v1 already puts "your base on Shackleton". The flats
+arrive with the helium-3 licence, where a long night is the price of the
+richer product.
+
+### D54 — The site: a 24 by 24 grid, five ice patches, richer further out
+
+*Invented.* A site is 576 tiles with boulders on about 7% of them and a clear
+middle. Five patches of ice lie on a ring around it, graded 70%, 85%, 100%,
+125% and 150% of nameplate, the richer ones further from the middle. The best
+ice is therefore the longest conduit run, and the engineer's default layout
+(`base.suggest_layout`) deliberately takes the nearest patches so that finding
+the better layout is left to the player.
+
+The ground is derived from the company's id and never stored. Each patch is a
+`Deposit` with D38's ice figure, 3,000 t to 1/e, so a patch depletes exactly
+as an agent's claim does and the frontier logic is one piece of code.
+
+### D55 — Budgets: life support first, the diggers last, heat throttles
+
+The bible gives the budgets (power, heat, crew) and the rule that a smelter
+without radiators throttles. It does not say what happens when power or crew
+is short. *Decided:* modules switch on in a fixed order while power and hands
+last: airlock, life support and habs, then command and comms, radiators,
+storage, the plant, and the ice miners last. A base that cannot run everything
+keeps people breathing before it keeps mining. Short of heat rejection, the
+plant and the miners throttle in proportion.
+
+Crew are a capacity in build 1, not people: berths from powered habs, capped
+by life support at 8 per unit, and none at all without an airlock. Residents
+who eat and breathe arrive with build 2.
+
+A base with no staffed command post runs no plant. A flare stands the plant
+and the miners down, as it does every agent rig.
+
+### D56 — Storage: a yard, a run tank, and boil-off
+
+Seed-data gives a warehouse 2,000 t and a tank farm 800 t, and says a
+liquefaction plant is "required to store propellant" with "boil-off if
+underpowered". *Invented* to complete it: a bare site holds 20 t of dry stock
+in the yard; each electrolysis plant has a 5 t run tank of its own, enough to
+make a trading lot; a tank farm holds nothing unless a liquefaction plant is
+running; and propellant held beyond capacity boils off at 2% of the excess an
+hour. So a new works must sell as it makes, and holding propellant for a
+better price is something you build toward.
+
+### D57 — Dust: a solar array within two tiles of a digger gives half power
+
+*Invented.* It is the cheapest rule that makes where things stand matter, and
+it is a real problem on the real Moon. With the linking rule and the ice
+grades it gives a layout three things to trade off: conduit length, ice
+quality and clean arrays.
+
+### D58 — Conduit, assembly and moving
+
+*Invented.* Conduit is 1,000 cr a tile, bought, with no upkeep. A module takes
+1, 2 or 4 game hours to assemble by size and is down for the same time when
+moved; moving is free. A leased module taken down goes back to the Ark; an
+owned one is scrap, with no refund, so that no credit leaves the fund through
+a demolition.
+
+### D59 — The base's money, tuned by simulation
+
+*All invented, all dials.* Module prices are seed-data's. Seed-data gives no
+running costs for installations (D40 already notes this), so:
+
+| | | |
+|---|---|---|
+| Lease | 0.10% of list price per game day | burned |
+| Wear, on everything standing | 0.03% of list price per game day | burned |
+| Payroll | 1,500 cr per working crew per game day | to the port's households |
+| Lease cap | 12,000,000 cr of plant per company | |
+| Modules bought, and conduit | list price | paid into the development fund |
+
+Charges accrue by the hour and are billed at game midnight, so there is
+nothing to gain by taking plant down before the bill. What cannot be paid is
+recorded as owed, the works stand down, and it settles the hour the money is
+there; unpaid payroll in that case is burned with the rest rather than paid
+late, which is a simplification.
+
+Measured with `scripts/demo_base.py` on a fresh world after a week's warm-up,
+propellant near 1,665 cr/t:
+
+| Layout | Net per game day |
+|---|---|
+| The engineer's default, buying about a third of its ice | +21,000 cr |
+| Both miners moved to the two richest patches | +27,000 cr |
+
+That is about 1.3 to 1.6 million credits per real day, which buys one major
+module a day and several small ones. It is the first number to revisit after
+real play. On the live world propellant was at its 3,150 ceiling when this was
+written, so the first days will pay roughly double until a player's own
+supply brings the price down.
+
+**Invariant 7's pairing:** the base adds credit inflows to a company only by
+sale to real bidders and by the bonuses in D60; it adds four sinks (lease,
+wear, arrears, and purchases that leave the player economy for the fund).
+
+### D60 — Development bonuses, and what they cost the fund
+
+*Invented.* Five milestones pay a bonus once each, as transfers out of the
+development fund: command post staffed 20,000; first propellant 30,000; first
+sale 30,000; thirty tonnes of ice through the plant in a day 40,000; first
+module bought outright 30,000. A bonus is skipped, not owed, while the fund
+cannot afford it.
+
+**This changes D44's arithmetic.** A company can now draw up to 270,000 cr
+from the fund rather than 120,000, so the 30,000,000 cr fund stakes about 110
+companies rather than 250. Against that, every module a company buys pays
+into the same fund.
+
+### D61 — Stock in its own account; standing orders that never rest
+
+A base's ice and propellant are held in a ledger account of its own,
+`base:<player>`, because the Kestrel's hold is defined as everything in the
+company's account (D42). Credits never rest there: a bid is funded from the
+company's wallet for the length of one order and every sale is swept back in
+the same transaction.
+
+D45 keeps player orders immediate-or-cancel so that nobody leaves escrow on
+the book while they sleep. A base has to trade while its owner sleeps, so its
+standing orders are the same immediate-or-cancel orders placed again each
+hour, with the owner's price limits. They need a running comms relay, which
+is what seed-data means by "required for remote operation".
+
+A ship docked at the base's port can load from the base and unload to it.
+Goods loaded that way count as loaded at that port, so they cannot be handed
+straight back as a contract delivery there.
+
+### D62 — A base runs inside the world's hour, and cannot stop it
+
+Each base's hour is part of the tick's transaction, in a savepoint of its own.
+A base that raises loses its own hour, has it counted in `base.faults`, and
+the world goes on. Without this, one bug in one company's site would stop the
+clock for everyone, which invariant 5 does not allow for.
+
+### D63 — The base screen is part of the trade client, and the city builder is the Simulator
+
+The live base is served at `play.lunarark.com/base/` from `web/`, by the same
+server and under the same key as the Moon map. Scrolling out of it rises to
+the Moon; a button on the Moon goes back down. VISION's five altitudes are
+joined here for the first time, by a fade rather than a continuous camera.
+
+`city/`, at sim.lunarark.com, stays as it is: a fast, pausable game in the
+browser with its own money. It cannot share the ledger, because it can be
+paused and runs about 47 times faster than the shared clock (invariant 5) and
+because it runs on the client (invariant 1). It is where the base's ideas are
+tried at speed, and its crew (Asha, Lena, Rafael) are the voices on the live
+base.
+
+---
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -1077,3 +1264,9 @@ Deliberately not decided, because these are yours.
    2,565,000 cr, and see D14 on runway. `seed-data.md` already flags this.
 6. **Depletion curve shape, Ark Authority spread, agent counts, shock
    frequency** — already listed as open in `seed-data.md`. Unchanged.
+9. **The base's money** — D59 and D60. Lease and wear rates, payroll, the
+   lease cap and the bonuses were all invented and tuned on a fresh world.
+   Play it on the live one and say what feels too slow or too easy.
+10. **Helium-3 for players** — D53. A player separator adds to the only
+    faucet in the economy (D40), so it needs a licence and a royalty before
+    the flats open. The size of that royalty is the decision.

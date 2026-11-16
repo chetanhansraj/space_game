@@ -134,6 +134,12 @@ Power positive means generation, negative means draw. Heat is thermal load requi
 | Command post | 7 | −20 | 18 | 2 | 390,000 | Required. One per site |
 | Comms relay | 4 | −15 | 10 | 0 | 130,000 | Required for remote operation |
 
+**What a module costs to run** is not in this table. Lease, wear and payroll
+for a player's base are set in `docs/DECISIONS.md` D59, and the rules the
+table leaves open (what sheds first, storage, dust, assembly) in D55 to D58.
+`sim/src/sim/base.py` transcribes the rows it uses, and a test reads this
+table to check that it has.
+
 ### The first outpost
 
 An automated ice extractor, uncrewed, feeding water ice into the market while the owner sleeps:

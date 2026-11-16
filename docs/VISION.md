@@ -244,7 +244,7 @@ interesting consequences. If a screen needs explaining, it is wrong.
 | `sim/` | 56 agents and 6 ships across three lunar markets; players, contracts, a persistent clock |
 | `voice/` | Five named characters and the Archivist, as templates |
 | `api/` | One world behind one lock, on the shared clock |
-| `web/` | The Moon, the three ports, every ship, the solar system — and the loop |
+| `web/` | The Moon, the three ports, every ship, the solar system — and the loop. And one altitude down, the base |
 
 **The game exists.** A person can open it, meet the Archivist, read a letter
 from Mira Vance, take a job, fly propellant across the Moon, close the tab, and
@@ -259,7 +259,24 @@ come back to find out how it went.
 Built, and running continuously on a server (`docs/DEPLOY.md`). What it taught
 is in DECISIONS.md F8.
 
+### Done: the first base
+
+A company can take a charter on the Shackleton rim, stand a leased propellant
+works on real ground rules (power, heat, crew, dust, ice that runs out), sell
+what it makes at the Depot while its owner sleeps, and load it into its own
+ship. Scroll out of the base and you are on the Moon map. DECISIONS.md D53 to
+D63.
+
+The arc has changed with it (D53): a company will start on the ground and
+earn its ship, rather than the other way round.
+
 ### Next
+
+- **Industry zones and residents** on the base, as real firms and real
+  households (D53, step 2).
+- **Land first at signup**, with the Kestrel chartered out of what the base
+  earns (D53, step 3).
+- **The flats**, with the lunar night and a helium-3 licence.
 
 - **Standing orders**, so a company trades while its owner sleeps — the
   check-in loop the vision is built on.
