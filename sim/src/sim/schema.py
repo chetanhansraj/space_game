@@ -103,6 +103,33 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        2,
+        """
+        -- A company's base: one site, the modules standing on it, and the
+        -- ledger account its stock is held in. docs/DECISIONS.md D53.
+        --
+        -- `state` is everything that is not money: where each module
+        -- stands, how worked the ground is, the standing orders. Money and
+        -- stock are the ledger's, as always; this row can be lost and no
+        -- credit or kilogram goes with it.
+        --
+        -- `owed` is the same kind of thing as player.upkeep_owed: a charge
+        -- the ledger could not take, recorded until it can. `faults` counts
+        -- hours this base failed to run, so one broken base is visible
+        -- without being allowed to stop the world.
+        CREATE TABLE base (
+            player_id    TEXT PRIMARY KEY,
+            site         TEXT NOT NULL,
+            node         TEXT NOT NULL,
+            account      TEXT NOT NULL UNIQUE,
+            created_tick INTEGER NOT NULL,
+            owed         INTEGER NOT NULL DEFAULT 0 CHECK (owed >= 0),
+            faults       INTEGER NOT NULL DEFAULT 0,
+            state        TEXT NOT NULL
+        );
+        """,
+    ),
 ]
 
 
