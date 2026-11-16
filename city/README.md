@@ -21,6 +21,16 @@ written for that day: it is pure, holds only tile coordinates, and changes state
 
 Live at https://sim.lunarark.com. See `docs/DEPLOY.md`.
 
+## Look
+
+The interface uses the lunarark.com visual system, taken from the site's own stylesheet
+(`lunarark_files/` at the repository root): Orbitron for titles and readings, Rajdhani for prose,
+Space Mono for micro-labels, glass panels with hairline borders on a near-black violet ground,
+violet leading and cyan supporting, and the cyan to violet gradient on anything meant to be
+pressed. Gold is kept for sunlight only: the Day label and the base's mark on the Moon clock.
+The tokens are the `:root` block at the top of `src/index.html`. Building colours on the map are
+still placeholders and are not yet tied to the Codex cluster colours.
+
 ## Run it
 
     npm install

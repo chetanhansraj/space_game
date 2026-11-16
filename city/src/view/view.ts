@@ -154,8 +154,8 @@ export class View {
         const f = iso(p.x + 0.9, p.y - 0.3);
         g.moveTo(f[0], f[1]).lineTo(f[0], f[1] - 22).stroke({ color: 0xe9e6f5, width: 1.5 });
         g.rect(f[0], f[1] - 22, 11, 7).fill(0xf2efe6).rect(f[0], f[1] - 22, 5, 3.5).fill(0x3a5fc4);
-      } else g.circle(m[0], m[1], 3).fill({ color: 0xffc15e, alpha: 0.75 });
-      const t = new Text({ text: p.name.toUpperCase() + (p.bonus > 1 ? ' · 1969' : ''), style: { fontFamily: 'IBM Plex Mono, ui-monospace, monospace', fontSize: 10, fontWeight: '600', fill: p.bonus > 1 ? 0xffe2a8 : 0xe9e6f5, letterSpacing: 1 } });
+      } else g.circle(m[0], m[1], 3).fill({ color: 0x22d3ee, alpha: 0.75 });
+      const t = new Text({ text: p.name.toUpperCase() + (p.bonus > 1 ? ' · 1969' : ''), style: { fontFamily: 'Space Mono, ui-monospace, monospace', fontSize: 10, fontWeight: '600', fill: p.bonus > 1 ? 0xffe2a8 : 0xe9e6f5, letterSpacing: 1 } });
       t.anchor.set(0.5, 0); t.position.set(m[0], m[1] + (p.bonus > 1 ? 14 : 7)); t.alpha = p.bonus > 1 ? 0.95 : 0.6; t.resolution = 2;
       this.labels.addChild(t);
     }
@@ -203,18 +203,18 @@ export class View {
         if (L.cap !== undefined) prism(g, b.x + d.w * 0.28, b.y + d.h * 0.28, d.w * 0.44, d.h * 0.44, H, 9, 0, b.damaged ? mix(L.cap, 0x8f2a2a, 0.6) : L.cap, alpha);
         if (b.type === 'pad') {
           const m = iso(b.x + d.w / 2, b.y + d.h / 2, H);
-          g.ellipse(m[0], m[1], 44, 22).stroke({ color: 0xffc15e, width: 2, alpha: 0.8 * alpha });
+          g.ellipse(m[0], m[1], 44, 22).stroke({ color: 0x22d3ee, width: 2, alpha: 0.8 * alpha });
           g.ellipse(m[0], m[1], 22, 11).stroke({ color: 0xf2efe6, width: 1.5, alpha: 0.6 * alpha });
         }
         if (!built) {
           const a = iso(b.x, b.y), bb = iso(b.x + d.w, b.y), c = iso(b.x + d.w, b.y + d.h), dd = iso(b.x, b.y + d.h);
-          g.poly([a[0], a[1], bb[0], bb[1], c[0], c[1], dd[0], dd[1]]).stroke({ color: 0xffc15e, width: 1.5, alpha: 0.8 });
+          g.poly([a[0], a[1], bb[0], bb[1], c[0], c[1], dd[0], dd[1]]).stroke({ color: 0x22d3ee, width: 1.5, alpha: 0.9 });
         }
         g.zIndex = (b.x + d.w + b.y + d.h) * 10 + 1;
         if (d.short && b.type !== 'pad') {
           const capLift = L.cap !== undefined ? 9 : 0;
           const m = iso(b.x + d.w / 2, b.y + d.h / 2, H + capLift);
-          const t = new Text({ text: d.short + (b.level > 1 ? b.level : ''), style: { fontFamily: 'IBM Plex Mono, ui-monospace, monospace', fontSize: d.w * d.h > 1 ? 13 : 10, fontWeight: '600', fill: L.cap !== undefined ? 0x2a1e05 : L.ink } });
+          const t = new Text({ text: d.short + (b.level > 1 ? b.level : ''), style: { fontFamily: 'Space Mono, ui-monospace, monospace', fontSize: d.w * d.h > 1 ? 13 : 10, fontWeight: '600', fill: L.cap !== undefined ? 0x2a1e05 : L.ink } });
           t.anchor.set(0.5); t.position.set(m[0], m[1]); t.alpha = alpha; t.resolution = 2;
           g.addChild(t);
         }
@@ -247,7 +247,7 @@ export class View {
       const py = m[1] - 16;
       if (b.progress < 1) {
         o.rect(m[0] - 15, py - 2, 30, 5).fill({ color: 0x0b0a14, alpha: 0.85 });
-        o.rect(m[0] - 14, py - 1, 28 * b.progress, 3).fill(0xffc15e);
+        o.rect(m[0] - 14, py - 1, 28 * b.progress, 3).fill(0x22d3ee);
         continue;
       }
       const needsPower = d.drawDay > 0 || d.drawNight > 0;
@@ -319,7 +319,7 @@ export class View {
     for (const c of this.findLabels.removeChildren()) c.destroy();
     for (const f of s.finds) {
       const m = iso(f.x, f.y), ore = ORES[f.kind];
-      const t = new Text({ text: `${ore.name.toUpperCase()} · +${Math.round(ore.bonus * 100)}%`, style: { fontFamily: 'IBM Plex Mono, ui-monospace, monospace', fontSize: 11, fontWeight: '600', fill: ore.color, letterSpacing: 1 } });
+      const t = new Text({ text: `${ore.name.toUpperCase()} · +${Math.round(ore.bonus * 100)}%`, style: { fontFamily: 'Space Mono, ui-monospace, monospace', fontSize: 11, fontWeight: '600', fill: ore.color, letterSpacing: 1 } });
       t.anchor.set(0.5, 0.5); t.position.set(m[0], m[1] - 30); t.resolution = 2;
       const plate = new Graphics(); plate.roundRect(m[0] - t.width / 2 - 6, m[1] - 30 - 9, t.width + 12, 18, 4).fill({ color: 0x15131f, alpha: 0.78 });
       this.findLabels.addChild(plate);
@@ -363,7 +363,7 @@ export class View {
     for (const r of s.rovers) {
       if (r.phase === 'idle') continue;
       const a = iso(r.hx, r.hy), b = iso(s.pois[r.poi].x, s.pois[r.poi].y), p = iso(r.x, r.y);
-      o.moveTo(a[0], a[1]).lineTo(b[0], b[1]).stroke({ color: 0xffc15e, width: 1, alpha: 0.16 });
+      o.moveTo(a[0], a[1]).lineTo(b[0], b[1]).stroke({ color: 0x22d3ee, width: 1, alpha: 0.2 });
       o.ellipse(p[0], p[1] + 2, 9, 4.5).fill({ color: 0x000000, alpha: 0.3 });
       prism(o, r.x - 0.22, r.y - 0.22, 0.44, 0.44, 2, 6, 0, lit(r.pax > 0 ? 0xffc15e : 0xe6e9ee));
       prism(o, r.x - 0.12, r.y - 0.12, 0.24, 0.24, 8, 3, 0, lit(0x7fb6e8));
@@ -406,7 +406,7 @@ export class View {
       if (pop.id <= this.seenPop) continue;
       this.seenPop = pop.id;
       const m = iso(pop.x, pop.y, 30);
-      const t = new Text({ text: pop.text, style: { fontFamily: 'IBM Plex Mono, ui-monospace, monospace', fontSize: 15, fontWeight: '600', fill: 0xffc15e, stroke: { color: 0x15131f, width: 3 } } });
+      const t = new Text({ text: pop.text, style: { fontFamily: 'Space Mono, ui-monospace, monospace', fontSize: 15, fontWeight: '700', fill: 0x67e8f9, stroke: { color: 0x15131f, width: 3 } } });
       t.anchor.set(0.5); t.position.set(m[0], m[1]); t.resolution = 2; (t as any).born = now;
       this.fx.addChild(t);
     }
