@@ -71,6 +71,57 @@ class ReadIn(BaseModel):
     upto: int | None = None
 
 
+class SiteIn(BaseModel):
+    site: str = Field(max_length=32)
+
+
+class BuildIn(BaseModel):
+    type: str = Field(max_length=24)
+    x: int = Field(ge=0, le=255)
+    y: int = Field(ge=0, le=255)
+    how: str = Field(default="buy", max_length=8)
+
+
+class MoveIn(BaseModel):
+    id: int = Field(ge=1)
+    x: int = Field(ge=0, le=255)
+    y: int = Field(ge=0, le=255)
+
+
+class ModuleIn(BaseModel):
+    id: int = Field(ge=1)
+
+
+class TileIn(BaseModel):
+    x: int = Field(ge=0, le=255)
+    y: int = Field(ge=0, le=255)
+
+
+class TilesIn(BaseModel):
+    tiles: list[tuple[int, int]] = Field(max_length=64)
+
+
+class BaseTradeIn(BaseModel):
+    asset: str = Field(max_length=16)
+    tonnes: int = Field(ge=1, le=5_000)
+    price: int = Field(ge=1, le=100_000_000)
+
+
+class StowIn(BaseModel):
+    asset: str = Field(max_length=16)
+    tonnes: int = Field(ge=1, le=200)
+
+
+class PolicyIn(BaseModel):
+    asset: str = Field(max_length=16)
+    sell: bool | None = None
+    min_price: int | None = Field(default=None, ge=1, le=100_000_000)
+    keep_t: int | None = Field(default=None, ge=0, le=100_000)
+    buy: bool | None = None
+    max_price: int | None = Field(default=None, ge=1, le=100_000_000)
+    target_t: int | None = Field(default=None, ge=0, le=100_000)
+
+
 #: The world stops advancing when the disk holding it has less than this
 #: free. docs/DECISIONS.md D51.
 MIN_FREE_BYTES = int(float(os.environ.get("SOLAR_MIN_FREE_GB", "3")) * 1e9)
@@ -365,6 +416,91 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
     def deliver(cid: int, player: Player = Depends(player_for)):
         with lock:
             return the_game().deliver(player, cid)
+
+    # -- the base --------------------------------------------------------
+    #
+    # Thin, like everything above: each of these is one call into
+    # `sim.basegame`, which is where every rule about a base lives.
+
+    @app.get("/api/base")
+    def base_view(player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_view(player)
+
+    @app.post("/api/base/charter")
+    def base_charter(body: SiteIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().charter_base(player, body.site)
+
+    @app.post("/api/base/build")
+    def base_build(body: BuildIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_build(player, body.type, body.x, body.y,
+                                         body.how)
+
+    @app.post("/api/base/kit")
+    def base_kit(player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_stand_kit(player)
+
+    @app.post("/api/base/move")
+    def base_move(body: MoveIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_move(player, body.id, body.x, body.y)
+
+    @app.post("/api/base/remove")
+    def base_remove(body: ModuleIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_remove(player, body.id)
+
+    @app.post("/api/base/buyout")
+    def base_buyout(body: ModuleIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_buyout(player, body.id)
+
+    @app.post("/api/base/conduit")
+    def base_conduit(body: TilesIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_conduit(player,
+                                           [list(t) for t in body.tiles])
+
+    @app.post("/api/base/conduit/lift")
+    def base_lift(body: TileIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_lift_conduit(player, body.x, body.y)
+
+    @app.post("/api/base/sell")
+    def base_sell(body: BaseTradeIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_sell(player, body.asset, body.tonnes,
+                                        body.price)
+
+    @app.post("/api/base/buy")
+    def base_buy(body: BaseTradeIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_buy(player, body.asset, body.tonnes,
+                                       body.price)
+
+    @app.post("/api/base/policy")
+    def base_policy(body: PolicyIn, player: Player = Depends(player_for)):
+        with lock:
+            rule = body.model_dump(exclude={"asset"}, exclude_none=True)
+            return the_game().base_policy(player, body.asset, **rule)
+
+    @app.post("/api/base/load")
+    def base_load(body: StowIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_load(player, body.asset, body.tonnes)
+
+    @app.post("/api/base/unload")
+    def base_unload(body: StowIn, player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_unload(player, body.asset, body.tonnes)
+
+    @app.post("/api/base/seen")
+    def base_seen(player: Player = Depends(player_for)):
+        with lock:
+            return the_game().base_seen(player)
 
     # -- the client ------------------------------------------------------
 

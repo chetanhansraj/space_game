@@ -72,6 +72,20 @@ That gap is what seed-data means by *"enough for arbitrage, because arbitrage
 needs exactly two prices"* — and it is the merchant profession waiting for v2
 to give it ships.
 
+## A company's base
+
+`base.py` is a base as physics: the module table from seed-data, a site grid,
+and `run_hour`, which decides what runs under the power, heat and crew budgets
+and returns the mass the hour moved. It never sees a credit or the database.
+
+`basegame.py` joins it to the world: the charter, the lease, the port's order
+book, standing orders, the Ark's bonuses, and the base's hour inside the
+world's tick. `docs/DECISIONS.md` D53 to D63.
+
+```bash
+.venv/bin/python scripts/demo_base.py 20        # a bot runs a works for 20 game days
+```
+
 ## Reproducibility
 
 Randomness comes from named streams: a draw is a pure function of

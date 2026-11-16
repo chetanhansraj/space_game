@@ -464,6 +464,7 @@
     S.token = null; S.me = null;
     try { localStorage.removeItem(KEY); } catch (e) { /* private mode */ }
     $("#left").classList.add("hidden"); $("#cashChip").classList.add("hidden"); $("#inboxBtn").classList.add("hidden");
+    $("#baseBtn").classList.add("hidden");
     intro();
   }
 
@@ -473,6 +474,9 @@
     Scene.select(S.node, true);
     selectNode(S.node, false);
     const away = await api("/session", {});
+    // The base is the same company one altitude down: same key, same world.
+    $("#baseBtn").classList.remove("hidden");
+    if (location.hash === "#inbox") { history.replaceState(null, "", "/"); openInbox(); return; }
     if (returning && (away.hours >= 1 || away.unread)) showAway(away);
     else if (!returning) setTimeout(() => { if ($("#keyShow").classList.contains("hidden")) openInbox(); }, 400);
   }
@@ -508,6 +512,7 @@
     document.querySelectorAll("#views button").forEach((b) => b.onclick = () => setView(b.dataset.view));
     document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => { S.tab = b.dataset.tab; drawPort(); });
     $("#inboxBtn").onclick = openInbox;
+    $("#baseBtn").onclick = () => { $("#fade").style.opacity = 1; setTimeout(() => { location.href = "/base/"; }, 420); };
     $("#joinForm").onsubmit = signup;
     $("#keyForm").onsubmit = signInWithKey;
     $("#haveKey").onclick = () => $("#keyForm").classList.toggle("hidden");

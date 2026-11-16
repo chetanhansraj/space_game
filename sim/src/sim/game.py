@@ -39,6 +39,8 @@ from market.money import CREDIT
 from orbital.clock import DISPLAY_OFFSET_YEARS, real_seconds
 
 from . import TICKS_PER_GAME_DAY, persist, schema
+from .basegame import BaseOps
+from .errors import GameError
 from .contracts import ContractBoard, ContractError, encode
 from .routes import DOCKING_FEE, NODE_ANCHOR
 from .seed_world import NODES, SHACKLETON, TONNE, build
@@ -89,11 +91,8 @@ _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,'&-]{1,30}[A-Za-z0-9.]$")
 #: arrivals happen dozens of times a day and are shown on the map instead.
 FEED_KINDS = ("solar_flare", "equipment_failure", "insolvency", "spinoff",
               "contract_posted", "contract_fulfilled", "player_joined",
-              "player_departure", "player_arrival")
-
-
-class GameError(Exception):
-    """A request the game refuses. The message is shown to the player."""
+              "player_departure", "player_arrival", "base_chartered",
+              "base_milestone")
 
 
 @dataclass(frozen=True)
@@ -118,8 +117,15 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-class Game:
-    """One world, persisted, on a clock, with players in it."""
+class Game(BaseOps):
+    """One world, persisted, on a clock, with players in it.
+
+    What a company does on the ground -- its base -- is `BaseOps`, in
+    `sim.basegame`. It is mixed in rather than held, because a base's hour
+    is part of the world's hour: same transaction, same ledger, same clock.
+    """
+
+    dev_fund_account = DEV_FUND
 
     def __init__(self, db, world, launch_real: _dt.datetime) -> None:
         self.db = db
@@ -253,6 +259,7 @@ class Game:
                 if event.kind == "player_arrival":
                     events += self._settle_arrival(event, now)
             events += self.board.tick(now)
+            events += self._tick_bases(now)
             if world.tick % TICKS_PER_GAME_DAY == 0:
                 events += self._charge_upkeep(now)
             self._route_messages(events)

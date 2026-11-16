@@ -156,3 +156,70 @@ def test_open_signup_must_be_asked_for_by_name(game, tmp_path, monkeypatch):
     with TestClient(app) as c:
         r = c.post("/api/signup", json={"name": "Open Door", "access_code": ""})
         assert r.status_code == 200
+
+
+# -- the base -------------------------------------------------------------------
+
+def test_a_base_needs_a_company(client):
+    assert client.get("/api/base").status_code == 401
+    assert client.post("/api/base/charter",
+                       json={"site": "shackleton_rim"}).status_code == 401
+
+
+def test_charter_stand_the_kit_and_see_it(client, game):
+    who = _join(client)
+    r = client.get("/api/base", headers=who)
+    assert r.status_code == 200 and r.json()["base"] is None
+    assert r.json()["sites"][0]["id"] == "shackleton_rim"
+
+    r = client.post("/api/base/charter", json={"site": "nowhere"}, headers=who)
+    assert r.status_code == 400 and "site" in r.json()["detail"]
+    r = client.post("/api/base/charter", json={"site": "shackleton_rim"},
+                    headers=who)
+    assert r.status_code == 200 and len(r.json()["base"]["crates"]) == 27
+
+    r = client.post("/api/base/build", headers=who,
+                    json={"type": "command", "x": 12, "y": 12, "how": "crate"})
+    assert r.status_code == 200
+    r = client.post("/api/base/build", headers=who,
+                    json={"type": "solar", "x": 12, "y": 12, "how": "crate"})
+    assert r.status_code == 400 and "already stands" in r.json()["detail"]
+    r = client.post("/api/base/build", headers=who,
+                    json={"type": "solar", "x": -3, "y": 12, "how": "crate"})
+    assert r.status_code == 422
+
+    r = client.post("/api/base/kit", headers=who)
+    assert r.status_code == 200 and r.json()["base"]["crates"] == []
+    for _ in range(8):
+        game.step()
+    b = client.get("/api/base", headers=who).json()
+    assert b["base"]["report"]["made"].get("PROP", 0) > 0
+    assert {m["status"] for m in b["base"]["modules"]} == {"on"}
+    assert b["tick"] == game.world.tick and b["catalog"]
+
+    r = client.post("/api/base/policy", headers=who,
+                    json={"asset": "PROP", "sell": False, "keep_t": 3})
+    assert r.json()["base"]["policy"]["PROP"] == {
+        "sell": False, "min_price": 1080, "keep_t": 3}
+    r = client.post("/api/base/sell", headers=who,
+                    json={"asset": "PROP", "tonnes": 4000, "price": 1})
+    assert r.status_code == 400 and "holds" in r.json()["detail"]
+    away = client.post("/api/base/seen", headers=who).json()
+    assert away["hours"] >= 8 and away["made_kg_PROP"] > 0
+    assert client.post("/api/base/seen", headers=who).json()["hours"] == 0
+
+
+def test_base_letters_are_written(client, game):
+    who = _join(client)
+    client.post("/api/base/charter", json={"site": "shackleton_rim"},
+                headers=who)
+    client.post("/api/base/kit", headers=who)
+    for _ in range(10):
+        game.step()
+    letters = {m["kind"]: m for m in client.get("/api/inbox",
+                                                headers=who).json()}
+    assert "Shackleton Rim" in letters["base_charter"]["subject"]
+    assert letters["base_milestone"]["from"]["name"] == "Yusuf Brandt"
+    for m in letters.values():
+        assert "could not be written" not in " ".join(m["body"])
+        assert "No words" not in " ".join(m["body"])

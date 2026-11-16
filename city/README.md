@@ -21,6 +21,13 @@ written for that day: it is pure, holds only tile coordinates, and changes state
 
 Live at https://sim.lunarark.com. See `docs/DEPLOY.md`.
 
+**The live base is not this folder.** Since `docs/DECISIONS.md` D53 a company in the trade game
+can run a real base at `play.lunarark.com/base/`, on the shared ledger and clock, built in
+`sim/base.py`, `sim/basegame.py` and `web/base/`. This game cannot be that base: it can be paused
+and runs about 47 times faster than the shared clock, and it runs in the browser. It stays as the
+Simulator, where ideas for the base are tried at speed, and its crew are the voices on the live
+one (D63).
+
 ## Look
 
 The interface uses the lunarark.com visual system, taken from the site's own stylesheet
