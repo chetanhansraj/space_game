@@ -201,10 +201,87 @@ def _arrears(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     ])
 
 
+def _base_charter(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    return (f"Your site on {d['site_name']}", [
+        f"{d['company']}: the Council has granted you ground on "
+        f"{d['site_name']}. The land is yours to work for as long as you "
+        "work it.",
+        f"A kit is standing in crates beside it: {d['kit_modules']} modules, "
+        f"{cr(d['kit_value'])} of plant, enough for a small propellant "
+        "works. It is the Ark's, on lease. Standing, the whole kit costs "
+        f"{cr(d['lease_per_day'])} a day; a crate nobody has opened costs "
+        "nothing.",
+        "Stand the command post first. Everything else has to link back to "
+        "it, by touching or by conduit. Put the miners on the ice and keep "
+        "the solar arrays out of their dust.",
+        f"You may hold up to {cr(d['lease_cap'])} of plant on lease. Past "
+        "that you buy, and what you buy is yours. Milestones on the way "
+        "are worth a bonus from this office. Sell me some propellant.",
+        "Yusuf Brandt, Ark Development Office",
+    ])
+
+
+def _base_milestone(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    return (f"Development bonus: {d['title']}", [
+        f"{d['title']}. Noted, and {cr(d['bonus'])} is in your account.",
+        "It comes out of the same fund as your charter, so spend it on "
+        "something that makes the Moon richer.",
+        "Yusuf Brandt, Ark Development Office",
+    ])
+
+
+_BASE_ALERTS = {
+    "unlinked": ("Something on site is not linked",
+                 "A module is standing on its own. Nothing reaches it from "
+                 "the command post, so it does nothing. Run conduit to it, "
+                 "or move it up against the rest."),
+    "no_power": ("We are short of power",
+                 "There is not enough generation for everything, so I have "
+                 "switched off what we can live without, diggers first. "
+                 "More solar arrays, or move the ones standing in dust."),
+    "no_crew": ("We are short of hands",
+                "A module is ready and nobody is free to run it. We need "
+                "more berths, and air for the people in them."),
+    "hot": ("The plant is running hot",
+            "We are making more heat than the radiators can reject, so the "
+            "plant and the diggers are throttled back. One more radiator "
+            "panel would let them run flat out."),
+    "no_feed": ("The plant is out of ice",
+                "The electrolysis plant is idle for want of ice. Put a miner "
+                "on better ground, raise the price we will pay for ice, or "
+                "bring some in by ship."),
+    "full": ("We have nowhere to put it",
+             "Storage is full and production has stopped. Sell some, lower "
+             "the price we hold out for, or build somewhere to keep it."),
+    "no_ice": ("A miner is standing on bare ground",
+               "One of the ice miners is not on ice, so it digs nothing. "
+               "Move it onto one of the marked patches."),
+    "worked_out": ("A patch is worked out",
+                   "One of the miners is bringing up almost nothing. The "
+                   "ground under it is spent. Move it to a fresh patch."),
+    "arrears": ("The works have stood down",
+                "We could not make the day's lease, wear and payroll, so "
+                "the plant and the diggers are stopped until the Ark is "
+                "paid. It settles itself as soon as the money is there."),
+}
+
+
+def _base_alert(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    subject, body = _BASE_ALERTS[d["code"]]
+    lines = [f"Commander, from {d['site_name']}. {body}",
+             f"It has been like this for {d['hours']} hours."]
+    if d["code"] == "arrears" and d.get("owed"):
+        lines.append(f"We owe {cr(d['owed'])}.")
+    lines.append("Asha")
+    return subject, lines
+
+
 _LETTERS = {
     "welcome": _welcome, "charter": _charter, "offers": _offers,
     "arrival": _arrival, "contract_paid": _contract_paid,
     "contract_lapsed": _contract_lapsed, "arrears": _arrears,
+    "base_charter": _base_charter, "base_milestone": _base_milestone,
+    "base_alert": _base_alert,
 }
 
 

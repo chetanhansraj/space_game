@@ -56,3 +56,15 @@ def test_offers_list_the_contracts_they_mention():
         {"contracts": {3: contract}})
     text = " ".join(letter["body"])
     assert "10 t of water ice" in text and "8,321 cr" in text
+
+
+def test_every_base_alert_has_words():
+    from voice.letters import _BASE_ALERTS
+    for code in _BASE_ALERTS:
+        letter = render_letter({"id": 1, "tick": 5, "sender": "base_commander",
+                                "kind": "base_alert",
+                                "data": {"code": code, "hours": 7, "owed": 900,
+                                         "site_name": "Shackleton Rim"}})
+        assert letter["from"]["name"] == "Asha"
+        assert "could not be written" not in " ".join(letter["body"])
+        assert "—" not in letter["subject"] + " ".join(letter["body"])

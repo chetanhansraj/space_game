@@ -39,6 +39,8 @@ CHARACTERS: dict[str, Character] = {c.id: c for c in (
               "lunarark.ai", None, "#a78bfa", "AR"),
     Character("ark_development_office", "Yusuf Brandt", "Charter officer",
               "Ark Development Office", "shackleton_depot", "#8b5cf6", "YB"),
+    Character("base_commander", "Asha", "Site commander",
+              "Your base", None, "#22d3ee", "AS"),
     Character("mira_vance", "Mira Vance", "Owner",
               "Vance Propellant", "shackleton_depot", "#f472b6", "MV"),
     Character("sol_adeyemi", "Sol Adeyemi", "Chair",
