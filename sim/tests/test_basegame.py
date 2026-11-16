@@ -218,11 +218,27 @@ def test_midnight_takes_the_lease_wear_and_payroll(game, works):
     money = v["money"]
     assert y["lease"] == money["lease_per_day"] == basegame.lease_per_day(
         sum(base.MODULES[k].cost for k in base.KIT))
-    assert y["upkeep"] == money["upkeep_per_day"]
+    # To the credit, give or take the fraction carried from the day before.
+    assert abs(y["upkeep"] - money["upkeep_per_day"]) <= 1
     assert y["wages"] == money["wages_per_day"] == 4 * basegame.WAGE_PER_CREW_DAY
     assert ledger.credits_destroyed() - burned >= y["lease"] + y["upkeep"]
     # Payroll is not burned: it is in the households' accounts, to be spent.
     assert y["wages"] % len(households) == 0 and paid >= 0
+
+
+def test_taking_plant_down_before_midnight_does_not_dodge_the_day(game, works):
+    """Charges accrue by the hour, so there is nothing to time."""
+    midnight(game)
+    run(game, 22)
+    rent = view(game, works)["money"]["lease_per_day"]
+    for m in view(game, works)["modules"]:
+        if m["type"] != "command":
+            game.base_remove(works, m["id"])
+    assert view(game, works)["money"]["lease_per_day"] < rent // 10
+    run(game, 2)
+    y = view(game, works)["books"]["yesterday"]
+    assert y["lease"] > rent * 22 // 24 - 100
+    assert y["wages"] >= 4 * basegame.WAGE_PER_CREW_DAY * 22 // 24 - 10
 
 
 def test_a_company_that_cannot_pay_stands_down_until_it_can(game, works):

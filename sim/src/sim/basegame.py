@@ -117,10 +117,11 @@ class BaseOps:
     # -- small books: what the base made, sold and paid ---------------------
 
     @staticmethod
-    def _tally(state: dict, key: str, amount: int) -> None:
+    def _tally(state: dict, key: str, amount: int, day: str = "today"
+               ) -> None:
         if not amount:
             return
-        for book in (state["books"]["today"], state["away"]):
+        for book in (state["books"][day], state["away"]):
             book[key] = book.get(key, 0) + amount
 
     def _roll_books(self, state: dict) -> None:
@@ -191,6 +192,7 @@ class BaseOps:
                         "target_t": 10},
             },
             milestones=[], alerts={}, told=[],
+            accrual={"lease": 0, "upkeep": 0, "crew_hours": 0},
             books={"day": tick // TICKS_PER_GAME_DAY, "today": {},
                    "yesterday": {}},
             away={"since": tick})
@@ -643,29 +645,45 @@ class BaseOps:
                 >= MODULES["electrolysis"].feed_kg_per_day):
             events += self._milestone(state, player, "full_feed", now)
 
+        # What standing plant and working crew cost accrues by the hour, so
+        # a module taken down at five to midnight still pays for its day.
+        due = state.setdefault("accrual",
+                               {"lease": 0, "upkeep": 0, "crew_hours": 0})
+        costs = [(MODULES[m["type"]].cost, m["leased"])
+                 for m in state["modules"]]
+        due["lease"] += sum(c for c, leased in costs if leased) * LEASE_BP_PER_DAY
+        due["upkeep"] += sum(c for c, _ in costs) * UPKEEP_BP_PER_DAY
+        due["crew_hours"] += hour.crew_working
         if tick % TICKS_PER_GAME_DAY == 0:
-            owed = self._daily_charges(state, player, node, hour, owed, now)
+            owed = self._daily_charges(state, player, node, owed, now)
 
         self._alerts(state, pid, status, hour, owed, tick)
         state["report"] = base.report(state, hour, tick)
         self._save_base(pid, state, owed)
         return events
 
-    def _daily_charges(self, state: dict, player, node: str, hour, owed: int,
+    def _daily_charges(self, state: dict, player, node: str, owed: int,
                        now: str) -> int:
         """Payroll, wear and the lease, at game midnight. Returns what is owed.
 
-        Payroll goes to the port's households, as every firm's does. Wear and
-        the lease are burned. What cannot be paid is recorded as owed and the
+        Each was accrued hour by hour as the day went (`_tick_base`), so the
+        bill is for what actually stood and who actually worked. Payroll
+        goes to the port's households, as every firm's does. Wear and the
+        lease are burned. What cannot be paid is recorded as owed and the
         works stand down until it is settled; the ledger never goes negative.
+
+        Booked to the day that has just ended: they are that day's costs,
+        and a new day that opened twenty thousand credits down would read
+        as a loss before anything had happened.
         """
         ledger = self.world.ledger
-        standing = state["modules"]
-        lease = sum(lease_per_day(MODULES[m["type"]].cost)
-                    for m in standing if m["leased"])
-        upkeep = sum(upkeep_per_day(MODULES[m["type"]].cost)
-                     for m in standing)
-        wages = WAGE_PER_CREW_DAY * hour.crew_working
+        due = state["accrual"]
+        per = 10_000 * TICKS_PER_GAME_DAY
+        lease, upkeep = due["lease"] // per, due["upkeep"] // per
+        due["lease"] -= lease * per             # the remainder carries over
+        due["upkeep"] -= upkeep * per
+        wages = WAGE_PER_CREW_DAY * due["crew_hours"] // TICKS_PER_GAME_DAY
+        due["crew_hours"] = 0
         cash = ledger.balance(player.account, CREDIT)
 
         households = [f for f in self.world.active_firms()
@@ -678,18 +696,18 @@ class BaseOps:
                                 ref=player.id, memo=f"{player.name} payroll")
             paid = share * len(households)
             cash -= paid
-            self._tally(state, "wages", paid)
+            self._tally(state, "wages", paid, "yesterday")
         elif share:
             owed += share * len(households)
 
-        due = lease + upkeep
-        paid = min(due, cash)
+        bill = lease + upkeep
+        paid = min(bill, cash)
         if paid:
             ledger.burn(player.account, paid, now, ref=player.id,
                         memo=f"{player.name} base lease and upkeep")
-            self._tally(state, "lease", min(paid, lease))
-            self._tally(state, "upkeep", max(0, paid - lease))
-        return owed + (due - paid)
+            self._tally(state, "lease", min(paid, lease), "yesterday")
+            self._tally(state, "upkeep", max(0, paid - lease), "yesterday")
+        return owed + (bill - paid)
 
     def _alerts(self, state: dict, pid: str, status: set, hour, owed: int,
                 tick: int) -> None:
@@ -774,10 +792,11 @@ class BaseOps:
                 "node_name": NODE_NAMES.get(row["node"], row["node"]),
                 "created_tick": row["created_tick"], "faults": row["faults"],
                 "layout": layout,
-                "modules": [{**m, "status": status.get(str(m["id"]),
-                                                       "assembling"
-                                                       if m["ready"] > world.tick
-                                                       else "new")}
+                # A module just stood or moved is assembling, whatever the
+                # last hour's report said about where it used to be.
+                "modules": [{**m, "status": "assembling"
+                             if m["ready"] > world.tick
+                             else status.get(str(m["id"]), "new")}
                             for m in standing],
                 "conduits": state["conduits"], "crates": state["crates"],
                 "report": report,
@@ -793,12 +812,11 @@ class BaseOps:
                 "books": state["books"], "away": state["away"],
                 "money": {
                     "owed": row["owed"],
-                    "lease_per_day": sum(
-                        lease_per_day(MODULES[m["type"]].cost)
-                        for m in standing if m["leased"]),
-                    "upkeep_per_day": sum(
-                        upkeep_per_day(MODULES[m["type"]].cost)
-                        for m in standing),
+                    "lease_per_day": lease_per_day(sum(
+                        MODULES[m["type"]].cost
+                        for m in standing if m["leased"])),
+                    "upkeep_per_day": upkeep_per_day(sum(
+                        MODULES[m["type"]].cost for m in standing)),
                     "wages_per_day": WAGE_PER_CREW_DAY
                     * (report.get("crew") or [0])[0],
                     "leased_value": base.leased_value(state),
