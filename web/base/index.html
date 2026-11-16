@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lunar Ark · Your base</title>
+<meta name="description" content="Your base on the rim of Shackleton crater, in the same world as your ship.">
+<meta name="theme-color" content="#030014">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap">
+<style>
+:root{
+  --bg:#030014; --glass:rgba(9,11,30,.8); --glass-strong:rgba(8,10,28,.92);
+  --border:rgba(255,255,255,.1); --border-hi:rgba(255,255,255,.2);
+  --violet:#8b5cf6; --violet-soft:#a78bfa; --cyan:#06b6d4; --cyan-soft:#67e8f9;
+  --text:#e2e8f0; --dim:#94a3b8; --faint:#64748b;
+  --green:#34d399; --red:#f87171; --amber:#fbbf24; --pink:#f472b6;
+  --disp:"Orbitron",system-ui,sans-serif; --ui:"Rajdhani",system-ui,sans-serif;
+  --mono:"Space Mono",ui-monospace,monospace; --r:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:var(--ui);font-size:15px;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+.glass{background:var(--glass);border:1px solid var(--border);border-radius:var(--r);
+  backdrop-filter:blur(16px) saturate(140%);-webkit-backdrop-filter:blur(16px) saturate(140%);
+  box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.lbl{font-family:var(--disp);font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan-soft)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+#stage{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#stage.tool{cursor:crosshair}
+
+/* top bar */
+#top{position:fixed;left:12px;right:12px;top:12px;display:flex;align-items:center;gap:10px;padding:8px 12px;z-index:5}
+.brand{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0}
+.mark{width:26px;height:26px;border-radius:50%;flex:none;
+  background:radial-gradient(circle at 32% 30%,#cfd3e6,#6b7194 45%,#1a1733 75%);
+  box-shadow:0 0 0 1px var(--border-hi),0 0 18px rgba(139,92,246,.55)}
+.brand h1{font-family:var(--disp);font-weight:700;font-size:13px;letter-spacing:.24em;margin:0;white-space:nowrap}
+.brand h1 span{color:var(--violet-soft)}
+.brand small{display:block;font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:0;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{display:flex;flex-direction:column;gap:1px;border:1px solid var(--border);border-radius:10px;padding:4px 10px;
+  background:rgba(255,255,255,.03);min-width:74px;position:relative}
+.chip b{font-family:var(--mono);font-size:13px;font-weight:700;white-space:nowrap}
+.chip b small{color:var(--faint);font-weight:400;font-size:11px}
+.chip .lbl{font-size:8px}
+.chip.bad{border-color:rgba(248,113,113,.6)} .chip.bad b{color:var(--red)}
+.chip.warn{border-color:rgba(251,191,36,.5)} .chip.warn b{color:var(--amber)}
+.clock{text-align:right;min-width:128px}
+.clock b{font-family:var(--mono);font-size:13px}
+.hourbar{height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;margin-top:4px}
+.hourbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--violet))}
+.tb{border:1px solid var(--border-hi);background:rgba(255,255,255,.04);border-radius:10px;padding:8px 12px;
+  font-family:var(--disp);font-size:9.5px;letter-spacing:.2em;white-space:nowrap}
+.tb:hover{border-color:var(--cyan);color:var(--cyan-soft)}
+#flare{background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.5);color:var(--amber);border-radius:9px;
+  padding:5px 10px;font-family:var(--disp);font-size:9px;letter-spacing:.16em;white-space:nowrap}
+
+/* left: crew and drawers */
+#left{position:fixed;left:12px;top:78px;width:324px;display:flex;flex-direction:column;gap:10px;z-index:4;
+  max-height:calc(100% - 190px)}
+#advice{padding:12px 13px;display:flex;gap:11px;align-items:flex-start}
+.face{width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;font-family:var(--disp);
+  font-size:10px;font-weight:700;color:#030014;background:var(--cyan-soft)}
+#advice h3{margin:0 0 3px;font-family:var(--disp);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+#advice p{margin:0;color:var(--dim);font-size:14px;line-height:1.3}
+#advice .who{font-family:var(--mono);font-size:10px;color:var(--faint);margin-bottom:4px}
+#advice .act{margin-top:8px}
+#rail{display:flex;gap:6px;flex-wrap:wrap}
+#rail button{flex:1;border:1px solid var(--border);background:var(--glass);border-radius:10px;padding:8px 4px;
+  font-family:var(--disp);font-size:8.5px;letter-spacing:.16em;color:var(--dim);position:relative}
+#rail button.on{border-color:var(--cyan);color:var(--cyan-soft)}
+#rail .dot{position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;background:var(--pink);box-shadow:0 0 8px var(--pink)}
+#drawer{padding:13px;overflow-y:auto;scrollbar-width:thin;min-height:0}
+#drawer h2{font-family:var(--disp);font-size:12px;letter-spacing:.2em;text-transform:uppercase;margin:0 0 10px}
+#drawer h3{font-family:var(--disp);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan-soft);
+  margin:14px 0 6px;font-weight:500}
+.row{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:14px}
+.row span{color:var(--dim)} .row b{font-family:var(--mono);font-weight:400;font-size:12.5px;white-space:nowrap}
+.row.total{border-top:1px solid var(--border);margin-top:4px;padding-top:6px} .row.total b{font-weight:700}
+.pos{color:var(--green)} .neg{color:var(--red)}
+.meter{height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin:4px 0 8px}
+.meter i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--violet))}
+.line{display:flex;align-items:center;gap:6px;margin:6px 0;font-size:13.5px;color:var(--dim);flex-wrap:wrap}
+.line input[type=number]{width:66px;background:rgba(0,0,0,.35);border:1px solid var(--border);border-radius:7px;
+  padding:4px 6px;font-family:var(--mono);font-size:12px}
+.line input[type=checkbox]{accent-color:var(--cyan);width:15px;height:15px}
+.btn{border:1px solid rgba(139,92,246,.6);background:rgba(139,92,246,.2);border-radius:9px;padding:6px 11px;
+  font-family:var(--disp);font-size:9px;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
+a.btn{color:var(--text);text-decoration:none;display:inline-block}
+.btn:hover{background:rgba(139,92,246,.38)}
+.btn.cyan{border-color:rgba(6,182,212,.7);background:rgba(6,182,212,.18)} .btn.cyan:hover{background:rgba(6,182,212,.36)}
+.btn.ghost{border-color:var(--border-hi);background:none}
+.btn.red{border-color:rgba(248,113,113,.6);background:rgba(248,113,113,.12)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.goal{display:flex;gap:9px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:14px}
+.goal i{width:16px;height:16px;border-radius:50%;border:1px solid var(--border-hi);flex:none;display:grid;place-items:center;
+  font-style:normal;font-size:10px}
+.goal.done i{background:var(--green);border-color:var(--green);color:#030014}
+.goal.done span{color:var(--faint)} .goal b{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--green);font-weight:400}
+
+/* inspector */
+#inspect{position:fixed;right:12px;top:78px;width:280px;padding:13px;z-index:4}
+#inspect h2{font-family:var(--disp);font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 2px}
+#inspect .state{font-size:14px;margin:6px 0 8px;display:flex;gap:8px;align-items:flex-start;line-height:1.25}
+#inspect .state i{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none}
+#inspect .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+#inspect .x{position:absolute;right:10px;top:8px;background:none;border:0;color:var(--faint);font-size:15px}
+
+/* bottom: build */
+#build{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;z-index:5;display:flex;flex-direction:column;
+  align-items:center;gap:8px;max-width:calc(100% - 24px)}
+#hint{font-family:var(--mono);font-size:11.5px;color:var(--cyan-soft);background:var(--glass-strong);
+  border:1px solid var(--border);border-radius:9px;padding:5px 11px;text-align:center}
+#tray{display:flex;gap:8px;padding:10px;overflow-x:auto;max-width:100%;scrollbar-width:thin}
+.card{flex:none;width:176px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:11px;padding:9px 10px;background:rgba(255,255,255,.03)}
+.card.on{border-color:var(--cyan);box-shadow:0 0 14px rgba(6,182,212,.35)}
+.card h4{margin:0 0 3px;font-family:var(--disp);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;line-height:1.3}
+.card p{margin:0 0 6px;font-size:12.5px;color:var(--dim);line-height:1.2;flex:1}
+.card .st{font-family:var(--mono);font-size:10px;color:var(--faint);margin-bottom:7px;line-height:1.5;min-height:30px}
+.card .st b{color:var(--text);font-weight:400}
+.card .two{display:flex;gap:5px}
+.card .two .btn{flex:1;padding:5px 2px;font-size:8px;letter-spacing:.08em;line-height:1.4}
+.card .two .btn small{display:block;font-family:var(--mono);letter-spacing:0;text-transform:none;font-size:9.5px;color:var(--dim)}
+#cats{display:flex;gap:6px;padding:6px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+#cats button{border:1px solid transparent;background:none;border-radius:9px;padding:7px 12px;font-family:var(--disp);
+  font-size:9px;letter-spacing:.18em;color:var(--dim);white-space:nowrap;position:relative}
+#cats button.on{border-color:var(--cyan);color:var(--cyan-soft);background:rgba(6,182,212,.1)}
+#cats .n{font-family:var(--mono);background:var(--violet);color:#fff;border-radius:8px;padding:0 5px;margin-left:5px;font-size:9px;letter-spacing:0}
+
+#toast{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);z-index:9;background:var(--glass-strong);
+  border:1px solid var(--border-hi);border-radius:10px;padding:8px 14px;font-size:14px;opacity:0;transition:opacity .25s;
+  pointer-events:none;max-width:80%}
+#toast.show{opacity:1} #toast.bad{border-color:rgba(248,113,113,.7);color:#fecaca}
+#fade{position:fixed;inset:0;background:var(--bg);opacity:0;pointer-events:none;transition:opacity .5s;z-index:20}
+#fade.on{opacity:1}
+#rise{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:6;font-family:var(--disp);font-size:11px;
+  letter-spacing:.3em;color:var(--cyan-soft);text-shadow:0 0 14px rgba(6,182,212,.8);opacity:0;transition:opacity .3s;pointer-events:none}
+#rise.on{opacity:1}
+
+.overlay{position:fixed;inset:0;z-index:10;background:rgba(3,0,20,.72);display:flex;align-items:flex-start;justify-content:center;
+  overflow-y:auto;padding:24px}
+.sheet{margin:auto;width:min(620px,100%);padding:26px 28px}
+.sheet h1{font-family:var(--disp);font-size:clamp(20px,4vw,28px);letter-spacing:.12em;margin:6px 0 12px;
+  background:linear-gradient(135deg,#06b6d4,#8b5cf6);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sheet p{color:var(--dim);font-size:16px;line-height:1.4;margin:0 0 12px}
+.sheet p b{color:var(--text);font-weight:600}
+.sheet ul{margin:0 0 14px;padding-left:18px;color:var(--dim);font-size:15px;line-height:1.45}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:12px 0 16px}
+.stats div{border:1px solid var(--border);border-radius:10px;padding:8px 10px}
+.stats b{display:block;font-family:var(--mono);font-size:15px}
+.sheet .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.sheet .btn{padding:10px 16px;font-size:10px}
+
+@media (max-width:1100px){ .chip.opt{display:none} }
+@media (max-width:820px){
+  #top{flex-wrap:wrap;gap:6px} .brand small{display:none} .clock{min-width:0}
+  #left{width:auto;right:12px;top:auto;bottom:150px;max-height:40%} #advice p{font-size:13px}
+  #inspect{left:12px;right:12px;width:auto;top:auto;bottom:150px}
+  .card{width:150px}
+}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<header id="top" class="glass" hidden>
+  <div class="brand"><div class="mark"></div>
+    <div style="min-width:0"><h1>LUNAR <span>ARK</span></h1><small id="where"></small></div></div>
+  <div id="flare" hidden>SOLAR FLARE · WORKS STOOD DOWN</div>
+  <div class="chip" id="cCash"><span class="lbl">Credits</span><b>0</b></div>
+  <div class="chip" id="cPower" title="Power drawn against power generated"><span class="lbl">Power kW</span><b>0</b></div>
+  <div class="chip" id="cHeat" title="Heat made against heat the radiators reject"><span class="lbl">Heat kW</span><b>0</b></div>
+  <div class="chip" id="cCrew" title="Crew at work against crew the base can keep alive"><span class="lbl">Crew</span><b>0</b></div>
+  <div class="chip opt" id="cIce"><span class="lbl">Ice t</span><b>0</b></div>
+  <div class="chip" id="cProp"><span class="lbl">Propellant t</span><b>0</b></div>
+  <div class="clock"><b id="date"></b><div class="hourbar"><i id="hour"></i></div></div>
+  <a class="tb" id="letters" href="/#inbox" style="text-decoration:none;color:inherit">LETTERS</a>
+  <button class="tb" id="toMoon" title="Rise to the Moon and the trade map">MOON</button>
+</header>
+
+<aside id="left" hidden>
+  <div id="advice" class="glass"></div>
+  <div id="rail">
+    <button data-d="market">MARKET</button><button data-d="money">MONEY</button>
+    <button data-d="ship">SHIP</button><button data-d="goals">GOALS</button>
+  </div>
+  <div id="drawer" class="glass" hidden></div>
+</aside>
+
+<aside id="inspect" class="glass" hidden></aside>
+
+<div id="build" hidden>
+  <div id="hint" hidden></div>
+  <div id="tray" class="glass" hidden></div>
+  <div id="cats" class="glass"></div>
+</div>
+
+<div id="rise">RISING TO THE MOON</div>
+<div id="toast"></div>
+<div id="fade"></div>
+
+<div id="gate" class="overlay" hidden><div class="sheet glass" id="gateBody"></div></div>
+
+<script src="/js/base.js"></script>
+</body>
+</html>
