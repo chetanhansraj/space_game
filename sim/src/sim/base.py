@@ -118,9 +118,10 @@ PRODUCERS = ("electrolysis", "ice_miner")
 YIELD_NUMERATOR, YIELD_DENOMINATOR = 9, 10
 
 #: What an electrolysis plant can hold in its own run tank when there is no
-#: tank farm to send it to. *Invented* (D56): enough to make a trading lot,
-#: little enough that storing propellant is something you have to build.
-RUN_TANK_KG = 5 * TONNE
+#: tank farm to send it to. *Invented* (D56): one Kestrel hold, so a town can
+#: make up a shipload for a promise, and little enough that holding
+#: propellant back for a better price is something you have to build.
+RUN_TANK_KG = 40 * TONNE
 
 #: Dry stock a base can hold on the ground before it has a warehouse.
 #: *Invented* (D56), for the same reason.

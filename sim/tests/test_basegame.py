@@ -459,14 +459,6 @@ def test_jobs_are_other_ports_wanting_what_the_base_makes(game, works):
 def test_a_promise_kept_from_the_base_by_ship(game, works):
     """The whole loop: take a job, make the goods, load, fly, get paid."""
     ledger = game.world.ledger
-    game.base_policy(works, "PROP", sell=False)
-    # Somewhere to keep propellant while the order is made up.
-    ledger.transfer(DEV_FUND, works.account, CREDIT, 3_000_000, kind="test",
-                    game_time=game.world.game_time())
-    for kind in ("cryo", "tankfarm"):
-        grow(game, works, kind, how="buy")
-    for kind in ("solar",) * 6 + ("radiator",) * 3:
-        grow(game, works, kind, how="buy")
     job = None
     for _ in range(24 * 12):
         game.step()
@@ -476,9 +468,15 @@ def test_a_promise_kept_from_the_base_by_ship(game, works):
         if job:
             break
     assert job, "no propellant job was posted in twelve days"
+    game.base_policy(works, "PROP", sell=True)       # sell as usual...
     game.accept(works, job["id"])
     assert next(j for j in view(game, works)["jobs"]
                 if j["id"] == job["id"])["mine"]
+    run(game, 3)
+    sold = view(game, works)["books"]["today"].get("sold_kg_PROP", 0)
+    held = view(game, works)["stock"]["PROP"]
+    assert held >= min(job["qty_kg"], held)          # ...but not the promise
+    assert held > 0 or sold == 0
     while view(game, works)["stock"]["PROP"] < job["qty_kg"]:
         game.step()
         assert game.world.tick < job["deadline_tick"], "could not make it in time"
@@ -496,22 +494,22 @@ def test_a_promise_kept_from_the_base_by_ship(game, works):
 
 def test_the_ship_loads_from_the_base_only_at_its_port(game, works):
     game.base_policy(works, "PROP", sell=False)
-    game.base_policy(works, "ICE", buy=False)
     run(game, 12)
     ship = game.ship_of(works)
     stock = view(game, works)["stock"]
-    ice_t = stock["ICE"] // TONNE
-    assert ice_t >= 1
-    aboard = game.world.ledger.balance(works.account, "ICE")
-    game.base_load(works, "ICE", ice_t)
-    assert game.world.ledger.balance(works.account, "ICE") == aboard + ice_t * TONNE
-    assert view(game, works)["stock"]["ICE"] == stock["ICE"] - ice_t * TONNE
-    assert ship.loaded.get("ICE") == ice_t * TONNE
-    assert game.hold_used(works) == ice_t * TONNE
+    tonnes = stock["PROP"] // TONNE
+    assert tonnes >= 1
+    ledger = game.world.ledger
+    aboard = ledger.balance(works.account, "PROP")      # a full tank of fuel
+    game.base_load(works, "PROP", tonnes)
+    assert ledger.balance(works.account, "PROP") == aboard + tonnes * TONNE
+    assert view(game, works)["stock"]["PROP"] == stock["PROP"] - tonnes * TONNE
+    assert ship.loaded.get("PROP") == tonnes * TONNE
+    assert game.hold_used(works) == tonnes * TONNE      # beyond the tank: cargo
     with pytest.raises(GameError, match="holds"):
-        game.base_load(works, "ICE", 500)
-    game.base_unload(works, "ICE", ice_t)
-    assert game.hold_used(works) == 0 and ship.loaded.get("ICE") == 0
+        game.base_load(works, "PROP", 500)
+    game.base_unload(works, "PROP", tonnes)
+    assert game.hold_used(works) == 0 and ship.loaded.get("PROP") == 0
     game.dispatch(works, PEARY, sell_on_arrival=False)
     with pytest.raises(GameError, match="in flight"):
         game.base_load(works, "PROP", 1)

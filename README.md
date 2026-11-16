@@ -118,4 +118,9 @@ at the Depot on the same ledger and clock as its ship. `sim/base.py` is the
 physics, `sim/basegame.py` joins it to the world, and `web/base/` draws it at
 `/base/`. `scripts/demo_base.py` plays one and prints the books.
 
+**The base is a town.** Six people found it, more arrive on a daily shuttle
+when there are berths, air, water and food for them, and they are the
+workforce its industry needs. It runs on the one universal clock, on the
+server, whether or not anyone is watching (`docs/DECISIONS.md` D64).
+
 Roadmap is in `docs/BIBLE.md` §10. Short version: one lunar node and one market, then ships, then the Belt, then Mars industry, then the political layer.

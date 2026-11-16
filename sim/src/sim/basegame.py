@@ -541,6 +541,10 @@ class BaseOps:
             spare = ledger.balance(account, asset) - rule["keep_t"] * TONNE
             if asset == "ICE":      # never sell the people's water
                 spare -= base.water_reserve(hour.people)
+            # Nor what has been promised to another port. A promise is kept
+            # from stock, so the market gets only what is left over.
+            spare -= sum(c.qty_kg for c in self.board.held_by(player.id)
+                         if c.asset == asset)
             bid = book.best_bid(asset)
             if spare < TONNE or not bid or bid < rule["min_price"]:
                 continue

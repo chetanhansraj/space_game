@@ -27,7 +27,7 @@
   const n0 = (n) => Math.round(n || 0).toLocaleString("en-US");
   const cr = (n) => `${n0(n)} cr`;
   const t1 = (kg) => { const v = (kg || 0) / 1000; return v >= 100 ? n0(v) : v.toFixed(1); };
-  const NAMES = { ICE: "Water ice", PROP: "Propellant" };
+  const NAMES = { ICE: "Water ice", PROP: "Propellant", FOOD: "Food" };
   const B = () => S.v && S.v.base;
   const spec = (type) => S.v.catalog.find((c) => c.id === type);
 
@@ -94,8 +94,9 @@
     cryo: ["#4a78dc", 21, 0.14, "#e6eeff", "CR"], ice_miner: ["#d2a84c", 14, 0.1, "#2a1e05", "IM"],
     electrolysis: ["#c084fc", 25, 0.1, "#1e0b38", "EL"], command: ["#e9e4d6", 24, 0.12, "#0a1c38", "CP"],
     comms: ["#94a3b8", 30, 0.32, "#0f172a", "CM"],
+    hydroponics: ["#58b874", 13, 0.07, "#06220f", "HY"], recycler: ["#3a9bb0", 14, 0.2, "#031d22", "WR"],
   };
-  const CATS = [["kit", "KIT"], ["power", "POWER"], ["thermal", "COOLING"], ["crew", "CREW"],
+  const CATS = [["kit", "KIT"], ["power", "POWER"], ["thermal", "COOLING"], ["crew", "LIFE"],
     ["storage", "STORAGE"], ["industry", "INDUSTRY"], ["control", "CONTROL"], ["conduit", "CONDUIT"]];
 
   // -- the crew: which fact is worth saying ------------------------------------------
@@ -105,6 +106,14 @@
     const kit = () => act("/base/kit", {}, "Lena is standing the kit. Modules come up over the next few hours.");
     if (b.money.owed > 0) return ["RA", "Rafael", "The works have stood down",
       `We could not make the day's lease, wear and payroll, so the plant and the diggers are stopped. We owe ${cr(b.money.owed)}. It settles itself the hour the money is there.`];
+    const P = b.people, here = P.residents.length, need = (b.report || {}).needs || {};
+    const settled = !b.crates.length && b.milestones.some((m) => m.id === "desk" && m.done);
+    if (settled && need.water === false) return ["KE", "Kenji", "We are out of water",
+      "There is no ice in stock, and ice is our water and our air. Get a miner digging, or buy ice in the Market drawer. A day without it and people start going home."];
+    if (settled && need.food === false) return ["KE", "Kenji", "We are short of food",
+      `The bays grow food for ${P.fed} and there are ${here} of us. Each Hydroponics bay feeds six and needs two people and 60 kW. Nobody new comes while anyone is hungry.`];
+    if (settled && need.air === false) return ["KE", "Kenji", "More people than air",
+      `There are ${here} of us and berths with air for ${P.housed}. A hab adds six berths; a life support unit keeps eight. The newest will leave on the shuttle.`];
     if (b.crates.includes("command") && !mods.some((m) => m.type === "command")) return ["AS", "Asha", "Stand the command post",
       "Everything on site has to link back to it. Take it from the Kit tray below and click open ground, or let Lena stand the whole kit and rearrange it afterwards.",
       ["Stand it all for me", kit]];
@@ -116,7 +125,7 @@
     if (has("no_ice")) return ["RA", "Rafael", "A miner is on bare ground",
       "An ice miner only digs on the blue patches. The percentage on each patch is how rich its ice is. Select the miner and press Move."];
     if (has("no_crew")) return ["AS", "Asha", "We are short of hands",
-      `${(r.crew || [0, 0, 0])[2]} needed, ${(r.crew || [0, 0])[1]} berths with air. Another hab adds six berths; one life support unit keeps eight people.`];
+      `The modules standing need ${(r.crew || [0, 0, 0])[2]} people and ${here} live here. Life support, the desk and the farm are staffed first. Make room and food for more, and the shuttle brings two a day.`];
     if (has("no_power")) return ["LE", "Lena", "We are short of power",
       `We can generate ${pw[1]} kW and everything standing wants more, so I switched the diggers off first. Add solar arrays, or move the ones marked amber out of the dust.`];
     if (S.v.flaring) return ["AS", "Asha", "Solar flare",
@@ -149,6 +158,15 @@
       `One miner is on ${worst.grade}% ice. The ${best.grade}% patch further out would give more for the same power. Select the miner, press Move, then run Conduit to it.`];
     if (has("dusty")) return ["LE", "Lena", "Dust on the arrays",
       "The solar arrays marked amber stand within two tiles of a digger and give half their power. We have the margin for now. Move them when we need it."];
+    const limit = Math.min(P.housed, P.fed);
+    if (settled && here >= limit) {
+      const short = P.fed <= P.housed ? "food: one more Hydroponics bay feeds six more"
+        : "berths with air: a hab adds six berths, a life support unit keeps eight people";
+      return ["AS", "Asha", `The town is full at ${here}`,
+        `More people means more hands for industry, and the Ark leases a bigger town more plant. What holds us at ${here} is ${short}.`];
+    }
+    if (settled && here < limit) return ["AS", "Asha", "Room for more people",
+      `We can house and feed ${limit} and there are ${here} of us. The shuttle brings up to ${P.arrivals_per_day} a day, at game midnight, if nobody went without air, water or food.`];
     const next = b.milestones.find((m) => !m.done);
     if (next) return ["AS", "Asha", `Next: ${next.title.toLowerCase()}`,
       `The Ark pays a ${cr(next.bonus)} development bonus for it. The Goals drawer has the full list.`];
@@ -176,7 +194,8 @@
     chip("#cCash", n0(v.credits), b.money.owed ? "bad" : "");
     chip("#cPower", `${pw[0]} <small>/ ${pw[1]}</small>`, st("no_power") ? "bad" : "");
     chip("#cHeat", `${ht[0]} <small>/ ${ht[1]}</small>`, ht[0] > ht[1] ? "warn" : "");
-    chip("#cCrew", `${cw[0]} <small>/ ${cw[1]}</small>`, st("no_crew") ? "bad" : "");
+    const nd = r.needs || {}, unhappy = nd.air === false || nd.water === false || nd.food === false;
+    chip("#cCrew", `${b.people.residents.length} <small>/ ${cw[1]}</small>`, unhappy ? "bad" : st("no_crew") ? "warn" : "");
     chip("#cIce", t1(b.stock.ICE));
     chip("#cProp", `${t1(b.stock.PROP)} <small>/ ${t1(b.capacity.PROP)}</small>`, st("full") ? "warn" : "");
 
@@ -234,9 +253,10 @@
         <h3>The Ark's plant</h3>
         <div class="row"><span>On lease</span><b>${cr(m.leased_value)}</b></div>
         <div class="meter"><i style="width:${Math.min(100, m.leased_value / m.lease_cap * 100)}%"></i></div>
-        <div class="row"><span>The most the Ark will lease you</span><b>${cr(m.lease_cap)}</b></div>
+        <div class="row"><span>The most the Ark will lease a town this size</span><b>${cr(m.lease_cap)}</b></div>
+        <div class="row"><span>It rises ${n0(m.lease_cap_per_resident)} with every resident after the founders.</span></div>
         <div class="row"><span>Plant you own</span><b>${cr(m.owned_value)}</b></div>
-        <div class="row" style="margin-top:8px"><span>A game day is 24 real minutes. Charges are taken at game midnight.</span></div>`;
+        <div class="row" style="margin-top:8px"><span>A game day is ${Math.round(24 * v.tick_seconds / 60)} real minutes. Charges are taken at game midnight.</span></div>`;
     } else if (S.drawer === "ship") {
       const s = b.ship;
       h = `<h2>Your Kestrel</h2>`;
@@ -252,6 +272,42 @@
       }
       h += `<div class="line" style="margin-top:12px"><button class="btn ghost" data-act="moon">Fly it from the Moon map</button></div>
         <div class="row"><span>Propellant sells for more at ports that cannot make it. Load here, fly there.</span></div>`;
+    } else if (S.drawer === "people") {
+      const P = b.people, nd = (b.report || {}).needs || {}, cw = (b.report || {}).crew || [0, 0, 0];
+      const toShuttle = Math.max(0, P.next_shuttle_tick - v.tick);
+      const ok = (k, label) => `<div class="row"><span>${label}</span><b class="${nd[k] === false ? "neg" : "pos"}">${nd[k] === false ? "short" : "fine"}${P.unmet[k] ? ` · ${P.unmet[k]} h short today` : ""}</b></div>`;
+      h = `<h2>People · ${P.residents.length}</h2>
+        ${ok("air", "Air and a berth")}${ok("water", "Water")}${ok("food", "Food")}
+        <h3>Room</h3>
+        <div class="row"><span>Berths with air</span><b>${P.housed}</b></div>
+        <div class="row"><span>The bays feed</span><b>${P.fed}</b></div>
+        <div class="row"><span>At work / wanted</span><b>${cw[0]} / ${cw[2]}</b></div>
+        <h3>The shuttle</h3>
+        <div class="row"><span>Next one in</span><b>${toShuttle} game hours</b></div>
+        ${P.shuttle ? `<div class="row"><span>Last one</span><b>${P.shuttle.came.length ? "brought " + esc(P.shuttle.came.join(", ")) : P.shuttle.left.length ? "took " + esc(P.shuttle.left.map((x) => x.name).join(", ")) + " home" : "brought no one"}</b></div>` : ""}
+        <div class="row"><span>It brings up to ${P.arrivals_per_day} a day to a town with room and food for them, if nobody went without anything that day. ${P.unmet_hours_to_leave} hours short of something sends the newest home.</span></div>
+        <h3>Who lives here</h3>` + P.residents.map((x) =>
+          `<div class="row"><span>${esc(x.name)}${x.founder ? " ★" : ""}</span><b>${esc(x.trade)}</b></div>`).join("") +
+        `<div class="row"><span>★ founded the site and will not leave.</span></div>`;
+    } else if (S.drawer === "jobs") {
+      const y = b.books.yesterday || {}, mine = b.jobs.filter((j) => j.mine).length;
+      h = `<h2>Jobs · promises to other ports</h2>`;
+      if (!b.jobs.length) h += `<div class="row"><span>Nobody at another port is asking for what we make right now. Jobs are posted when a firm runs short.</span></div>`;
+      for (const j of b.jobs) {
+        const left = j.deadline_tick - v.tick, have = b.stock[j.asset] || 0, rate = y["made_kg_" + j.asset] || 0;
+        const short = Math.max(0, j.qty_kg - have);
+        const ready = !short ? 0 : rate ? Math.ceil(short / rate * 24) : null;
+        const fits = j.qty_kg <= (b.capacity[j.asset] || 0);
+        const can = fits && ready != null && ready + (j.flight_ticks || 1) + 1 <= left;
+        h += `<h3>${t1(j.qty_kg)} t ${NAMES[j.asset] || j.asset} to ${esc(j.node_name)}</h3>
+          <div class="row"><span>Pays on delivery</span><b class="pos">${cr(j.payment)}</b></div>
+          <div class="row"><span>Due in</span><b>${left} game hours</b></div>
+          <div class="row"><span>We hold ${t1(have)} t${rate ? `, made ${t1(rate)} t yesterday` : ""}</span><b class="${can ? "pos" : "neg"}">${!fits ? "more than we can store" : !short ? "ready now" : ready == null ? "not making any" : `ready in ${ready} h`}</b></div>
+          <div class="row"><span>Flight</span><b>${j.flight_ticks || "?"} game hour${j.flight_ticks > 1 ? "s" : ""}</b></div>
+          <div class="line">${j.mine ? `<button class="btn red" data-act="abandon" data-id="${j.id}">Give it up</button><span>Promised, and held back from the market. Load it in the Ship drawer and fly it.</span>`
+            : `<button class="btn cyan" data-act="accept" data-id="${j.id}" ${mine >= 3 ? "disabled" : ""}>Promise it</button>`}</div>`;
+      }
+      h += `<div class="row" style="margin-top:10px"><span>A promise is kept when your ship docks there with the goods before the hour runs out. You can hold three at once.</span></div>`;
     } else if (S.drawer === "goals") {
       h = `<h2>Ark development bonuses</h2>` + b.milestones.map((m) =>
         `<div class="goal ${m.done ? "done" : ""}"><i>${m.done ? "✓" : ""}</i><span>${esc(m.title)}</span><b>${n0(m.bonus)}</b></div>`).join("") +
@@ -345,12 +401,13 @@
       const daily = v.kit.reduce((a, k) => a + cat(k).lease_per_day + cat(k).upkeep_per_day, 0);
       body.innerHTML = `<div class="lbl">Ark Development Office · site charter</div><h1>${esc(s.name)}</h1>
         <p>${esc(s.blurb)}</p>
-        <p><b>${esc(v.company)}</b> can take this ground today. The Ark stands a kit beside it in crates: a small propellant works, ${v.kit.length} modules, ${cr(value)} of plant, on lease.</p>
+        <p><b>${esc(v.company)}</b> can take this ground today. ${v.founders || 6} people found it with you. The Ark stands a kit beside it in crates: a small propellant works and what keeps its people alive, ${v.kit.length} modules, ${cr(value)} of plant, on lease.</p>
         <div class="stats"><div><span class="lbl">Kit, all standing</span><b>${n0(daily)} a day</b></div>
           <div><span class="lbl">Propellant bid</span><b>${p.PROP && p.PROP.bid ? n0(p.PROP.bid) : "none"} cr/t</b></div>
           <div><span class="lbl">Ice ask</span><b>${p.ICE && p.ICE.ask ? n0(p.ICE.ask) : "none"} cr/t</b></div>
           <div><span class="lbl">Your credits</span><b>${n0(v.credits)}</b></div></div>
-        <ul><li>The base runs on the world's clock: one game hour a real minute, and it keeps working while you are away.</li>
+        <ul><li>The town runs on the world's clock, the same for everyone, and it keeps living while you are away.</li>
+          <li>Give people air, water and food and more come on the daily shuttle. More people run more industry.</li>
           <li>It makes propellant from ice and sells it at ${esc(s.node_name)}. Your ship can carry it to ports that pay more.</li>
           <li>Leased plant costs a daily fee. Plant you buy is yours.</li></ul>
         <div class="acts"><button class="btn cyan" id="takeCharter">Take the charter</button>
@@ -377,7 +434,7 @@
         <div><span class="lbl">Sold</span><b>${t1((a.sold_kg_PROP || 0) + (a.sold_kg_ICE || 0))} t</b></div>
         <div><span class="lbl">Taken in</span><b class="pos">${n0((a.sales || 0) + (a.bonus || 0))}</b></div>
         <div><span class="lbl">Paid out</span><b class="neg">${n0(paid)}</b></div>
-        <div><span class="lbl">Ice dug</span><b>${t1(a.made_kg_ICE)} t</b></div>
+        <div><span class="lbl">People</span><b>${a.arrived ? "+" + a.arrived : ""}${a.left ? " −" + a.left : ""}${!a.arrived && !a.left ? "no change" : ""}</b></div>
         <div><span class="lbl">Net</span><b>${n0((a.sales || 0) + (a.bonus || 0) - paid)}</b></div></div>
       <div class="acts"><button class="btn cyan" id="backToWork">Back to work</button></div>`;
     $("#backToWork").onclick = () => { g.hidden = true; };
@@ -631,7 +688,9 @@
     else if (a === "load" || a === "unload") {
       const tonnes = Math.max(1, parseInt($("#stow" + asset).value, 10) || 1);
       await act("/base/" + a, { asset, tonnes }, a === "load" ? "Loaded." : "Unloaded.");
-    } else if (a === "moon") goMoon();
+    } else if (a === "accept") await act(`/contracts/${c.dataset.id}/accept`, {}, "Promised. The clock is running.");
+    else if (a === "abandon") await act(`/contracts/${c.dataset.id}/abandon`, {}, "Given up. It is back on the board.");
+    else if (a === "moon") goMoon();
   });
   $("#drawer").addEventListener("change", (e) => {
     const k = e.target.dataset.pol; if (!k) return;

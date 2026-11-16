@@ -1122,7 +1122,7 @@ plant and the miners throttle in proportion.
 
 Crew are a capacity in build 1, not people: berths from powered habs, capped
 by life support at 8 per unit, and none at all without an airlock. Residents
-who eat and breathe arrive with build 2.
+who eat and breathe arrive with build 2. *(They have: D64.)*
 
 A base with no staffed command post runs no plant. A flare stands the plant
 and the miners down, as it does every agent rig.
@@ -1242,6 +1242,108 @@ because it runs on the client (invariant 1). It is where the base's ideas are
 tried at speed, and its crew (Asha, Lena, Rafael) are the voices on the live
 base.
 
+### D64 — The town and the trade game are one and the same; one universal time
+
+*Decided by Chetan, 17 November 2026, the night the first base went live.*
+
+The first base was built as a new works beside the trade game. That was a
+misreading, and he said so: the town he has been building in the city builder
+*is* the game, the market is where that town may choose to trade, and each
+goes on whether or not the other is used. *"It is like I live in a town but
+it is my choice if I want to trade or not."*
+
+It was then proposed that the town keep its fast, pausable clock and meet the
+world only through ships that call on world time. He rejected that with one
+example: if the town can run faster than the world, a promise to deliver ore
+in five days means nothing, because the town can always be run forward to
+meet it. Production time is part of the deal. **So there is one universal
+time, for the town as for everything else, with no speed-up and no pause**,
+and the town lives on the server so that closing the tab is not a pause
+either. He offered to give up both controls for it. Invariant 5 already said
+this; it now covers the town by his own decision.
+
+The base from D53 is therefore not a second game but the ground the town is
+being moved onto, system by system. `city/` at sim.lunarark.com stays as the
+practice mode it was called in D63.
+
+**People are the first system moved.** A site is founded by six: the city
+builder's four (Asha, Kenji, Lena, Rafael), an agronomist and a plant
+operator. They never leave, so a site can always be recovered. Everyone else
+comes on a daily shuttle.
+
+*Invented:*
+
+| | |
+|---|---|
+| Water | 24 kg a person a day, taken from ice in stock. A recycler leaves 15% of that (seed-data's 85%) |
+| Food | 2.4 kg a person a day. A hydroponics bay grows that for six (seed-data's "feeds 6") |
+| Arrivals | up to 2 a day, at game midnight, only if nobody went without air, water or food all day and there is a berth with air and a bay to feed them |
+| Departures | a need unmet for 12 hours of a day sends the newest resident home; nobody stays without a berth |
+
+Seed-data says a hydroponics bay "needs volatiles". Nothing in the v1 world
+makes volatiles, so a bay runs on power and hands alone for now; that
+requirement returns with the Belt.
+
+People are not on the ledger. They are who the town can keep alive, and they
+are its workforce: a module that needs crew runs only if someone lives there
+to run it, with life support, the desk and the farm staffed before the plant.
+A bay takes two and a life-support unit one, so roughly four people in ten
+are free for industry. Industry grows only as fast as the town does.
+
+People drink before the plant is fed, and neither the plant nor a standing
+sale touches the last day of the town's water. Food goes from the bays to the
+table and only a surplus reaches the ledger; counted per kilogram, a town
+that grew exactly enough went hungry by rounding and nobody ever arrived.
+
+**D56 changes with it:** a plant's run tank is 40 t, one Kestrel hold, not 5,
+so that a town can make up a shipload for a promise without first building a
+tank farm.
+
+### D65 — The Ark leases to towns, not to machinery
+
+*Invented.* The lease limit of D59 becomes 12,000,000 cr for a founding crew
+plus 1,000,000 for every resident after the six, to a ceiling of 40,000,000.
+The kit is now 29 modules and 10,335,000 cr of plant (a hydroponics bay and a
+fourteenth solar array). A sixth bonus, 50,000 cr, is paid for a town of ten,
+which takes D60's most a company can draw from the fund to 320,000 cr.
+
+Played by a bot for 22 game days on a fresh world: the kit alone nets about
+18,000 cr a game day; a town of twelve running two plants about 35,000. On
+day 16 the bids for propellant at the Depot ran out altogether for three
+days, and the town lost 38,000 cr a day until they returned. Nobody designed
+that. It is the market answering one town's supply, and it is the reason to
+build tanks, take promises and own a ship.
+
+### D66 — Promises: supply contracts kept from the base
+
+Chetan's example was a promise to deliver ore in five days. The world already
+has that instrument (D46): a firm that is short posts a contract with the
+money in escrow and a 72-hour deadline. The base screen now lists the open
+contracts at other ports for goods the base makes, with what is in stock,
+what a day makes and how long the flight is. A promise that is taken is held
+back from the base's standing sales, loaded into the company's ship and
+settled when the ship docks. D46's rule stands: goods must be carried, so a
+base cannot fill a contract at its own port.
+
+### D67 — How this is tested, and why there is no cheat code on the live world
+
+Chetan suggested a cheat code that speeds the world clock up for testing.
+The tests do exactly that, but not on the live world: `scripts/demo_base.py`
+and the test suite step a private world as fast as the machine allows, and
+the browser checks run against a local server ticking every second or two.
+The live world has no such switch. One that existed could be found, and a
+clock that can be run forward is the thing D64 was decided to prevent.
+
+### D68 — Towns run by agents
+
+*Direction from Chetan, not yet built.* Agents will run towns of their own,
+so that the Moon has an economy for people to join. Two rules are fixed now.
+An agent's town is an ordinary company: same charter, same lease, same
+ledger, no grants a player cannot get (invariant 3). And invariant 2 holds:
+an agent that decides with a language model acts through the same API a
+player does, from outside the tick; nothing inside `sim/` asks a model
+anything.
+
 ---
 
 ## Still open — needs you
@@ -1267,6 +1369,11 @@ Deliberately not decided, because these are yours.
 9. **The base's money** — D59 and D60. Lease and wear rates, payroll, the
    lease cap and the bonuses were all invented and tuned on a fresh world.
    Play it on the live one and say what feels too slow or too easy.
+11. **The clock rate itself** — D64. One game hour a real minute was set
+    for a trading game. A town on it sees a shuttle every 24 real minutes
+    and, on the flats, a night of nearly six real hours. If the town feels
+    slow once it is lived in, the rate can change, but for the whole world
+    at once.
 10. **Helium-3 for players** — D53. A player separator adds to the only
     faucet in the economy (D40), so it needs a licence and a royalty before
     the flats open. The size of that royalty is the decision.
