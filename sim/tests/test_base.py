@@ -46,6 +46,26 @@ def of(state, kind):
     return [m for m in state["modules"] if m["type"] == kind]
 
 
+def free_beside(state, layout):
+    taken = {(m["x"], m["y"]) for m in state["modules"]}
+    rocks = {tuple(r) for r in layout["rocks"]}
+    for m in state["modules"]:
+        if m["type"] == "ice_miner":
+            continue
+        for t in ((m["x"] + 1, m["y"]), (m["x"], m["y"] + 1),
+                  (m["x"] - 1, m["y"]), (m["x"], m["y"] - 1)):
+            if t not in taken and t not in rocks \
+                    and base.patch_at(layout, *t) is None:
+                return t
+    raise AssertionError("no room")
+
+
+def feedstock(h) -> int:
+    """Ice the plant took this hour, apart from what the people drank."""
+    return sum(op.kg for op in h.ops
+               if op.kind == "consume" and "feedstock" in op.memo)
+
+
 def take_down(state, layout, module):
     """Remove a module but leave conduit where it stood, so links hold."""
     base.remove(state, module["id"])
@@ -177,10 +197,10 @@ def test_no_airlock_means_no_crew_and_no_crew_means_no_works(state, layout):
     stand(state, layout)
     take_down(state, layout, of(state, "airlock")[0])
     h = hour(state, layout, stock={"ICE": 10 * TONNE})
-    assert h.crew_cap == 0
+    assert h.crew_cap == 0 and h.needs["air"] is False
     assert h.status[of(state, "command")[0]["id"]] == "no_crew"
     assert h.status[of(state, "electrolysis")[0]["id"]] == "no_command"
-    assert not h.ops
+    assert not set(h.made) & {"ICE", "PROP"}
 
 
 def test_too_few_radiators_throttle_the_plant(state, layout):
@@ -221,7 +241,7 @@ def test_a_flare_or_arrears_stops_the_works_but_not_the_air(state, layout):
     for kw, why in (({"flaring": True}, "flare"),
                     ({"suspended": True}, "suspended")):
         h = hour(state, layout, stock={"ICE": 10 * TONNE}, **kw)
-        assert not h.ops
+        assert not set(h.made) & {"ICE", "PROP"}
         assert h.status[of(state, "electrolysis")[0]["id"]] == why
         assert h.status[of(state, "eclss")[0]["id"]] == "on"
 
@@ -272,10 +292,10 @@ def test_the_plant_loses_a_tenth_and_not_a_gram_more(state, layout):
     for t in range(10, 10 + 37):
         stock["PROP"] = 0                    # sold as fast as it is made
         h = hour(state, layout, tick=t, stock=stock)
-        fed += h.used.get("ICE", 0)
+        fed += feedstock(h)
         made += h.made.get("PROP", 0)
         stock["ICE"] -= h.used.get("ICE", 0)
-    carry = sum(state["carry"].values())
+    carry = sum(v for k, v in state["carry"].items() if k.isdigit())
     assert fed == 37 * (MODULES["electrolysis"].feed_kg_per_day // 24)
     assert made * base.YIELD_DENOMINATOR + carry == fed * base.YIELD_NUMERATOR
 
@@ -285,7 +305,7 @@ def test_the_plant_never_eats_ice_it_has_no_tank_for(state, layout):
     h = hour(state, layout, stock={"ICE": 50 * TONNE,
                                    "PROP": base.RUN_TANK_KG})
     assert h.status[of(state, "electrolysis")[0]["id"]] == "full"
-    assert "PROP" not in h.made and not h.used.get("ICE")
+    assert "PROP" not in h.made and feedstock(h) == 0
 
 
 def test_a_tank_farm_stores_nothing_without_liquefaction(state, layout):
@@ -307,9 +327,11 @@ def test_a_full_yard_stops_the_miners(state, layout):
     stand(state, layout)
     take_down(state, layout, of(state, "electrolysis")[0])
     cap = hour(state, layout).store_kg
+    state["people"] = 0                      # nobody drinking the yard down
     h = hour(state, layout, stock={"ICE": cap})
     assert "ICE" not in h.made
-    assert {h.status[m["id"]] for m in of(state, "ice_miner")} == {"full"}
+    assert {h.status[m["id"]] for m in of(state, "ice_miner")} <= {
+        "full", "no_command"}
 
 
 def test_what_is_on_lease_counts_crates_and_all(state, layout):
@@ -317,3 +339,70 @@ def test_what_is_on_lease_counts_crates_and_all(state, layout):
     assert base.leased_value(state) == kit
     stand(state, layout)
     assert base.leased_value(state) == kit and base.owned_value(state) == 0
+
+
+# -- the people ---------------------------------------------------------------------
+
+def test_people_drink_before_the_plant_and_eat_what_the_bay_grows(state, layout):
+    stand(state, layout)
+    for m in of(state, "ice_miner"):
+        take_down(state, layout, m)
+    day = base.water_reserve(base.FOUNDERS)
+    assert day == 6 * 24
+    h = hour(state, layout, stock={"ICE": day + 300, "FOOD": 0})
+    assert h.needs == {"air": True, "water": True, "food": True}
+    water = sum(op.kg for op in h.ops if "water" in op.memo)
+    assert water == base.FOUNDERS * base.WATER_G_PER_HOUR // 1000
+    # The plant takes what is spare and leaves a day of water alone.
+    assert feedstock(h) == 300 - water
+    assert feedstock(hour(state, layout, stock={"ICE": day, "FOOD": 0})) == 0
+    # One bay feeds six, to the gram: nothing spare, nobody hungry.
+    for t in range(11, 11 + 48):
+        h = hour(state, layout, tick=t, stock={"ICE": 500, "FOOD": 0})
+        assert h.needs["food"] and "FOOD" not in h.made
+    # With five at the table the bay puts 100 g an hour in the pantry.
+    state["people"], pantry = 5, 0
+    for t in range(60, 60 + 50):
+        pantry += hour(state, layout, tick=t,
+                       stock={"ICE": 500, "FOOD": 0}).made.get("FOOD", 0)
+    assert pantry * 1000 + state["carry"]["food"] == 50 * 100
+
+
+def test_no_ice_is_thirst_and_no_bay_is_hunger(state, layout):
+    stand(state, layout)
+    for m in of(state, "ice_miner"):
+        take_down(state, layout, m)
+    take_down(state, layout, of(state, "hydroponics")[0])
+    dry = 0
+    for t in range(10, 34):
+        h = hour(state, layout, tick=t, stock={"ICE": 0, "FOOD": 0})
+        dry += not h.needs["food"]
+    assert h.needs == {"air": True, "water": False, "food": False}
+    assert dry >= 22                             # every hour once it bites
+
+
+def test_a_recycler_cuts_the_water_to_fifteen_percent(state, layout):
+    stand(state, layout)
+    base.place(state, layout, "recycler", *free_beside(state, layout), 0, True)
+    drunk = 0
+    for t in range(10, 10 + 100):
+        h = hour(state, layout, tick=t, stock={"ICE": 50_000, "FOOD": 50})
+        drunk += sum(op.kg for op in h.ops if "water" in op.memo)
+    assert drunk == 100 * base.FOUNDERS * 15 // 100
+
+
+def test_more_people_than_air_is_felt(state, layout):
+    stand(state, layout)
+    state["people"] = 9
+    h = hour(state, layout, stock={"ICE": 500, "FOOD": 50})
+    assert h.crew_cap == 6 and h.needs["air"] is False
+    assert h.crew_working == 6                   # only those with a berth work
+
+
+def test_fewer_people_than_jobs_leaves_the_plant_unstaffed(state, layout):
+    stand(state, layout)
+    state["people"] = 5
+    h = hour(state, layout, stock={"ICE": 500, "FOOD": 50})
+    # Life support, the desk and the farm come before the plant.
+    assert h.status[of(state, "hydroponics")[0]["id"]] == "on"
+    assert h.status[of(state, "electrolysis")[0]["id"]] == "no_crew"

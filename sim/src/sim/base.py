@@ -56,6 +56,7 @@ class Module:
     buffer_kwh: int = 0
     extract_kg_per_day: int = 0
     feed_kg_per_day: int = 0
+    feeds: int = 0            # people one bay grows food for
     assemble_hours: int = 1   # invented, D58
 
 
@@ -80,6 +81,10 @@ MODULES: dict[str, Module] = {m.id: m for m in (
     _m("eclss", "ECLSS unit", "crew", -45, 55, 1, 480_000,
        "Air and water for eight. Needs one of them to run it.",
        supports=8, assemble_hours=2),
+    _m("hydroponics", "Hydroponics bay", "crew", -60, 40, 2, 550_000,
+       "Grows food for six. Two people tend it.", feeds=6, assemble_hours=2),
+    _m("recycler", "Water recycler", "crew", -30, 35, 0, 260_000,
+       "Cuts the water people use by 85%."),
     _m("warehouse", "Cargo warehouse", "storage", -4, 3, 0, 160_000,
        "2,000 t of dry storage.", store_kg=2_000 * TONNE),
     _m("tankfarm", "Cryo tank farm", "storage", -40, 45, 0, 340_000,
@@ -104,8 +109,9 @@ MODULES: dict[str, Module] = {m.id: m for m in (
 #: and life support first, then heat rejection and storage, then the plant,
 #: and the diggers last: a base that cannot run everything keeps people
 #: breathing before it keeps mining. *Invented*, D55.
-PRIORITY = ("command", "comms", "airlock", "eclss", "hab", "radiator", "cryo",
-            "tankfarm", "warehouse", "electrolysis", "ice_miner")
+PRIORITY = ("command", "comms", "airlock", "eclss", "hab", "hydroponics",
+            "recycler", "radiator", "cryo", "tankfarm", "warehouse",
+            "electrolysis", "ice_miner")
 PRODUCERS = ("electrolysis", "ice_miner")
 
 #: Propellant per tonne of ice. The agent plants' figure (sim/seed_world.py).
@@ -129,11 +135,22 @@ DUST_NUMERATOR, DUST_DENOMINATOR = 1, 2
 #: A conduit tile. Carries the link, costs no power. *Invented*, D58.
 CONDUIT_COST = 1_000
 
-#: The Ark's starter kit, leased: a small propellant works. D53.
+#: The Ark's starter kit, leased: a small propellant works and the means
+#: to keep its founders alive. D53, D64.
 KIT: tuple[str, ...] = (
-    ("command", "hab", "airlock", "eclss", "comms", "warehouse",
-     "electrolysis", "ice_miner", "ice_miner")
-    + ("radiator",) * 5 + ("solar",) * 13)
+    ("command", "hab", "airlock", "eclss", "hydroponics", "comms",
+     "warehouse", "electrolysis", "ice_miner", "ice_miner")
+    + ("radiator",) * 5 + ("solar",) * 14)
+
+#: People. A site is founded by six, who never leave. D64.
+FOUNDERS = 6
+#: What one person uses, in grams an hour. *Invented*, D64: 24 kg of water a
+#: day (drinking, washing, and the oxygen split from it) and 2.4 kg of food.
+WATER_G_PER_HOUR = 1_000
+FOOD_G_PER_HOUR = 100
+#: A water recycler leaves this much of the need to be met from stock.
+#: docs/seed-data.md: "cuts water import by 85%".
+RECYCLED_PERCENT = 15
 
 #: Sites a company may be chartered. One per company in build 1.
 SITES = {
@@ -214,6 +231,7 @@ def new_state(site: str, seed: str, tick: int) -> dict:
         "created_tick": tick, "seq": 1,
         "modules": [], "conduits": [], "crates": list(KIT),
         "patches": [0] * len(PATCH_GRADES),     # kg extracted from each
+        "people": FOUNDERS,
         "battery_kwh": 0,
         "carry": {},                            # module id -> remainder
         "report": None,
@@ -357,9 +375,11 @@ class Hour:
     power_use: int = 0
     heat_load: int = 0
     heat_reject: int = 0
-    crew_cap: int = 0
+    crew_cap: int = 0         # people the base can house and keep alive
     crew_need: int = 0
     crew_working: int = 0
+    people: int = 0
+    needs: dict[str, bool] = field(default_factory=dict)
     throttle: tuple[int, int] = (1, 1)
     store_kg: int = 0
     tank_kg: int = 0
@@ -390,6 +410,12 @@ def deposit(state: dict, layout: dict, patch: int, node: str = "") -> Deposit:
     return Deposit(id=f"patch:{patch}", node=node, asset="ICE",
                    scale_kg=PATCH_SCALE_KG,
                    extracted_kg=state["patches"][patch])
+
+
+def water_reserve(people: int, recycled: bool = False) -> int:
+    """A day of water for everyone, in kg. The plant and the market wait."""
+    share = RECYCLED_PERCENT if recycled else 100
+    return people * WATER_G_PER_HOUR * TICKS_PER_GAME_DAY * share // 100_000
 
 
 def capacities(state: dict, on: set[int]) -> tuple[int, int]:
@@ -475,9 +501,15 @@ def run_hour(state: dict, layout: dict, tick: int, stock: dict[str, int], *,
     kinds = [m["type"] for m in staffed]
     pool = (sum(MODULES[k].berths for k in kinds)
             if "airlock" in kinds else 0)
-    tended = min(kinds.count("eclss"), pool)        # each unit needs one hand
+    # Who lives here. A base saved before people were counted has as many
+    # as it can hold, which is what it had.
+    people = state.get("people")
+    if people is None:
+        people = min(pool, kinds.count("eclss") * MODULES["eclss"].supports)
+    hour.people = people
+    tended = min(kinds.count("eclss"), pool, people)  # each unit needs a hand
     hour.crew_cap = min(pool, tended * MODULES["eclss"].supports)
-    free = hour.crew_cap - tended
+    free = min(people, hour.crew_cap) - tended
     untended = kinds.count("eclss") - tended
     for m in reversed(list(staffed)):
         if untended and m["type"] == "eclss":
@@ -534,6 +566,54 @@ def run_hour(state: dict, layout: dict, tick: int, stock: dict[str, int], *,
     hour.comms = any(m["type"] == "comms" for m in staffed)
     hour.store_kg, hour.tank_kg = capacities(state, running)
 
+    # -- the people first: what they grow, drink and eat. The plant gets
+    # the ice that is left, never the other way round.
+    carry = state["carry"]
+    recycled = any(m["type"] == "recycler" for m in staffed)
+    share = RECYCLED_PERCENT if recycled else 100
+    met = {"air": people <= hour.crew_cap}
+
+    # Water comes out of the ice in stock, a kilogram at a time.
+    owed = carry.get("water", 0) + people * WATER_G_PER_HOUR * share // 100
+    kg, have = owed // 1_000, stock.get("ICE", 0)
+    met["water"] = have >= kg
+    take = min(kg, have)
+    if take:
+        stock["ICE"] = have - take
+        hour.used["ICE"] = hour.used.get("ICE", 0) + take
+        hour.ops.append(Op("consume", "ICE", take, "the people's water"))
+    # What could not be had is gone without, not owed for later: the debt
+    # never grows past the next kilogram.
+    carry["water"] = owed % 1_000 if met["water"] else min(owed, 1_000)
+
+    # Food goes from the bays to the table. Only what is left over goes to
+    # the pantry, and only what the bays fall short by comes out of it, so
+    # a bay that feeds six feeds six, to the gram.
+    bays = sum(1 for m in staffed if m["type"] == "hydroponics")
+    plate = (carry.get("food", 0)
+             + bays * MODULES["hydroponics"].feeds * FOOD_G_PER_HOUR
+             - people * FOOD_G_PER_HOUR)
+    met["food"] = True
+    if plate >= 1_000:
+        kg = plate // 1_000
+        plate -= kg * 1_000
+        stock["FOOD"] = stock.get("FOOD", 0) + kg
+        hour.made["FOOD"] = kg
+        hour.ops.append(Op("extract", "FOOD", kg, "hydroponics surplus"))
+    elif plate < 0:
+        kg = (-plate + 999) // 1_000
+        take = min(kg, stock.get("FOOD", 0))
+        if take:
+            stock["FOOD"] -= take
+            hour.used["FOOD"] = take
+            hour.ops.append(Op("consume", "FOOD", take, "the people's food"))
+        plate += take * 1_000
+        if plate < 0:
+            met["food"] = False
+            plate = 0                   # gone without, not owed
+    carry["food"] = plate
+    hour.needs = met
+
     # -- the diggers
     for m in staffed:
         if m["type"] != "ice_miner":
@@ -571,7 +651,9 @@ def run_hour(state: dict, layout: dict, tick: int, stock: dict[str, int], *,
         room = hour.tank_kg - stock.get("PROP", 0)
         # Never take more ice than there is room for the propellant from.
         fits = max(0, room) * YIELD_DENOMINATOR // YIELD_NUMERATOR
-        feed = min(wanted, stock.get("ICE", 0), fits)
+        # The last day of the people's water is not feedstock.
+        spare = stock.get("ICE", 0) - water_reserve(people, recycled)
+        feed = min(wanted, max(0, spare), fits)
         if feed < 1:
             idle(m, "hot" if not num else
                  "full" if fits < 1 else "no_feed")
@@ -592,8 +674,6 @@ def run_hour(state: dict, layout: dict, tick: int, stock: dict[str, int], *,
         if num < den:
             hour.status[m["id"]] = "hot"
     return hour
-
-
 def report(state: dict, hour: Hour, tick: int) -> dict:
     """The hour as plain data, kept on the base for the client to draw."""
     return {
@@ -602,6 +682,7 @@ def report(state: dict, hour: Hour, tick: int) -> dict:
         "power": [hour.power_use, hour.power_gen],
         "heat": [hour.heat_load, hour.heat_reject],
         "crew": [hour.crew_working, hour.crew_cap, hour.crew_need],
+        "people": hour.people, "needs": hour.needs,
         "throttle": list(hour.throttle),
         "store_kg": hour.store_kg, "tank_kg": hour.tank_kg,
         "comms": hour.comms,

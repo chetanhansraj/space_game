@@ -214,6 +214,9 @@ def _base_charter(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
         "Stand the command post first. Everything else has to link back to "
         "it, by touching or by conduit. Put the miners on the ice and keep "
         "the solar arrays out of their dust.",
+        f"{d.get('founders', 6)} people are founding it with you. Give them "
+        "air, water and food and more will come on the daily shuttle. A "
+        "town that grows is a town I can lease more to.",
         f"You may hold up to {cr(d['lease_cap'])} of plant on lease. Past "
         "that you buy, and what you buy is yours. Milestones on the way "
         "are worth a bonus from this office. Sell me some propellant.",
@@ -259,6 +262,18 @@ _BASE_ALERTS = {
     "worked_out": ("A patch is worked out",
                    "One of the miners is bringing up almost nothing. The "
                    "ground under it is spent. Move it to a fresh patch."),
+    "stifled": ("More people than air",
+                "There are more of us than the life support can carry. "
+                "Another ECLSS unit, or a hab if it is berths we lack. "
+                "People will start going home on the shuttle."),
+    "thirsty": ("We are out of water",
+                "There is no ice in stock, and ice is our water and our "
+                "air. Get a miner digging or buy some in, today."),
+    "hungry": ("We are short of food",
+               "The bays are not growing enough for everyone here. Each "
+               "hydroponics bay feeds six and needs two people and sixty "
+               "kilowatts. Until it is fixed nobody new will come, and the "
+               "newest will leave."),
     "arrears": ("The works have stood down",
                 "We could not make the day's lease, wear and payroll, so "
                 "the plant and the diggers are stopped until the Ark is "
@@ -276,7 +291,23 @@ def _base_alert(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     return subject, lines
 
 
+def _base_departure(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    why = {"air": "there was not air or a berth for everyone",
+           "water": "we ran out of water", "food": "there was not enough "
+           "to eat"}
+    names = [f"{p['name']} went home on the shuttle because "
+             f"{why.get(p['why'], 'things were hard here')}."
+             for p in d["left"]]
+    return ("Someone has gone home", [
+        f"Commander, from {d['site_name']}.", *names,
+        f"There are {d['people']} of us now. People come back to a town "
+        "that looks after the ones it has.",
+        "Asha",
+    ])
+
+
 _LETTERS = {
+    "base_departure": _base_departure,
     "welcome": _welcome, "charter": _charter, "offers": _offers,
     "arrival": _arrival, "contract_paid": _contract_paid,
     "contract_lapsed": _contract_lapsed, "arrears": _arrears,
