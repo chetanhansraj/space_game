@@ -69,7 +69,8 @@ ok "User name '$RUNAS' is free (or already ours)."
 OTHERS="$(grep -lsF "$HERE" /etc/systemd/system/*.service /lib/systemd/system/*.service 2>/dev/null | grep -vxF "$UNIT" || true)"
 [ -z "$OTHERS" ] || stop "$HERE is used by another service: $OTHERS"
 NGINX_USERS="$(grep -rlsF "$HERE" /etc/nginx 2>/dev/null || true)"
-for f in $NGINX_USERS; do ours "$f" || stop "$HERE is used by nginx config $f"; done
+# The city builder (city/, served as a static site) shares this clone; its nginx block is expected.
+for f in $NGINX_USERS; do ours "$f" || grep -qF "Lunar Ark city installer (arksim)" "$f" || stop "$HERE is used by nginx config $f"; done
 ok "No other service or website uses $HERE."
 if [ -f .env ]; then
   ours .env || stop "$HERE/.env exists and was not made by this installer. Nothing was changed."

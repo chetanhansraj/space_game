@@ -18,6 +18,8 @@ Real orbital mechanics, deterministic economy, one shared clock at 60× real tim
 | `market/README.md` | The ledger and order books: why conservation is structural. |
 | `sim/README.md` | The world tick: price formation, the macro loop, the v1 roster. |
 | `docs/DEPLOY.md` | Putting the world on a server, step by step. |
+| `city/README.md` | The city builder: what it is, how it is laid out, how to run and test it. |
+| `city/docs/DEPLOY.md` | Putting the city builder at sim.lunarark.com. |
 
 ## Layout
 
@@ -28,6 +30,7 @@ market/    Order books, settlement, escrow, exchange. Correctness-critical.
 api/       Thin request layer. No business logic.
 voice/     The only place LLM calls exist. Text generation only.
 web/       Client. Rendering only.
+city/      The city builder (sim.lunarark.com). A separate, browser-only game for now. See city/README.md.
 ```
 
 ## Running locally
