@@ -227,7 +227,12 @@ def test_base_letters_are_written(client, game):
 
 # -- the town -------------------------------------------------------------------
 
-def test_the_list_of_towns_is_public(client, game):
+def test_the_list_of_towns_is_public(client, game, monkeypatch):
+    # the Moon as it is, even when the sim's own tests have run first and
+    # put every town on reference ground
+    from sim import towngame
+    monkeypatch.setattr(towngame, "plot_for",
+                        getattr(towngame, "_plot_for_real", towngame.plot_for))
     r = client.get("/api/towns")
     assert r.status_code == 200 and r.json()["towns"] == []
     who = _join(client, "Tranquility Co")
@@ -235,10 +240,16 @@ def test_the_list_of_towns_is_public(client, game):
     towns = client.get("/api/towns").json()["towns"]
     assert [(t["company"], t["house"], t["lost"]) for t in towns] == [
         ("Tranquility Co", False, False)]
-    assert set(towns[0]) == {"company", "house", "kind", "lost", "crews", "age_days",
+    assert set(towns[0]) == {"company", "house", "kind", "plot", "lost", "crews", "age_days",
                              "population", "tier", "buildings", "sold_t"}
     mine = client.get("/api/town", headers=who).json()["meta"]
     assert mine["league"] == towns and mine["company"] == "Tranquility Co"
+    # Every town has its own ground: a place on the Moon and six readings
+    # that add up to the same for everyone (D84).
+    plot = mine["plot"]
+    assert plot == towns[0]["plot"] and -90 <= plot["lat"] <= 90
+    assert round(sum(plot[k] for k in ("sun", "ice", "metal", "glass", "he3",
+                                       "view")), 2) == 3.0
 
 
 def test_found_a_town_and_build_in_it(client, game):

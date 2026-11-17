@@ -79,8 +79,13 @@ class Engine:
                       int(reply.get("used") or 0),
                       float(reply.get("landed") or 0))
 
-    def create(self, seed: int, credits: float) -> Result:
-        return self._result(self._call("create", int(seed), float(credits)))
+    def create(self, seed: int, credits: float, plot: dict | None = None
+               ) -> Result:
+        """A new town. ``plot`` is the ground it stands on (sim.plots)."""
+        args = [int(seed), float(credits)]
+        if plot:
+            args.append(json.dumps(plot, sort_keys=True))
+        return self._result(self._call("create", *args))
 
     def apply(self, state: str, intent: dict, credits: float
               ) -> tuple[Result | None, str]:

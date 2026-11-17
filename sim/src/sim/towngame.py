@@ -47,7 +47,7 @@ from market.db import transaction
 from market.errors import MarketError
 from market.money import CREDIT
 
-from . import TICKS_PER_GAME_DAY
+from . import TICKS_PER_GAME_DAY, plots
 from .earth import ACCOUNT as EARTH
 from .errors import GameError
 from .seed_world import TONNE, TRANQUILLITATIS
@@ -141,6 +141,15 @@ HOUSE = (
     ("house_imbrium", "Imbrium Works", "works"),
     ("house_fecunditatis", "Fecunditatis Union", "hostel"),
 )
+#: Where each house company's town stands: the place it is named for.
+#: Latitude and longitude in degrees, north and east positive (D84).
+HOUSE_PLACE = {
+    "house_mare": (0.7, 23.5),            # Mare Tranquillitatis, by Apollo 11
+    "house_serenitatis": (28.0, 17.5),
+    "house_tycho": (-43.3, -11.4),
+    "house_imbrium": (32.8, -15.6),
+    "house_fecunditatis": (-7.8, 51.3),
+}
 #: How each kind of house company likes to build once its crew is safe: the
 #: most lots of a zone it lays out unasked (r homes, i industry, v
 #: commercial), the price level it charges (0 low, 1 fair, 2 high) and the
@@ -177,6 +186,18 @@ HOUSE_RECALL_DEBT = TOWN_START
 #: The order of a town's standing, for saying when it has grown. The rules
 #: own the names (city/src/sim TIERS); only their order is repeated here.
 TIER_RANK = {"Outpost": 0, "Base": 1, "Colony": 2, "Town": 3}
+
+
+def plot_for(player_id: str) -> dict:
+    """The ground a company's town stands on. The same company, the same ground.
+
+    A house company stands where it is named for. Anyone else is given a
+    place drawn from their company's id, spread over the four kinds of
+    ground. A company keeps its plot through every crew it sends: the
+    ground is theirs.
+    """
+    place = HOUSE_PLACE.get(player_id) or plots.place_for(player_id)
+    return plots.plot_at(*place)
 
 
 def town_seed(player_id: str, attempt: int = 0) -> int:
@@ -572,12 +593,14 @@ class TownOps:
             ledger.transfer(self.dev_fund_account, player.account, CREDIT,
                             grant, kind="grant", game_time=now,
                             ref=player.id, memo="town founding grant")
-        seed = town_seed(player.id)
-        made = self._engine_call("create", seed, self._town_wallet(player, 0))
+        seed, plot = town_seed(player.id), plot_for(player.id)
+        made = self._engine_call("create", seed, self._town_wallet(player, 0),
+                                 plot)
         self.db.execute(
             "INSERT INTO town (player_id, founded_tick, seed, attempt, "
-            "state) VALUES (?, ?, ?, 0, ?)",
-            (player.id, tick, seed, made.state))
+            "state, plot) VALUES (?, ?, ?, 0, ?, ?)",
+            (player.id, tick, seed, made.state,
+             json.dumps(plot, sort_keys=True)))
         if not player.house:
             self._message(player.id, "ark_development_office", "town_charter",
                           {"company": player.name, "grant": grant,
@@ -627,13 +650,18 @@ class TownOps:
                             ref=player.id, memo="town relief crew stores")
         else:
             relief = 0
-        made = self._engine_call("create", seed, self._town_wallet(player, 0))
+        # The ground is the company's own and does not change with the crew.
+        # A town from before plots is given its ground now.
+        plot = json.loads(row["plot"] or "{}") or plot_for(player.id)
+        made = self._engine_call("create", seed, self._town_wallet(player, 0),
+                                 plot)
         self.db.execute(
             "UPDATE town SET state = ?, seed = ?, attempt = ?, "
             "founded_tick = ?, owed = 0, carry = 0, lost_tick = NULL, "
-            "caretaker = 0, yard = ? WHERE player_id = ?",
+            "caretaker = 0, yard = ?, plot = ? WHERE player_id = ?",
             (made.state, seed, attempt, self.world.tick,
-             json.dumps(book, separators=(",", ":")), player.id))
+             json.dumps(book, separators=(",", ":")),
+             json.dumps(plot, sort_keys=True), player.id))
         if not player.house:
             self._message(player.id, "ark_development_office", "town_relief",
                           {"company": player.name, "relief": relief,
@@ -827,7 +855,7 @@ class TownOps:
         day = TICKS_PER_GAME_DAY
         for row in self.db.execute(
                 "SELECT t.player_id, t.founded_tick, t.lost_tick, t.attempt, "
-                "t.yard, p.name, p.house FROM town t "
+                "t.yard, t.plot, p.name, p.house FROM town t "
                 "JOIN player p ON p.id = t.player_id").fetchall():
             book = json.loads(row["yard"] or "{}")
             if "pop" not in book:           # not yet through an hour
@@ -840,6 +868,7 @@ class TownOps:
                 "company": row["name"], "house": bool(row["house"]),
                 "kind": TEMPER_NAMES.get(
                     HOUSE_TEMPER.get(row["player_id"], ""), ""),
+                "plot": json.loads(row["plot"] or "{}"),
                 "lost": lost, "crews": row["attempt"] + 1,
                 "age_days": (self.world.tick - row["founded_tick"]) // day,
                 "population": 0 if lost else book["pop"],
@@ -1003,7 +1032,8 @@ class TownOps:
             yard=self._yard_view(player, row, summary),
             caretaker={"on": bool(row["caretaker"]), "fee": CARETAKER_FEE,
                        "paid": row["caretaker_paid"]},
-            company=player.name, league=self.towns_view())
+            company=player.name, league=self.towns_view(),
+            plot=json.loads(row["plot"] or "{}"))
         return meta
 
     def _yard_view(self, player, row, summary: dict) -> dict:

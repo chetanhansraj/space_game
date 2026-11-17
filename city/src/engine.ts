@@ -13,7 +13,7 @@
 
 import { BUILDINGS } from './sim/buildings';
 import { steward, Style } from './steward';
-import { State, Intent, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
+import { State, Intent, Plot, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
 
 const summary = (s: State) => {
   const pop = population(s);
@@ -47,9 +47,10 @@ function malformed(s: State, it: any): string | null {
 }
 
 (globalThis as any).Town = {
-  /** A new town on untouched ground. */
-  create(seed: number, credits: number): string {
+  /** A new town on untouched ground. `plot` is the ground's six readings as JSON (Plot in sim.ts). */
+  create(seed: number, credits: number, plot?: string): string {
     const s = createState(seed | 0);
+    if (plot) s.plot = JSON.parse(plot) as Plot;   // the ground it stands on; without one, the reference ground
     s.materials = credits;
     refresh(s);
     return reply(s);
