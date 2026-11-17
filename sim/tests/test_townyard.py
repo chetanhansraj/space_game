@@ -22,6 +22,7 @@ import pytest
 
 from market.money import CREDIT
 
+from sim import towngame
 from sim.earth import ACCOUNT as EARTH
 from sim.game import Game, GameError
 from sim.persist import default_routes
@@ -65,7 +66,13 @@ def played(tmp_path_factory, routes):
     path = tmp_path_factory.mktemp("yard") / "played.db"
     g = Game.open(str(path), now=T0, routes=routes)
     player, _ = g.signup("Foundry Row")
-    g.found_town(player)
+    # A company's id is random and its town's ground is drawn from it. These
+    # tests want the same town every time: the one the city's own test plays.
+    drawn, towngame.town_seed = towngame.town_seed, lambda pid, attempt=0: 1969
+    try:
+        g.found_town(player)
+    finally:
+        towngame.town_seed = drawn
     for _ in range(40):
         play(g, player, 10)
         if g.town_meta(player)["trade"]["open"]:
@@ -151,18 +158,20 @@ def test_an_hour_of_foundry_work_creates_no_credit(town):
 def test_a_fraction_of_a_kilogram_is_carried_not_lost(town):
     g, player = town
     g.town_policy(player, False, ANCHOR)
-    rate = state(g, player)["flows"]["make"]
-    assert rate > 0 and rate != int(rate), "want a rate that is not whole"
-    before = yard(g, player)["made_kg"]
-    hours = 10
-    for _ in range(hours):
+    steady = 0
+    for _ in range(12):
+        s0, made0 = state(g, player), yard(g, player)["made_kg"]
         g.step()
-    made = yard(g, player)["made_kg"] - before
-    part = state(g, player)["cargo"]["made"]
-    assert 0 <= part < 1
-    # over ten hours the yard is within a kilogram or two of rate x hours,
-    # not ten truncations short of it
-    assert made >= int(rate * hours * 0.8)
+        s1, made1 = state(g, player), yard(g, player)["made_kg"]
+        part0, part1 = s0["cargo"]["made"], s1["cargo"]["made"]
+        assert 0 <= part1 < 1
+        rate = s0["flows"]["make"]
+        if rate > 0 and abs(rate - s1["flows"]["make"]) < 1e-9:
+            # an hour at a steady rate: what was made, to the gram, is the
+            # whole kilograms booked plus the change in the part carried
+            steady += 1
+            assert abs((made1 - made0) + part1 - part0 - rate) < 1e-6
+    assert steady >= 3, "the foundries never ran three steady hours"
 
 
 def test_a_full_yard_stops_the_foundries_and_sends_the_shift_home(town):
@@ -345,8 +354,9 @@ def test_a_town_from_before_yards_gains_one(played, tmp_path, routes):
     copy = str(tmp_path / "old.db")
     shutil.copy(path, copy)
     g = Game.open(copy, routes=routes)
-    g.db.execute("ALTER TABLE town DROP COLUMN yard")
-    g.db.execute("DELETE FROM sim_schema_version WHERE version = 4")
+    for column in ("yard", "caretaker", "caretaker_paid"):
+        g.db.execute(f"ALTER TABLE town DROP COLUMN {column}")
+    g.db.execute("DELETE FROM sim_schema_version WHERE version >= 4")
     g.db.commit()
     g.db.close()
     g = Game.open(copy, routes=routes)
@@ -372,3 +382,112 @@ def test_the_steward_only_ever_asks_for_what_a_player_may():
     assert engine.steward(town.state, 160.0) == asked
     # and a steward with no money asks for nothing that costs any
     assert engine.steward(town.state, 0.0) == []
+
+
+# -- the caretaker ------------------------------------------------------------------
+
+def test_no_town_has_a_caretaker_until_one_is_hired(town):
+    g, player = town
+    c = g.town_meta(player)["caretaker"]
+    assert c == {"on": False, "fee": 200, "paid": 0}
+    burned = g.world.ledger.credits_destroyed()
+    g.step()
+    wages = g.db.execute(
+        "SELECT COUNT(*) FROM txn WHERE memo = 'town caretaker''s wage'"
+    ).fetchone()[0]
+    assert wages == 0 and g.world.ledger.credits_destroyed() >= burned
+
+
+def test_a_caretaker_is_paid_every_hour_and_the_wage_leaves_the_world(town):
+    g, player = town
+    g.town_policy(player, False, ANCHOR)
+    stock(g, player, 0 + 1)                     # a mutation, to settle the books
+    g.town_caretaker(player, True)
+    assert g.town_meta(player)["caretaker"]["on"]
+    made = g.world.ledger.credits_in_existence()
+    hours = 6
+    for _ in range(hours):
+        g.step()
+    paid = g.town_meta(player)["caretaker"]["paid"]
+    assert paid == 200 * hours
+    wages = g.db.execute(
+        "SELECT COUNT(*), COALESCE(SUM(-p.amount), 0) FROM txn t JOIN posting p "
+        "ON p.txn_id = t.id WHERE t.memo = 'town caretaker''s wage' "
+        "AND t.kind = 'sink' AND p.account_id = ?", (player.account,)
+    ).fetchone()
+    assert tuple(wages) == (hours, paid)
+    assert g.world.ledger.credits_in_existence() == made
+    g.town_caretaker(player, False)
+    g.step()
+    assert g.town_meta(player)["caretaker"]["paid"] == paid
+
+
+def test_a_caretaker_who_cannot_be_paid_leaves_and_says_so(town):
+    g, player = town
+    g.town_policy(player, False, ANCHOR)
+    g.town_caretaker(player, True)
+    with g._mutation():
+        g.world.ledger.burn(player.account, cash(g, player.account),
+                            g.world.game_time(), memo="test: ruin")
+    g.step()
+    assert g.town_meta(player)["caretaker"]["on"] is False
+    assert any(m["kind"] == "town_caretaker_left" for m in g.inbox(player))
+    with g._mutation():                           # whatever the hour earned
+        g.world.ledger.burn(player.account, cash(g, player.account),
+                            g.world.game_time(), memo="test: ruin")
+    with pytest.raises(GameError, match="paid 200 cr an hour"):
+        g.town_caretaker(player, True)
+
+
+def test_a_caretaker_does_what_is_urgent_and_nothing_that_grows_the_town():
+    engine = Engine()
+    town = engine.create(1969, 160.0)
+    # On the first morning nothing is urgent. A player would start building;
+    # a caretaker is not there to found the town for you.
+    assert engine.steward(town.state, 160.0, keep=True) == []
+    assert engine.steward(town.state, 160.0) != []
+
+
+def test_a_caretaker_mends_what_breaks_while_the_owner_is_away(town):
+    g, player = town
+    s = state(g, player)
+    target = next(b for b in s["buildings"]
+                  if b["type"] == "solar" and b["progress"] >= 1)
+    target["damaged"], target["repair"] = True, 0
+    g.db.execute("UPDATE town SET state = ? WHERE player_id = ?",
+                 (json.dumps(s), player.id))
+    g.db.commit()
+
+    def panel():
+        return next(b for b in state(g, player)["buildings"]
+                    if b["uid"] == target["uid"])
+
+    for _ in range(3):                           # nobody home, nobody hired
+        g.step()
+    assert panel()["damaged"] and panel()["repair"] == 0
+
+    g.town_caretaker(player, True)
+    g.step()
+    assert panel()["repair"] > 0                 # the repair is under way
+    for _ in range(12):
+        g.step()
+    assert not panel()["damaged"]
+    buildings = len(state(g, player)["buildings"])
+    assert g.db.execute("SELECT faults FROM town").fetchone()[0] == 0
+    assert buildings >= len(s["buildings"])
+
+
+def test_a_town_from_before_caretakers_has_none(played, tmp_path, routes):
+    path, pid = played
+    copy = str(tmp_path / "old.db")
+    shutil.copy(path, copy)
+    g = Game.open(copy, routes=routes)
+    g.db.execute("ALTER TABLE town DROP COLUMN caretaker")
+    g.db.execute("ALTER TABLE town DROP COLUMN caretaker_paid")
+    g.db.execute("DELETE FROM sim_schema_version WHERE version = 5")
+    g.db.commit()
+    g.db.close()
+    g = Game.open(copy, routes=routes)
+    assert g.town_meta(g.player(pid))["caretaker"]["on"] is False
+    g.step()
+    g.db.close()

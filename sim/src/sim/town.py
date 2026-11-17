@@ -98,9 +98,14 @@ class Engine:
             args.append(json.dumps(yard))
         return self._result(self._call("tick", *args))
 
-    def steward(self, state: str, credits: float) -> list[dict]:
-        """The requests a careful player would send this hour. Changes nothing."""
-        return self._call("steward", state, float(credits))["intents"]
+    def steward(self, state: str, credits: float, keep: bool = False
+                ) -> list[dict]:
+        """The requests a careful player would send this hour. Changes nothing.
+
+        With ``keep``, only what a caretaker would send: what is urgent.
+        """
+        return self._call("steward", state, float(credits),
+                          bool(keep))["intents"]
 
     def summary(self, state: str) -> dict:
         return self._call("summary", state)

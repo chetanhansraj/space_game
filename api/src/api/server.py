@@ -127,6 +127,10 @@ class YardStowIn(BaseModel):
     tonnes: int = Field(ge=1, le=200)
 
 
+class CaretakerIn(BaseModel):
+    on: bool
+
+
 class TownIntent(BaseModel):
     """One of the city builder's own requests. Its rules judge the content;
     this only bounds the shape."""
@@ -565,6 +569,12 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
         with lock:
             intent = body.model_dump(exclude_none=True)
             return town_reply(player, the_game().town_intent(player, intent))
+
+    @app.post("/api/town/caretaker")
+    def town_caretaker(body: CaretakerIn, player: Player = Depends(player_for)):
+        with lock:
+            return town_reply(player, the_game().town_caretaker(
+                player, body.on))
 
     @app.post("/api/town/sell")
     def town_sell(body: YardSellIn, player: Player = Depends(player_for)):

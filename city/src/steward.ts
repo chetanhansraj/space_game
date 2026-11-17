@@ -14,7 +14,7 @@ import { State, Intent, siteProblem, zoneProblem, habAt, aliveCount, population,
 export type Apply = (s: State, it: Intent) => { ok: boolean; reason?: string };
 
 /** A steward who acts through `apply`. Call the result once a game hour. */
-export function steward(apply: Apply): (s: State) => void {
+export function steward(apply: Apply): (s: State, keep?: boolean) => void {
   const DUSTY: BuildingType[] = ['pad', 'garage', 'o2plant', 'reactor', 'solar', 'battery'];
 
   /** A free spot touching the base. Dusty things go east of the lander, pleasant things west, as a sensible player would. */
@@ -137,7 +137,11 @@ export function steward(apply: Apply): (s: State) => void {
     return true;
   }
 
-  return (s: State) => {
+  /**
+   * `keep` is a caretaker's brief: deal with what is urgent (a breach to repair, air, water, food,
+   * power for tonight) and nothing else. No missions, no zoning for growth, no contracts signed.
+   */
+  return (s: State, keep = false) => {
     const u = urgent(s), m = MISSIONS[s.mission];
     const count = (t: BuildingType) => s.buildings.filter(b => b.type === t).length;
     const answer = (why: string, z: number): boolean => {
@@ -157,7 +161,7 @@ export function steward(apply: Apply): (s: State) => void {
       if (u.title.startsWith('Repair')) { for (const b of s.buildings) if (b.damaged && b.repair === 0) apply(s, { k: 'repair', uid: b.uid }); }
       else if (u.zone) { if (!freeLot(s, u.zone)) zoneLot(s, u.zone); }
       else if (u.tool && u.tool !== 'conduit') put(s, u.tool);
-    } else if (!isNight(s.t)) {
+    } else if (!keep && !isNight(s.t)) {
       let acted = false;
       if (m && m.goal.includes('survey find')) acted = !oreZoned(s) && zoneOre(s);
       else if (m && m.tool) acted = put(s, m.tool);

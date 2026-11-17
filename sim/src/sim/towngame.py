@@ -92,6 +92,14 @@ YARD_ASSET = "GOODS"
 YARD_KG = 20 * TONNE
 
 
+#: A caretaker's wage, in credits a game hour, while one is hired. Burned:
+#: the caretaker is not a modelled household, so by D37 this is a sink and
+#: not a transfer. *Invented*, D79: 4,800 cr a game day, about what a town
+#: of ten pays for its supplies, so it is felt by a small town and is small
+#: change to a large one. Eight real hours away costs 96 town credits.
+CARETAKER_FEE = 200
+
+
 def town_seed(player_id: str, attempt: int = 0) -> int:
     digest = hashlib.sha256(f"town|{player_id}|{attempt}".encode()).digest()
     return int.from_bytes(digest[:4], "big") & 0x7FFFFFFF
@@ -419,16 +427,85 @@ class TownOps:
                                            before)
         if result is None:
             raise GameError(reason)
-        now = self.world.game_time()
         with self._mutation():
-            owed, carry = self._town_settle(
-                player, before, result.credits, row["owed"], row["carry"],
-                now, building=True)
-            self.db.execute(
-                "UPDATE town SET state = ?, owed = ?, carry = ? "
-                "WHERE player_id = ?",
-                (result.state, owed, carry, player.id))
+            self._post_intent(player, row, before, result,
+                              self.world.game_time())
         return self.town_meta(player)
+
+    def _post_intent(self, player, row, before: float, result, now: str
+                     ) -> None:
+        """Keep what the rules allowed, and post what it cost."""
+        owed, carry = self._town_settle(
+            player, before, result.credits, row["owed"], row["carry"], now,
+            building=True)
+        self.db.execute(
+            "UPDATE town SET state = ?, owed = ?, carry = ? "
+            "WHERE player_id = ?", (result.state, owed, carry, player.id))
+
+    def _apply_intent(self, player, row, intent: dict, now: str) -> bool:
+        """One request from inside the hour. True if the rules allowed it.
+
+        The same door a player's request comes through: the same rules
+        judge it and the same settlement posts it.
+        """
+        before = self._town_wallet(player, row["owed"])
+        try:
+            result, _ = self.town_engine.apply(row["state"], intent, before)
+        except TownError as exc:
+            log.error("%s", exc)
+            return False
+        if result is None:
+            return False
+        self._post_intent(player, row, before, result, now)
+        return True
+
+    # -- the caretaker ---------------------------------------------------------
+
+    def town_caretaker(self, player, on: bool) -> dict:
+        """Hire a caretaker for the town, or let one go."""
+        row = self._town(player)
+        if not isinstance(on, bool):
+            raise GameError("Say whether to hire or to dismiss.")
+        if on and self.world.ledger.balance(player.account,
+                                            CREDIT) < CARETAKER_FEE:
+            raise GameError(f"A caretaker is paid {CARETAKER_FEE} cr an hour, "
+                            "in advance.")
+        with self._mutation():
+            self.db.execute("UPDATE town SET caretaker = ? WHERE player_id = ?",
+                            (1 if on else 0, player.id))
+        return self.town_meta(player)
+
+    def _caretake(self, player, row, now: str):
+        """A hired caretaker's hour: paid first, then what is urgent is done.
+
+        Returns the town's row as it stands afterwards. The caretaker sends
+        the same requests a player can and the rules judge them the same
+        way; what it builds is paid for by the town like anything else. It
+        deals with what is urgent and nothing more: it will keep a town
+        alive and it will not grow one (D73, D79).
+        """
+        ledger = self.world.ledger
+        if ledger.balance(player.account, CREDIT) < CARETAKER_FEE:
+            self.db.execute("UPDATE town SET caretaker = 0 WHERE player_id = ?",
+                            (player.id,))
+            self._message(player.id, "ark_development_office",
+                          "town_caretaker_left", {"company": player.name,
+                                                  "fee": CARETAKER_FEE})
+            return self._town_row(player.id)
+        ledger.burn(player.account, CARETAKER_FEE, now, ref=player.id,
+                    memo="town caretaker's wage")
+        self.db.execute("UPDATE town SET caretaker_paid = caretaker_paid + ? "
+                        "WHERE player_id = ?", (CARETAKER_FEE, player.id))
+        try:
+            asked = self.town_engine.steward(
+                row["state"], self._town_wallet(player, row["owed"]),
+                keep=True)
+        except TownError as exc:
+            log.error("%s", exc)
+            asked = []
+        for intent in asked:
+            self._apply_intent(player, self._town_row(player.id), intent, now)
+        return self._town_row(player.id)
 
     # -- the hour ------------------------------------------------------------
 
@@ -454,6 +531,8 @@ class TownOps:
 
     def _tick_town(self, row, now: str) -> list[Event]:
         player = self.player(row["player_id"])
+        if row["caretaker"]:
+            row = self._caretake(player, row, now)
         ledger, account = self.world.ledger, self._yard_account(player)
         held = ledger.balance(account, YARD_ASSET)
         before = self._town_wallet(player, row["owed"])
@@ -532,7 +611,9 @@ class TownOps:
                    "pad": bool(summary["pad"]),
                    "population": summary["population"],
                    "needs_population": TRADE_POPULATION},
-            yard=self._yard_view(player, row, summary))
+            yard=self._yard_view(player, row, summary),
+            caretaker={"on": bool(row["caretaker"]), "fee": CARETAKER_FEE,
+                       "paid": row["caretaker_paid"]})
         return meta
 
     def _yard_view(self, player, row, summary: dict) -> dict:

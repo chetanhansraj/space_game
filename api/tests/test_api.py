@@ -296,3 +296,21 @@ def test_the_yard_is_shown_and_its_door_is_shut_until_trade_opens(client, game):
                        json={"tonnes": 0, "price": 1}).status_code == 422
     assert client.post("/api/town/sell",
                        json={"tonnes": 1, "price": 1}).status_code == 401
+
+
+def test_a_caretaker_is_hired_and_dismissed_through_the_api(client, game):
+    who = _join(client)
+    client.post("/api/town/found", headers=who)
+    meta = client.get("/api/town", headers=who).json()["meta"]
+    assert meta["caretaker"] == {"on": False, "fee": 200, "paid": 0}
+    r = client.post("/api/town/caretaker", headers=who, json={"on": True})
+    assert r.status_code == 200 and r.json()["meta"]["caretaker"]["on"] is True
+    game.step()
+    after = client.get("/api/town", headers=who).json()["meta"]["caretaker"]
+    assert after == {"on": True, "fee": 200, "paid": 200}
+    r = client.post("/api/town/caretaker", headers=who, json={"on": False})
+    assert r.json()["meta"]["caretaker"]["on"] is False
+    assert client.post("/api/town/caretaker", headers=who,
+                       json={"on": "yes please"}).status_code == 422
+    assert client.post("/api/town/caretaker",
+                       json={"on": True}).status_code == 401

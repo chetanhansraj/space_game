@@ -92,10 +92,11 @@ function malformed(s: State, it: any): string | null {
 
   /**
    * What a careful player would do this hour: the requests, in order, that the steward would send.
+   * With `keep`, only what a caretaker would: what is urgent, and nothing that grows the town.
    * Nothing is changed here. The server sends each one through `apply` like any player's, so the
    * rules judge a steward's move exactly as they judge a person's.
    */
-  steward(state: string, credits: number): string {
+  steward(state: string, credits: number, keep?: boolean): string {
     const s = JSON.parse(state) as State;
     s.materials = credits;
     const intents: Intent[] = [];
@@ -105,7 +106,7 @@ function malformed(s: State, it: any): string | null {
       if (r.ok) intents.push(it);
       return r;
     });
-    if (s.phase === 'playing') hour(s);
+    if (s.phase === 'playing') hour(s, !!keep);
     return JSON.stringify({ intents });
   },
 

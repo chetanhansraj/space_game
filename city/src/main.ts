@@ -60,6 +60,8 @@ async function boot(hot: any) {
     meta = r.meta; rate = 1 / (meta.tick_seconds || 60);
     const y = (meta as any).yard, tr = (meta as any).trade;
     ui.yard = y ? { ...y, kcr: (meta as any).kcr || 1000, open: !!tr?.open, pad: !!tr?.pad, needs: tr?.needs_population ?? 8 } : null;
+    const ck = (meta as any).caretaker;
+    ui.caretaker = ck ? { ...ck, kcr: (meta as any).kcr || 1000 } : null;
     // A sale made while nobody was pressing anything: say so, once, in the town's own money.
     if (was && ui.yard && ui.yard.sold_kg > was.sold_kg) {
       const kg = ui.yard.sold_kg - was.sold_kg, cr = ui.yard.sales - was.sales;
@@ -113,6 +115,11 @@ async function boot(hot: any) {
         if (act === 'now' && rep && !rep.kg) say('Nobody at the port is buying at that price just now.', 4200);
         if (act === 'load') say('Loaded. Fly it from the Moon page.', 4200);
       }, err => { say(String(err.message || err), 4200); resync(); });
+    },
+    caretaker: on => {
+      if (!LIVE) return;
+      api('/town/caretaker', { on }).then(r => { if (!pending) adopt(r); say(on ? 'A caretaker is on the payroll. They deal with what is urgent, and nothing else.' : 'The caretaker has been let go.', 5200); },
+        err => { say(String(err.message || err), 4200); resync(); });
     },
     toggle: uid => send({ k: 'toggle', uid }),
     repair: uid => send({ k: 'repair', uid }),

@@ -167,6 +167,15 @@ MIGRATIONS: list[tuple[int, str]] = [
         ALTER TABLE town ADD COLUMN yard TEXT NOT NULL DEFAULT '{}';
         """,
     ),
+    (
+        5,
+        """
+        -- A caretaker on the town's payroll: 1 while hired. `caretaker_paid`
+        -- is every credit of wage burned for one, for the screen. D79.
+        ALTER TABLE town ADD COLUMN caretaker INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE town ADD COLUMN caretaker_paid INTEGER NOT NULL DEFAULT 0;
+        """,
+    ),
 ]
 
 

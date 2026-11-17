@@ -32,7 +32,11 @@ export interface Handlers {
   deselect(): void;
   /** The yard, in a town on the shared world: change the standing instruction, sell now, or load the ship. */
   yard?(act: 'sell' | 'hold' | 'now' | 'load'): void;
+  /** Hire a caretaker for a town on the shared world, or let one go. */
+  caretaker?(on: boolean): void;
 }
+/** A hired caretaker, as the server reports it. Whole credits. */
+export interface Caretaker { on: boolean; fee: number; paid: number; kcr: number; }
 /** A live town's yard as the server reports it. Kilograms and whole credits; the page only shows it. */
 export interface Yard {
   held_kg: number; cap_kg: number; lot_kg: number; anchor: number; kcr: number;
@@ -42,7 +46,7 @@ export interface Yard {
   open: boolean; pad: boolean; needs: number;
   ship: { here: boolean; aboard_kg: number; room_kg: number };
 }
-export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; }
+export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; caretaker?: Caretaker | null; }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const num = (n: number, dp = 0) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -177,6 +181,8 @@ export class Hud {
       if (pr) { h.price(Number(pr.dataset.price)); this.drawerKey = '?'; }
       const yd = el.closest('button[data-yard]') as HTMLButtonElement | null;
       if (yd && h.yard) { h.yard(yd.dataset.yard as 'sell' | 'hold' | 'now' | 'load'); this.drawerKey = '?'; }
+      const ck = el.closest('button[data-care]') as HTMLButtonElement | null;
+      if (ck && h.caretaker) { h.caretaker(ck.dataset.care === '1'); this.drawerKey = '?'; }
       if (el.closest('[data-act="close"]')) this.openDrawer(null);
       if (el.closest('[data-act="read"]')) h.readOffer();
       if (el.closest('[data-act="adv"]')) this.doAdv();
@@ -454,11 +460,13 @@ export class Hud {
     } else if (id === 'money') {
       const e = f.earn, money = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}`;
       const pi = PRICES.indexOf(s.price);
-      const y = ui.yard;
+      const y = ui.yard, c = ui.caretaker;
+      const care = c ? `<h3>Caretaker</h3><div class="prices"><span>${num(c.fee / c.kcr, 1)} an hour</span><button type="button" data-care="1" aria-pressed="${c.on}">Hired</button><button type="button" data-care="0" aria-pressed="${!c.on}">None</button></div>
+        <p class="txt">Looks after the town while you are away: repairs, air, water, food and power for the night. Builds nothing new and signs nothing.${c.paid ? ` Paid ${num(c.paid / c.kcr)} so far.` : ''}</p>` : '';
       html = `${head('Money')}${y ? this.yardHtml(y) : ''}<p class="sub">${num(Math.floor(s.materials))} credits · per hour</p>
         <dl class="budget">${y ? '' : `<div><dt>Foundries</dt><dd>${money(e.foundry)}</dd></div>`}<div><dt>Rent</dt><dd>${money(e.rent)}</dd></div><div><dt>Visitors</dt><dd>${money(e.visitors)}</dd></div><div><dt>Concourses</dt><dd>${money(e.shops)}</dd></div><div><dt>Earth grant</dt><dd>${money(e.grant)}</dd></div><div><dt>Upkeep</dt><dd>${money(-f.upkeep)}</dd></div><div class="net"><dt>Net an hour</dt><dd>${money(f.income)}</dd></div></dl>
         <div class="prices"><span>Prices</span>${['Low', 'Fair', 'High'].map((n, i) => `<button type="button" data-price="${i}" aria-pressed="${i === pi}">${n}</button>`).join('')}</div>
-        <p class="txt">${y ? 'Goods sold, rover' : 'Rover'} fares, landing fees, contracts and mission rewards come on top of this.</p>`;
+        <p class="txt">${y ? 'Goods sold, rover' : 'Rover'} fares, landing fees, contracts and mission rewards come on top of this.</p>${care}`;
     } else if (id === 'people') {
       const nextTier = TIERS.find(t => t[0] > pop), sh = s.shuttle;
       const pad = s.buildings.find(b => b.type === 'pad' && b.progress >= 1);
@@ -507,7 +515,7 @@ export class Hud {
     // so a button is never swapped out from under the pointer.
     const u2 = urgent(s), m2 = MISSIONS[s.mission], ci = id.startsWith('crew') ? Number(id.slice(4)) : -1;
     const struct = ci >= 0 ? `${u2 && u2.who === ci ? u2.title : ''}|${m2 && m2.who === ci ? `${s.mission}:${m2.tool ? s.materials >= BUILDINGS[m2.tool].cost : ''}` : ''}|${s.alerts.filter(a => a.who === ci).length}`
-      : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full].join() : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
+      : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full].join() : ''}|${ui.caretaker ? `${ui.caretaker.on}${Math.floor(ui.caretaker.paid / 1000)}` : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
     if (this.drawerKey !== '?' && (this.pressing || (struct === this.drawerStruct && now - this.drawerAt < 3000))) return;
     this.drawerKey = html; this.drawerAt = now; this.drawerStruct = struct;
     const top = box.scrollTop;
