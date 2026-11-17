@@ -118,7 +118,16 @@ at the Depot on the same ledger and clock as its ship. `sim/base.py` is the
 physics, `sim/basegame.py` joins it to the world, and `web/base/` draws it at
 `/base/`. `scripts/demo_base.py` plays one and prints the books.
 
-**The base is a town.** Six people found it, more arrive on a daily shuttle
+**The town is the game.** The city builder in `city/` now runs on the server:
+its own rules, bundled and run inside the world tick (`sim/town.py`,
+`sim/towngame.py`), on the one clock and the company's one wallet. A company
+founds a town on the equatorial flats, builds it by hand, zones land, takes
+contracts from nations and companies, lives through a real lunar night, and
+earns the right to trade when it has a landing pad and eight people. It is
+drawn by the same client, built live, at `/town/`. `docs/DECISIONS.md` D69 to
+D73. The Shackleton works below is still there, as WORKS on the Moon page.
+
+**The works is a town too.** Six people found it, more arrive on a daily shuttle
 when there are berths, air, water and food for them, and they are the
 workforce its industry needs. It runs on the one universal clock, on the
 server, whether or not anyone is watching (`docs/DECISIONS.md` D64).

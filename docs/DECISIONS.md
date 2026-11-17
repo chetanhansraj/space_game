@@ -1344,6 +1344,102 @@ an agent that decides with a language model acts through the same API a
 player does, from outside the tick; nothing inside `sim/` asks a model
 anything.
 
+### D69 — The town is the city builder itself, run on the server
+
+Chetan's correction after the Shackleton works went live: the settlement
+game he designed is the game, and the trading world is the market it may
+use. So the town is not a second, smaller base written in Python. It is the
+city builder's own rules (`city/src/sim/`), bundled to one file
+(`sim/src/sim/town_engine.js`) and run inside the world tick by an embedded
+JavaScript engine (`mini-racer`, a pip wheel, nothing to install on the
+server by hand).
+
+Porting the rules to Python was the alternative. It was refused because
+there would then be two copies of about three thousand lines of tuned rules,
+and the practice game at sim.lunarark.com would drift from the live one
+within weeks. One source, two builds.
+
+What keeps the invariants: the engine is handed a state and a wallet and
+returns a state and a wallet, as text. It has no database, no network and no
+clock. It runs with a four-second and 256 MB limit, its context is thrown
+away on any failure, and each town's hour is in its own savepoint (D62), so
+a town that breaks loses that hour and the world goes on. The rules are
+deterministic from the town's seed (invariant 2 is untouched: no model is
+involved anywhere). The requests a player may send are the seven the game
+already had (place, zone, demolish, toggle, repair, price, offer) and
+anything else is refused before the rules see it.
+
+The site is the equatorial plot the city builder always had, on Mare
+Tranquillitatis, so the town has a real lunar night: 354 game hours of it,
+nearly six real hours on the world's clock.
+
+### D70 — The town's money is the company's money
+
+*Invented, and mine to defend.* One town credit is 1,000 cr. The city
+builder's prices then sit where a new company's stake does: a solar array is
+12,000 cr, a habitat 30,000 cr. The Ark's development fund pays 40,000 cr
+when a town is founded, so a new company starts its town with the 160 town
+credits the game was balanced for (120,000 cr stake plus the grant).
+
+The town has no purse of its own. Before its rules run they are handed the
+company's balance; afterwards the difference is posted:
+
+- What the rules pay the town on a tick (mission payments, fares, rents,
+  contracts with agencies and companies, what Earth pays for foundry
+  output) is paid out of Earth's account, the one faucet (D40), and only
+  while Earth can pay. Nothing is minted (invariant 3).
+- What the rules charge the town on a tick (supplies, upkeep, penalties,
+  evacuations) is burned. That is the sink for the line above
+  (invariant 7).
+- What is spent building goes to the Ark's development fund, and a
+  demolition refund comes back out of it.
+- A town may run into debt and the ledger may not go below zero, so what a
+  town cannot pay is recorded as owed and taken first from whatever the
+  company earns next. Fractions of a credit are carried, never rounded away.
+
+What this does not do yet, said plainly: the town's income is still the city
+builder's own, paid by Earth. Its foundries do not yet put real cargo into
+the market's order books. That is the next build, and it is the one that
+makes town and market one economy instead of one wallet.
+
+### D71 — Trade opens when the town can support it
+
+Chetan's rule: only when the town reaches a decent level can it trade. The
+level is a working landing pad and eight people. *The number eight is
+invented.* The town page keeps its Moon button locked until then and says
+why.
+
+This is a lock on the door, not on the building. A company's ship and the
+exchange are still reachable from the Moon page by anyone who goes there
+directly, because every company that existed before towns did must keep
+working. Making the gate hard on the server, for companies founded from now
+on, belongs with land-first signup.
+
+### D72 — A town left alone can be lost, and can be founded again
+
+Chetan: "people need to take care of their base no matter if they play or
+not." The town runs every hour whether its owner is there or not (D64), and
+the city builder's own rule stands: when the last of the crew is gone the
+town has fallen silent. The owner gets a letter and the world record says
+so. They may send a new crew to the same land. The new crew starts from the
+lander with whatever the company has left; there is no second grant, so what
+was built and lost is the price.
+
+Measured on a private world: a new town with nothing built is lost in about
+200 game hours (a little over three real hours), because the lander's air
+lasts 160. A grown town of 81 people left with no orders for two lunar days
+(about a real day) was still alive with 56 people and had earned money. So
+the danger is the first sitting, not the absence.
+
+### D73 — A caretaker for hire
+
+*Direction from Chetan, not yet built.* A player may buy an agent from the
+game to look after the town while they are away. Fixed now, so that it is
+built the right way round: the caretaker is deterministic code acting
+through the same seven requests a player has (invariants 1 and 2), its fee
+is a real payment that leaves the world (invariant 7), and it keeps the town
+alive, it does not grow it. A town that plays itself is not a game.
+
 ---
 
 ## Still open — needs you
@@ -1374,6 +1470,12 @@ Deliberately not decided, because these are yours.
     and, on the flats, a night of nearly six real hours. If the town feels
     slow once it is lived in, the rate can change, but for the whole world
     at once.
+12. **The first sitting** — D72. On the world's clock a new crew has two
+    hours forty minutes of lander air, and the first night falls about six
+    real hours after founding. That is tense, which may be right, or it may
+    lose people who found a town and go to dinner. Say which.
+13. **The caretaker's price and powers** — D73.
+14. **Eight people to trade** — D71.
 10. **Helium-3 for players** — D53. A player separator adds to the only
     faucet in the economy (D40), so it needs a licence and a royalty before
     the flats open. The size of that royalty is the decision.
