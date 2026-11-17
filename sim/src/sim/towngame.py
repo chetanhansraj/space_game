@@ -65,6 +65,15 @@ KCR = 1_000
 #: company starts the town with the 160 town credits the game was balanced
 #: for. *Invented*, D70.
 TOWN_GRANT = 40_000
+#: What a town is founded with, at least: the 160 town credits the game was
+#: balanced for. A new company has exactly this after the grant. A company
+#: that has been in the world a while and has less (its stake spent, or
+#: eaten by charter fees while its owner was away) is brought up to it, once,
+#: when it founds its town, and its capped arrears are covered so that the
+#: first midnight does not take the difference back. This hands out nothing
+#: a new company would not get: anyone can have 160,000 cr from the same
+#: fund by founding one. *Invented*, D78.
+TOWN_START = 160_000
 #: A town may use the market once it has a working landing pad and this
 #: many people: the city builder's "Base" tier. D71.
 TRADE_POPULATION = 8
@@ -92,6 +101,7 @@ class TownOps:
     """What `Game` can do with towns. Mixed into `sim.game.Game`."""
 
     dev_fund_account: str
+    arrears_cap: int
     _town_engine: Engine | None = None
 
     @property
@@ -347,10 +357,13 @@ class TownOps:
         if self._town_row(player.id) is not None:
             raise GameError("Your company already has a town.")
         ledger, tick, now = self.world.ledger, self.world.tick, self.world.game_time()
+        arrears = min(player.upkeep_owed, self.arrears_cap)
+        grant = max(TOWN_GRANT, TOWN_START + arrears
+                    - ledger.balance(player.account, CREDIT))
         with self._mutation():
-            if ledger.balance(self.dev_fund_account, CREDIT) >= TOWN_GRANT:
+            if ledger.balance(self.dev_fund_account, CREDIT) >= grant:
                 ledger.transfer(self.dev_fund_account, player.account, CREDIT,
-                                TOWN_GRANT, kind="grant", game_time=now,
+                                grant, kind="grant", game_time=now,
                                 ref=player.id, memo="town founding grant")
             seed = town_seed(player.id)
             made = self._engine_call(
@@ -360,7 +373,7 @@ class TownOps:
                 "state) VALUES (?, ?, ?, 0, ?)",
                 (player.id, tick, seed, made.state))
             self._message(player.id, "ark_development_office", "town_charter",
-                          {"company": player.name, "grant": TOWN_GRANT,
+                          {"company": player.name, "grant": grant,
                            "trade_population": TRADE_POPULATION})
             self._log([Event(
                 tick=tick, kind="town_founded", subject=player.id,

@@ -341,3 +341,46 @@ def test_trade_opens_with_a_pad_and_eight_people(game, town):
     trade = game.town_meta(town)["trade"]
     assert trade == {"open": True, "pad": True, "population": 10,
                      "needs_population": 8}
+
+
+def test_an_old_company_with_nothing_left_can_still_found_a_town(game):
+    """The live world's first company: no money, and weeks of unpaid fees."""
+    from sim.game import ARREARS_CAP
+    player, _ = game.signup("Back Again")
+    with game._mutation():
+        game.world.ledger.burn(player.account, cash(game, player.account),
+                               game.world.game_time(), memo="test: ruin")
+    game.db.execute("UPDATE player SET upkeep_owed = 1000000 WHERE id = ?",
+                    (player.id,))
+    player = game.player(player.id)
+    fund, made = cash(game, DEV_FUND), minted(game)
+    meta = game.found_town(player)
+    grant = towngame.TOWN_START + ARREARS_CAP
+    assert cash(game, DEV_FUND) == fund - grant           # paid, not minted
+    assert minted(game) == made
+    assert meta["wallet"] * KCR == grant
+    while game.world.tick % 24 != 23:
+        game.step()
+    game.step()                                           # the first midnight
+    me = game.player(player.id)
+    assert me.upkeep_owed == 0
+    # what is left is the start the game was balanced for, less a day's
+    # costs and whatever the first hours earned
+    assert meta_wallet(game, me) >= 150
+
+
+def test_a_rich_company_gets_the_ordinary_grant_and_no_more(game):
+    player, _ = game.signup("Old Money")
+    with game._mutation():
+        game.world.ledger.transfer(DEV_FUND, player.account, CREDIT, 500_000,
+                                   kind="grant",
+                                   game_time=game.world.game_time(),
+                                   memo="test: a good year of trading")
+    before = cash(game, player.account)
+    game.found_town(game.player(player.id))
+    assert cash(game, player.account) == before + TOWN_GRANT
+
+
+def meta_wallet(g, player) -> float:
+    return g.town_meta(player)["wallet"]
+
