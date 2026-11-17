@@ -1463,8 +1463,9 @@ ice miners are gone by game day 100 with their deposits still about 80 per
 cent rich, so that is not depletion. The Shackleton propellant plants follow
 by day 200. On the Flats the regolith miners multiply to 37 by day 400 while
 three of the four separators fail, then the claim they share falls to the
-5 per cent at which it is abandoned by day 600. On the 60x clock that whole
-story is over in about ten real days.
+5 per cent at which it is abandoned by day 600, and by day 900 there is not
+one producer left on the Moon. On the 60x clock that whole story takes
+fifteen real days.
 
 So "the trading world goes on with its bots whether you trade or not" has
 not been true for most of the time the server has been up. Two causes, and
