@@ -7,7 +7,37 @@ declare const process: any; declare const require: any;
 import { BUILDINGS, BuildingType, ZONES, ZONE_BUILDS, ZONE_COST } from '../src/sim/buildings';
 import { MISSIONS } from '../src/sim/missions';
 import { urgent } from '../src/ui/advisor';
-import { State, createState, tick, apply, siteProblem, zoneProblem, habAt, aliveCount, population, support, tierOf, LUNAR_DAY, isNight } from '../src/sim/sim';
+import { State, Intent, createState, tick as localTick, apply as localApply, siteProblem, zoneProblem, habAt, aliveCount, population, support, tierOf, LUNAR_DAY, isNight } from '../src/sim/sim';
+
+// The same player, against a town in the shared world.
+//
+//   TOWN_URL=http://127.0.0.1:8765 TOWN_KEY=<company key> node dist/bot.cjs
+//
+// Every request goes to the server and every hour is the server's: this page of the bot holds
+// only a mirror, replaced by the server's state after each of its ticks. It needs a test server
+// that will step its clock when asked (POST /test/step), which no live server does.
+const REMOTE: string = process.env.TOWN_URL || '';
+let refused = 0, sent = 0;
+function http(method: string, path: string, body?: unknown): any {
+  const args = ['-s', '-X', method, REMOTE + path, '-H', 'Authorization: Bearer ' + process.env.TOWN_KEY, '-H', 'Content-Type: application/json'];
+  if (body !== undefined) args.push('-d', JSON.stringify(body));
+  return JSON.parse(require('child_process').execFileSync('curl', args, { encoding: 'utf8', maxBuffer: 1 << 28 }));
+}
+const mirror = (s: State, from: any) => { for (const k of Object.keys(s)) delete (s as any)[k]; Object.assign(s, from.state); (s as any).materials = from.meta.wallet; };
+function apply(s: State, it: Intent): { ok: boolean; reason?: string } {
+  const r = localApply(s, it);
+  if (!REMOTE || !r.ok) return r;
+  sent++;
+  const reply = http('POST', '/api/town/intent', it);
+  if (reply.detail) { refused++; mirror(s, http('GET', '/api/town')); return { ok: false, reason: reply.detail }; }
+  mirror(s, reply);
+  return r;
+}
+function tick(s: State) {
+  if (!REMOTE) { localTick(s); return; }
+  http('POST', '/test/step');
+  mirror(s, http('GET', '/api/town'));
+}
 
 const DUSTY: BuildingType[] = ['pad', 'garage', 'o2plant', 'reactor', 'solar', 'battery'];
 
@@ -134,6 +164,7 @@ function zoneLot(s: State, z: number): boolean {
 /** A player who does what the crew says, and between missions answers what the demand bars ask for. */
 function play(name: string, hours: number, follow: boolean) {
   const s = createState(1969);
+  if (REMOTE) mirror(s, http('POST', '/api/town/found', {}));
   const log: string[] = [];
   let next = 0, lastMission = -1;
   while (s.phase === 'playing' && s.t < hours) {
@@ -194,6 +225,21 @@ function play(name: string, hours: number, follow: boolean) {
   return s;
 }
 
+if (REMOTE) {
+  const town = play('The same player, through the server, for three lunar days', LUNAR_DAY * 3, true);
+  const meta = http('GET', '/api/town').meta;
+  console.log(`\nrequests sent ${sent}, refused by the server ${refused} · wallet ${meta.credits} cr · owed ${meta.owed} · faults ${meta.faults} · trade open ${meta.trade.open}`);
+  let bad = 0;
+  const want = (ok: boolean, msg: string) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${msg}`); if (!ok) bad++; };
+  want(town.phase === 'playing' && aliveCount(town) === 4, 'on the server, after three lunar days the crew is still alive');
+  want(population(town) >= 20, 'the town has grown to a Colony of 20 or more');
+  want(town.stats.grown >= 8, 'at least eight buildings grew by themselves');
+  want(town.stats.deals >= 2, 'contracts with nations and companies were signed and kept');
+  want(meta.faults === 0 && meta.owed === 0, 'the town never failed an hour and owes nothing');
+  want(meta.trade.open, 'and the market is open to it');
+  want(refused <= sent / 20, 'the server agreed with the player about almost every move');
+  process.exit(bad ? 1 : 0);
+}
 const idle = play('Do nothing', LUNAR_DAY, false);
 const night1 = play('Follow the crew through the first night', LUNAR_DAY + 1, true);
 const day3 = play('Follow the crew for three lunar days', LUNAR_DAY * 3, true);
