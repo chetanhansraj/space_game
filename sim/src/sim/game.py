@@ -101,7 +101,7 @@ FEED_KINDS = ("solar_flare", "equipment_failure", "insolvency", "spinoff",
               "contract_posted", "contract_fulfilled", "player_joined",
               "player_departure", "player_arrival", "base_chartered",
               "base_milestone", "town_founded", "town_lost",
-              "town_first_sale")
+              "town_first_sale", "town_grew")
 
 
 @dataclass(frozen=True)
@@ -113,13 +113,16 @@ class Player:
     created_tick: int
     last_seen_tick: int
     upkeep_owed: int
+    #: Run by the world, not by a person. Same charter, same rules, no login.
+    house: bool = False
 
     @classmethod
     def from_row(cls, row) -> "Player":
         return cls(id=row["id"], name=row["name"], account=row["account"],
                    ship_id=row["ship_id"], created_tick=row["created_tick"],
                    last_seen_tick=row["last_seen_tick"],
-                   upkeep_owed=min(row["upkeep_owed"], ARREARS_CAP))
+                   upkeep_owed=min(row["upkeep_owed"], ARREARS_CAP),
+                   house=bool(row["house"]))
 
 
 def hash_token(token: str) -> str:
@@ -316,37 +319,12 @@ class Game(BaseOps, TownOps):
         if self.db.execute("SELECT 1 FROM player WHERE name = ?",
                            (name,)).fetchone():
             raise GameError("A company by that name is already registered.")
-        ledger = self.world.ledger
-        if (ledger.balance(DEV_FUND, CREDIT) < STARTING_GRANT
-                or ledger.balance(DEV_FUND, "PROP")
-                < KESTREL.tank_capacity_kg):
-            raise GameError("The Ark's charter office has no more ships to "
-                            "lease. Check back later.")
-
+        self._charter_office_open()
         pid = f"p_{secrets.token_hex(6)}"
         token = secrets.token_urlsafe(24)
-        account = f"player:{pid}"
-        ship = Ship(id=f"{pid}_kestrel", owner=pid, account=account,
-                    ship_class=KESTREL, location=START_NODE,
-                    player_owned=True)
         now = self.world.game_time()
         with self._mutation():
-            ledger.open_account(account, "player", now, label=name)
-            ledger.transfer(DEV_FUND, account, CREDIT, STARTING_GRANT,
-                            kind="grant", game_time=now, ref=pid,
-                            memo=f"development grant to {name}")
-            ledger.transfer(DEV_FUND, account, "PROP",
-                            KESTREL.tank_capacity_kg, kind="grant",
-                            game_time=now, ref=pid,
-                            memo=f"opening tank for {ship.id}")
-            self.db.execute(
-                "INSERT INTO player (id, name, account, ship_id, token_hash, "
-                "created_tick, created_at, last_seen_tick) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (pid, name, account, ship.id, hash_token(token),
-                 self.world.tick, _dt.datetime.now(tz=_UTC).isoformat(),
-                 self.world.tick))
-            self.world.ships.append(ship)
+            ship = self._charter_company(pid, name, hash_token(token), now)
 
             # The first thing a new pilot reads is never an empty board.
             events = []
@@ -365,13 +343,55 @@ class Game(BaseOps, TownOps):
                 first = self.board.get(offers[0])
                 self._message(pid, first.issuer, "offers",
                               {"contracts": offers})
-            events.append(Event(
-                tick=self.world.tick, kind="player_joined", subject=pid,
-                detail=f"{name} founded at {START_NODE}",
-                data={"player": pid, "company": name, "node": START_NODE}))
+            events.append(self._joined(pid, name))
             self._route_messages(events)
             self._log(events)
         return self.player(pid), token
+
+    def _charter_office_open(self) -> None:
+        ledger = self.world.ledger
+        if (ledger.balance(DEV_FUND, CREDIT) < STARTING_GRANT
+                or ledger.balance(DEV_FUND, "PROP")
+                < KESTREL.tank_capacity_kg):
+            raise GameError("The Ark's charter office has no more ships to "
+                            "lease. Check back later.")
+
+    def _charter_company(self, pid: str, name: str, token_hash: str,
+                         now: str, house: bool = False) -> Ship:
+        """Open a company's books: account, grant, ship and a full tank.
+
+        One charter for everyone. A company a person founds and one the
+        world runs get the same grant from the same fund, lease the same
+        ship and owe the same fee. Call inside a mutation.
+        """
+        ledger = self.world.ledger
+        account = f"player:{pid}"
+        ship = Ship(id=f"{pid}_kestrel", owner=pid, account=account,
+                    ship_class=KESTREL, location=START_NODE,
+                    player_owned=True)
+        ledger.open_account(account, "player", now, label=name)
+        ledger.transfer(DEV_FUND, account, CREDIT, STARTING_GRANT,
+                        kind="grant", game_time=now, ref=pid,
+                        memo=f"development grant to {name}")
+        ledger.transfer(DEV_FUND, account, "PROP",
+                        KESTREL.tank_capacity_kg, kind="grant",
+                        game_time=now, ref=pid,
+                        memo=f"opening tank for {ship.id}")
+        self.db.execute(
+            "INSERT INTO player (id, name, account, ship_id, token_hash, "
+            "created_tick, created_at, last_seen_tick, house) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (pid, name, account, ship.id, token_hash, self.world.tick,
+             _dt.datetime.now(tz=_UTC).isoformat(), self.world.tick,
+             1 if house else 0))
+        self.world.ships.append(ship)
+        return ship
+
+    def _joined(self, pid: str, name: str) -> Event:
+        return Event(
+            tick=self.world.tick, kind="player_joined", subject=pid,
+            detail=f"{name} founded at {START_NODE}",
+            data={"player": pid, "company": name, "node": START_NODE})
 
     def authenticate(self, token: str | None) -> Player | None:
         if not token:
@@ -832,6 +852,7 @@ class Game(BaseOps, TownOps):
                       for n in self.node_info()],
             "ships": self.ships_view(),
             "companies": len(self.players()),
+            "house_companies": sum(p.house for p in self.players()),
         }
 
     def market_view(self, node: str) -> dict:

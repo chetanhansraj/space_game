@@ -356,6 +356,7 @@ def test_a_town_from_before_yards_gains_one(played, tmp_path, routes):
     g = Game.open(copy, routes=routes)
     for column in ("yard", "caretaker", "caretaker_paid"):
         g.db.execute(f"ALTER TABLE town DROP COLUMN {column}")
+    g.db.execute("ALTER TABLE player DROP COLUMN house")
     g.db.execute("DELETE FROM sim_schema_version WHERE version >= 4")
     g.db.commit()
     g.db.close()
@@ -484,7 +485,8 @@ def test_a_town_from_before_caretakers_has_none(played, tmp_path, routes):
     g = Game.open(copy, routes=routes)
     g.db.execute("ALTER TABLE town DROP COLUMN caretaker")
     g.db.execute("ALTER TABLE town DROP COLUMN caretaker_paid")
-    g.db.execute("DELETE FROM sim_schema_version WHERE version = 5")
+    g.db.execute("ALTER TABLE player DROP COLUMN house")
+    g.db.execute("DELETE FROM sim_schema_version WHERE version >= 5")
     g.db.commit()
     g.db.close()
     g = Game.open(copy, routes=routes)
