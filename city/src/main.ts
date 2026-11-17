@@ -62,6 +62,7 @@ async function boot(hot: any) {
     ui.yard = y ? { ...y, kcr: (meta as any).kcr || 1000, open: !!tr?.open, pad: !!tr?.pad, needs: tr?.needs_population ?? 8 } : null;
     const ck = (meta as any).caretaker;
     ui.caretaker = ck ? { ...ck, kcr: (meta as any).kcr || 1000 } : null;
+    ui.league = (meta as any).league ?? null; ui.company = (meta as any).company;
     // A sale made while nobody was pressing anything: say so, once, in the town's own money.
     if (was && ui.yard && ui.yard.sold_kg > was.sold_kg) {
       const kg = ui.yard.sold_kg - was.sold_kg, cr = ui.yard.sales - was.sales;

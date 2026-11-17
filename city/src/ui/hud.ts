@@ -46,7 +46,9 @@ export interface Yard {
   open: boolean; pad: boolean; needs: number;
   ship: { here: boolean; aboard_kg: number; room_kg: number };
 }
-export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; caretaker?: Caretaker | null; }
+/** One town on the Moon, as the server lists them all: most people first. */
+export interface TownRow { company: string; house: boolean; lost: boolean; crews: number; age_days: number; population: number; tier: string; buildings: number; sold_t: number; }
+export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; caretaker?: Caretaker | null; league?: TownRow[] | null; company?: string; }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const num = (n: number, dp = 0) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -83,6 +85,7 @@ const ICON = {
   people: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
   deals: '<path d="M7 3h7l4 4v14H7zM14 3v4h4M10 12h5M10 16h5"/>',
   log: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/>',
+  towns: '<path d="M3 20h18M5 20v-7l4-3 4 3v7M13 20V8l3-3 3 3v12M8 20v-3M16 12v.01M16 16v.01"/>',
   zones: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',
   power: '<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>',
   life: '<path d="M4 18a8 8 0 0 1 16 0zM2 18h20M12 10v8"/>',
@@ -98,7 +101,7 @@ const CATS: { id: string; name: string; icon: string; tools: Tool[] }[] = [
   { id: 'community', name: 'Community', icon: ICON.community, tools: ['garden', 'clinic'] },
 ];
 const catOf = (t: Tool) => CATS.find(c => c.tools.includes(t))!.id;
-type DrawerId = 'demand' | 'money' | 'people' | 'deals' | 'log' | 'crew0' | 'crew1' | 'crew2' | 'crew3';
+type DrawerId = 'demand' | 'money' | 'people' | 'deals' | 'towns' | 'log' | 'crew0' | 'crew1' | 'crew2' | 'crew3';
 const RES_NOTE: Record<string, string> = {
   people: 'Everyone on the base. The limit is how many your life support can carry through a night, and what holds it there.',
   mat: 'Credits pay for everything you build and zone. The rate leaves out rover fares, landing fees and contracts, which come on top.',
@@ -165,6 +168,8 @@ export class Hud {
     railBtn('money', ic(ICON.money), 'Money', 'Income, upkeep and prices');
     railBtn('people', ic(ICON.people), 'People', 'Crew, residents, visitors, shuttle and rovers');
     railBtn('deals', ic(ICON.deals), 'Deals', 'Contracts with nations and companies');
+    railBtn('towns', ic(ICON.towns), 'Towns', 'Every town on the Moon, and where yours stands');
+    $('rb-towns').hidden = true;   // only a town on the shared world has neighbours
     railBtn('log', ic(ICON.log), 'Log', 'Everything that has happened');
 
     document.querySelectorAll<HTMLButtonElement>('.speed button').forEach(b =>
@@ -233,7 +238,7 @@ export class Hud {
   private openDrawer(id: DrawerId | null) {
     this.drawer = id; this.drawerKey = '?'; this.railKey = '?';
     if (id === 'log') this.seenAlert = this.lastAlert;
-    if (id && id.startsWith('crew') && this.bubbleFor !== 'offer') this.hideBubble();
+    if (id && (id.startsWith('crew') ? this.bubbleFor !== 'offer' : this.bubbleFor === 'mis')) this.hideBubble();   // a drawer opened on purpose is not talked over
     if (id === 'deals' && this.bubbleFor === 'offer') this.hideBubble();
   }
   private showTray() {
@@ -388,7 +393,8 @@ export class Hud {
     const crewTone = s.crew.map(c => (!c.alive ? 'dead' : c.health < 35 ? 'bad' : c.health < 70 ? 'warn' : 'ok'));
     const fresh = s.crew.map((_, i) => (m && m.who === i && s.mission > this.seenMis ? 1 : 0) + s.alerts.filter(a => a.who === i && a.id > this.seenBy[i] && !a.msg.includes(': done.')).length);
     const want = ZONES.map(z => Math.round(s.want[z.key] * 10));
-    const key = [u?.who, m?.who, blocked, unmet, soon, !!s.offer, s.materials < 0, !!ui.yard?.full, unread, this.drawer, crewTone.join(), fresh.join(), want.join()].join('|');
+    const rank = ui.league ? ui.league.findIndex(t => t.company === ui.company) + 1 : 0;
+    const key = [u?.who, m?.who, blocked, unmet, soon, !!s.offer, s.materials < 0, !!ui.yard?.full, unread, this.drawer, crewTone.join(), fresh.join(), want.join(), rank, ui.league?.length].join('|');
     if (key === this.railKey) return;
     this.railKey = key;
     const badge = (id: DrawerId, tone: string | null, text = '') => {
@@ -402,6 +408,8 @@ export class Hud {
     });
     badge('demand', blocked ? 'warn' : unmet ? 'warn' : null);
     badge('money', s.materials < 0 ? 'bad' : ui.yard?.full ? 'warn' : null);
+    $('rb-towns').hidden = !ui.league;
+    badge('towns', rank && ui.league!.length > 1 ? 'new' : null, `${rank}`);
     badge('people', s.flows.exposed + s.flows.atRisk > 0 ? 'bad' : null);
     badge('deals', s.offer ? 'sun' : soon ? 'warn' : null);
     badge('log', unread ? 'dim' : null, unread > 9 ? '9+' : String(unread || ''));
@@ -467,6 +475,11 @@ export class Hud {
         <dl class="budget">${y ? '' : `<div><dt>Foundries</dt><dd>${money(e.foundry)}</dd></div>`}<div><dt>Rent</dt><dd>${money(e.rent)}</dd></div><div><dt>Visitors</dt><dd>${money(e.visitors)}</dd></div><div><dt>Concourses</dt><dd>${money(e.shops)}</dd></div><div><dt>Earth grant</dt><dd>${money(e.grant)}</dd></div><div><dt>Upkeep</dt><dd>${money(-f.upkeep)}</dd></div><div class="net"><dt>Net an hour</dt><dd>${money(f.income)}</dd></div></dl>
         <div class="prices"><span>Prices</span>${['Low', 'Fair', 'High'].map((n, i) => `<button type="button" data-price="${i}" aria-pressed="${i === pi}">${n}</button>`).join('')}</div>
         <p class="txt">${y ? 'Goods sold, rover' : 'Rover'} fares, landing fees, contracts and mission rewards come on top of this.</p>${care}`;
+    } else if (id === 'towns') {
+      const all = ui.league ?? [];
+      const rows = all.map((t, i) => `<li${t.company === ui.company ? ' class="me"' : ''}${t.lost ? ' data-lost="1"' : ''}><b>${i + 1}</b><span>${esc(t.company)}${t.house ? ' <i title="Run by the world, by the same rules as yours">agent</i>' : ''}<small>${t.lost ? 'silent' : `${esc(t.tier)} · day ${t.age_days + 1}`}${t.crews > 1 ? ` · crew ${t.crews}` : ''} · ${num(t.sold_t)} t sold</small></span><em>${t.lost ? '·' : num(t.population)}</em></li>`).join('');
+      html = `${head('Towns')}<p class="sub">${all.length} on the Moon · by people</p><ol class="league">${rows}</ol>
+        <p class="txt">Every town here plays by the same rules and sells into the same market at the Flats. The ones marked agent are run by the world, hour by hour, and never rest.</p>`;
     } else if (id === 'people') {
       const nextTier = TIERS.find(t => t[0] > pop), sh = s.shuttle;
       const pad = s.buildings.find(b => b.type === 'pad' && b.progress >= 1);
@@ -515,6 +528,7 @@ export class Hud {
     // so a button is never swapped out from under the pointer.
     const u2 = urgent(s), m2 = MISSIONS[s.mission], ci = id.startsWith('crew') ? Number(id.slice(4)) : -1;
     const struct = ci >= 0 ? `${u2 && u2.who === ci ? u2.title : ''}|${m2 && m2.who === ci ? `${s.mission}:${m2.tool ? s.materials >= BUILDINGS[m2.tool].cost : ''}` : ''}|${s.alerts.filter(a => a.who === ci).length}`
+      : id === 'towns' ? (ui.league ?? []).map(t => t.company).join()
       : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full].join() : ''}|${ui.caretaker ? `${ui.caretaker.on}${Math.floor(ui.caretaker.paid / 1000)}` : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
     if (this.drawerKey !== '?' && (this.pressing || (struct === this.drawerStruct && now - this.drawerAt < 3000))) return;
     this.drawerKey = html; this.drawerAt = now; this.drawerStruct = struct;
