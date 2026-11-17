@@ -4,7 +4,7 @@
 
 import { BUILDINGS, BUILD_MENU, BuildingType, ZONES, ZONE_COST } from '../sim/buildings';
 import { MISSIONS } from '../sim/missions';
-import { FOUNDRY_KG,
+import { FOUNDRY_KG, Plot, PlotKey,
   State, Building, LUNAR_DAY, SHUTTLE_EVERY, TIERS, aliveCount, dayNumber, hoursToSunrise, hoursToSunset,
   PRICES, needs, bedsOf, habAt, jobsOf, drawOf, isNight, nightCover, nightNeed, phaseOf, population, support, tierOf,
 } from '../sim/sim';
@@ -50,8 +50,8 @@ export interface Yard {
 }
 export type YardAct = 'sell' | 'hold' | 'now' | 'load' | 'keep' | 'keepnone' | 'buy' | 'nobuy';
 /** One town on the Moon, as the server lists them all: most people first. */
-export interface TownRow { company: string; house: boolean; kind?: string; lost: boolean; crews: number; age_days: number; population: number; tier: string; buildings: number; sold_t: number; }
-export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; caretaker?: Caretaker | null; league?: TownRow[] | null; company?: string; }
+export interface TownRow { company: string; house: boolean; kind?: string; plot?: Partial<Plot>; lost: boolean; crews: number; age_days: number; population: number; tier: string; buildings: number; sold_t: number; }
+export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; caretaker?: Caretaker | null; league?: TownRow[] | null; company?: string; plot?: Partial<Plot> | null; }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const num = (n: number, dp = 0) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -452,6 +452,19 @@ export class Hud {
       ${acts}${gate}${this.partsHtml(y)}<p class="txt">Goods sell by the tonne to whoever at the port bids most${y.sell && y.open ? ', and never below Earth\'s price' : ''}.${y.ship.aboard_kg ? ` ${t(y.ship.aboard_kg, 0)} aboard your ship.` : ''}</p><h3>The town</h3>`;
   }
 
+  /** The ground this town stands on: where it is and its six readings, which add up to the same for everyone. */
+  private groundHtml(plot?: Partial<Plot> | null): string {
+    if (!plot || plot.sun === undefined) return '';
+    const rows: [PlotKey, string, string][] = [
+      ['sun', 'Sunlight', 'what the arrays make'], ['ice', 'Water ice', 'less to bring from Earth'], ['metal', 'Iron and titanium', 'what a foundry makes'],
+      ['glass', 'Aluminium and silicon', 'fewer spare parts'], ['he3', 'Helium-3', 'richer survey finds'], ['view', 'What there is to see', 'visitors'],
+    ];
+    const where = `${Math.abs(plot.lat ?? 0).toFixed(1)}° ${(plot.lat ?? 0) >= 0 ? 'N' : 'S'}, ${Math.abs(plot.lon ?? 0).toFixed(1)}° ${(plot.lon ?? 0) >= 0 ? 'E' : 'W'}`;
+    const bars = rows.map(([k, name, what]) => { const v = plot[k] ?? 0.5; return `<li><b>${name}</b><span class="dbar"><i style="left:0;width:${Math.round(v * 100)}%;background:${v >= 0.66 ? 'var(--cyan)' : v <= 0.25 ? '#55526a' : '#8b8aa8'}"></i></span><em>${what}</em></li>`; }).join('');
+    return `<h3>Your ground</h3><p class="sub">${esc(plot.name ?? 'The Moon')} · ${where}</p><ul class="ground">${bars}</ul>
+      <p class="txt">Every plot on the Moon adds up to the same. Yours is strong where the bars are long, and what it lacks another town has.</p>`;
+  }
+
   /** Spare parts: the same goods, used up by the town's own buildings once it is big enough to trade. */
   private partsHtml(y: Yard): string {
     const p = y.parts;
@@ -496,8 +509,8 @@ export class Hud {
         <p class="txt">${y ? 'Goods sold, rover' : 'Rover'} fares, landing fees, contracts and mission rewards come on top of this.</p>${care}`;
     } else if (id === 'towns') {
       const all = ui.league ?? [];
-      const rows = all.map((t, i) => `<li${t.company === ui.company ? ' class="me"' : ''}${t.lost ? ' data-lost="1"' : ''}><b>${i + 1}</b><span>${esc(t.company)}${t.house ? ' <i title="Run by the world, by the same rules as yours">agent</i>' : ''}<small>${t.lost ? 'silent' : `${esc(t.kind || t.tier)} · day ${t.age_days + 1}`}${t.crews > 1 ? ` · crew ${t.crews}` : ''} · ${num(t.sold_t)} t sold</small></span><em>${t.lost ? '·' : num(t.population)}</em></li>`).join('');
-      html = `${head('Towns')}<p class="sub">${all.length} on the Moon · by people</p><ol class="league">${rows}</ol>
+      const rows = all.map((t, i) => `<li${t.company === ui.company ? ' class="me"' : ''}${t.lost ? ' data-lost="1"' : ''}><b>${i + 1}</b><span>${esc(t.company)}${t.house ? ' <i title="Run by the world, by the same rules as yours">agent</i>' : ''}<small>${t.lost ? 'silent' : `${esc(t.kind || t.tier)}${t.plot?.name ? ` · ${esc(t.plot.name)}` : ''} · day ${t.age_days + 1}`}${t.crews > 1 ? ` · crew ${t.crews}` : ''} · ${num(t.sold_t)} t sold</small></span><em>${t.lost ? '·' : num(t.population)}</em></li>`).join('');
+      html = `${head('Towns')}${this.groundHtml(ui.plot)}<h3>Every town</h3><p class="sub">${all.length} on the Moon · by people</p><ol class="league">${rows}</ol>
         <p class="txt">Every town here plays by the same rules and sells into the same market at the Flats. The ones marked agent are run by the world, hour by hour, and never rest.</p>`;
     } else if (id === 'people') {
       const nextTier = TIERS.find(t => t[0] > pop), sh = s.shuttle;
@@ -547,7 +560,7 @@ export class Hud {
     // so a button is never swapped out from under the pointer.
     const u2 = urgent(s), m2 = MISSIONS[s.mission], ci = id.startsWith('crew') ? Number(id.slice(4)) : -1;
     const struct = ci >= 0 ? `${u2 && u2.who === ci ? u2.title : ''}|${m2 && m2.who === ci ? `${s.mission}:${m2.tool ? s.materials >= BUILDINGS[m2.tool].cost : ''}` : ''}|${s.alerts.filter(a => a.who === ci).length}`
-      : id === 'towns' ? (ui.league ?? []).map(t => t.company).join()
+      : id === 'towns' ? `${(ui.league ?? []).map(t => t.company).join()}|${ui.plot?.name}`
       : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full, ui.yard.parts?.wear, ui.yard.parts?.keep_t, ui.yard.parts?.buy, ui.yard.parts?.bought_kg, ui.yard.parts?.on_order_kg, Math.round(ui.yard.parts?.kg_per_hour ?? 0)].join() : ''}|${ui.caretaker ? `${ui.caretaker.on}${Math.floor(ui.caretaker.paid / 1000)}` : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
     if (this.drawerKey !== '?' && (this.pressing || (struct === this.drawerStruct && now - this.drawerAt < 3000))) return;
     this.drawerKey = html; this.drawerAt = now; this.drawerStruct = struct;
