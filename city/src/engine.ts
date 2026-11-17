@@ -12,7 +12,7 @@
 // Built by `npm run build:engine` into sim/src/sim/town_engine.js, which is committed.
 
 import { BUILDINGS } from './sim/buildings';
-import { steward } from './steward';
+import { steward, Style } from './steward';
 import { State, Intent, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
 
 const summary = (s: State) => {
@@ -104,10 +104,11 @@ function malformed(s: State, it: any): string | null {
   /**
    * What a careful player would do this hour: the requests, in order, that the steward would send.
    * With `keep`, only what a caretaker would: what is urgent, and nothing that grows the town.
+   * `style` is a temperament as JSON (see Style in steward.ts): how this company likes to build.
    * Nothing is changed here. The server sends each one through `apply` like any player's, so the
    * rules judge a steward's move exactly as they judge a person's.
    */
-  steward(state: string, credits: number, keep?: boolean): string {
+  steward(state: string, credits: number, keep?: boolean, style?: string): string {
     const s = JSON.parse(state) as State;
     s.materials = credits;
     const intents: Intent[] = [];
@@ -116,7 +117,7 @@ function malformed(s: State, it: any): string | null {
       const r = apply(st, it);
       if (r.ok) intents.push(it);
       return r;
-    });
+    }, style ? JSON.parse(style) as Style : {});
     if (s.phase === 'playing') hour(s, !!keep);
     return JSON.stringify({ intents });
   },

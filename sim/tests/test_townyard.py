@@ -552,6 +552,53 @@ def test_a_yard_kept_full_sends_the_shift_home_though_parts_are_taken(town):
     assert s["flows"]["make"] == 0
 
 
+# -- temperaments (D83) --------------------------------------------------------------
+
+def test_a_temperament_changes_what_the_steward_chooses(town):
+    g, player = town
+    row = g._town_row(player.id)
+    engine, wallet = g.town_engine, 400.0
+    plain = engine.steward(row["state"], wallet)
+    assert not any(i["k"] == "price" for i in plain)
+    dear = engine.steward(row["state"], wallet, style={"price": 2})
+    assert {"k": "price", "level": 2} in dear
+    # asking is still asking: the same question gets the same answer
+    assert engine.steward(row["state"], wallet, style={"price": 2}) == dear
+    # a caretaker has no temperament
+    assert engine.steward(row["state"], wallet, keep=True,
+                          style={"price": 2}) == engine.steward(
+                              row["state"], wallet, keep=True)
+
+
+def test_a_resort_shuts_its_foundries_once_the_crew_has_had_theirs(town):
+    g, player = town
+    state_ = json.loads(g._town_row(player.id)["state"])
+    running = [b["uid"] for b in state_["buildings"]
+               if b["type"] == "printer" and b["on"] and b["progress"] >= 1]
+    assert running
+    engine, style = g.town_engine, {"foundries": 0}
+    state_["mission"] = 10          # the crew still wants a foundry on ore
+    early = engine.steward(json.dumps(state_), 400.0, style=style)
+    assert not any(i["k"] == "toggle" for i in early)
+    state_["mission"] = 20
+    late = engine.steward(json.dumps(state_), 400.0, style=style)
+    assert sorted(i["uid"] for i in late if i["k"] == "toggle") == sorted(running)
+    one = engine.steward(json.dumps(state_), 400.0, style={"foundries": 1})
+    assert len([i for i in one if i["k"] == "toggle"]) == len(running) - 1
+
+
+def test_a_temperament_that_wants_no_more_of_a_zone_lays_none(town):
+    g, player = town
+    state_ = json.loads(g._town_row(player.id)["state"])
+    state_["mission"] = 23          # nothing left that the crew asks for
+    none = {"lots": {"r": 0, "i": 0, "v": 0}}
+    engine = g.town_engine
+    for _ in range(30):
+        asked = engine.steward(json.dumps(state_), 900.0, style=none)
+        assert not any(i["k"] == "zone" for i in asked), asked
+        state_ = json.loads(engine.tick(json.dumps(state_), 1.0, 900.0).state)
+
+
 # -- the steward --------------------------------------------------------------------
 
 def test_the_steward_only_ever_asks_for_what_a_player_may():

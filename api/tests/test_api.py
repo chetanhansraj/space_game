@@ -235,7 +235,7 @@ def test_the_list_of_towns_is_public(client, game):
     towns = client.get("/api/towns").json()["towns"]
     assert [(t["company"], t["house"], t["lost"]) for t in towns] == [
         ("Tranquility Co", False, False)]
-    assert set(towns[0]) == {"company", "house", "lost", "crews", "age_days",
+    assert set(towns[0]) == {"company", "house", "kind", "lost", "crews", "age_days",
                              "population", "tier", "buildings", "sold_t"}
     mine = client.get("/api/town", headers=who).json()["meta"]
     assert mine["league"] == towns and mine["company"] == "Tranquility Co"

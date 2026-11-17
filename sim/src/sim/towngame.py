@@ -124,12 +124,32 @@ CARETAKER_FEE = 200
 #: hour (D77, D81). Their ids are fixed so that a world replayed from its
 #: seed founds the same towns on the same ground.
 HOUSE = (
-    ("house_mare", "Mare Cooperative"),
-    ("house_serenitatis", "Serenitatis Foundry Co"),
-    ("house_tycho", "Tycho Settlement Trust"),
-    ("house_imbrium", "Imbrium Works"),
-    ("house_fecunditatis", "Fecunditatis Union"),
+    ("house_mare", "Mare Cooperative", "balanced"),
+    ("house_serenitatis", "Serenitatis Foundry Co", "foundry"),
+    ("house_tycho", "Tycho Settlement Trust", "resort"),
+    ("house_imbrium", "Imbrium Works", "works"),
+    ("house_fecunditatis", "Fecunditatis Union", "hostel"),
 )
+#: How each kind of house company likes to build once its crew is safe: the
+#: most lots of a zone it lays out unasked (r homes, i industry, v
+#: commercial), the price level it charges (0 low, 1 fair, 2 high) and the
+#: contracts it turns down. A temperament changes what the steward chooses,
+#: never what it may do, and what the crew asks for is done regardless.
+#: They are what make the Moon's towns different from each other, so that
+#: one has goods to spare and another needs them. *Invented*, D83.
+TEMPERAMENTS: dict[str, dict] = {
+    "balanced": {},
+    "foundry": {"lots": {"v": 1}, "price": 0, "refuse": ["broadcast"]},
+    "works": {"lots": {"v": 2}, "refuse": ["broadcast"]},
+    "resort": {"lots": {"i": 0}, "price": 2, "foundries": 0,
+               "refuse": ["works"]},
+    "hostel": {"lots": {"i": 1}, "foundries": 1, "refuse": ["works"]},
+}
+#: What each is called where towns are listed.
+TEMPER_NAMES = {"balanced": "Mixed town", "foundry": "Foundry town",
+                "works": "Works town", "resort": "Resort",
+                "hostel": "Hostel town"}
+HOUSE_TEMPER = {pid: temper for pid, _, temper in HOUSE}
 #: Game days between one house company's chartering and the next, so the
 #: Moon's towns are of different ages. *Invented*, D81.
 HOUSE_EVERY_DAYS = 2
@@ -622,10 +642,12 @@ class TownOps:
         as a careful owner would. Either way every request goes through the
         door a player's does.
         """
+        style = None if keep else TEMPERAMENTS.get(
+            HOUSE_TEMPER.get(player.id, ""))
         try:
             asked = self.town_engine.steward(
                 row["state"], self._town_wallet(player, row["owed"]),
-                keep=keep)
+                keep=keep, style=style)
         except TownError as exc:
             log.error("%s", exc)
             asked = []
@@ -651,7 +673,7 @@ class TownOps:
             "SELECT id, created_tick FROM player WHERE house = 1")}
         gap = HOUSE_EVERY_DAYS * TICKS_PER_GAME_DAY
         if all(tick - made >= gap for made in have.values()):
-            for pid, name in HOUSE:
+            for pid, name, _ in HOUSE:
                 if pid in have or self.db.execute(
                         "SELECT 1 FROM player WHERE name = ?",
                         (name,)).fetchone():
@@ -718,6 +740,8 @@ class TownOps:
             lost = row["lost_tick"] is not None
             out.append({
                 "company": row["name"], "house": bool(row["house"]),
+                "kind": TEMPER_NAMES.get(
+                    HOUSE_TEMPER.get(row["player_id"], ""), ""),
                 "lost": lost, "crews": row["attempt"] + 1,
                 "age_days": (self.world.tick - row["founded_tick"]) // day,
                 "population": 0 if lost else book["pop"],

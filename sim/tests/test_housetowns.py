@@ -87,7 +87,7 @@ def test_a_house_company_is_chartered_exactly_as_a_person_is(routes):
     g = fresh(routes)
     made = g.world.ledger.credits_in_existence()
     to_next_day(g)
-    pid, name = HOUSE[0]
+    pid, name = HOUSE[0][:2]
     mare = g.player(pid)
     assert mare.house and mare.name == name
     person, _ = g.signup("A Person Ltd")
@@ -203,6 +203,25 @@ def test_a_town_that_grows_is_news_and_so_is_its_first_sale(moon):
     assert grew and "base" in grew[0]["detail"]
     assert any(e["subject"] == pid for e in events(moon, "town_first_sale"))
     assert any(e["kind"] == "town_grew" for e in moon.feed(limit=200))
+
+
+def test_every_house_company_has_a_temperament_and_they_differ():
+    """The seed of the world is five different towns, not one town five times."""
+    kinds = [temper for _, _, temper in HOUSE]
+    assert len(set(kinds)) == len(HOUSE)
+    assert set(kinds) <= set(towngame.TEMPERAMENTS)
+    assert set(kinds) <= set(towngame.TEMPER_NAMES)
+    styles = [towngame.TEMPERAMENTS[k] for k in kinds]
+    assert all(a != b for i, a in enumerate(styles) for b in styles[i + 1:])
+    # a temperament is choices, in the steward's own words: nothing else
+    for style in styles:
+        assert set(style) <= {"lots", "price", "refuse", "foundries"}
+
+
+def test_a_town_is_listed_with_what_kind_of_town_it_is(moon):
+    listed = {t["company"]: t["kind"] for t in moon.towns_view()}
+    for _, name, temper in HOUSE:
+        assert listed[name] == towngame.TEMPER_NAMES[temper]
 
 
 def test_every_town_is_listed_most_people_first(moon):

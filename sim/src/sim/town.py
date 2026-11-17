@@ -107,14 +107,18 @@ class Engine:
             args.append(json.dumps(yard))
         return self._result(self._call("tick", *args))
 
-    def steward(self, state: str, credits: float, keep: bool = False
-                ) -> list[dict]:
+    def steward(self, state: str, credits: float, keep: bool = False,
+                style: dict | None = None) -> list[dict]:
         """The requests a careful player would send this hour. Changes nothing.
 
         With ``keep``, only what a caretaker would send: what is urgent.
+        ``style`` is a temperament: how this company likes to build once
+        its crew is safe (``Style`` in city/src/steward.ts).
         """
-        return self._call("steward", state, float(credits),
-                          bool(keep))["intents"]
+        args = [state, float(credits), bool(keep)]
+        if style:
+            args.append(json.dumps(style, sort_keys=True))
+        return self._call("steward", *args)["intents"]
 
     def summary(self, state: str) -> dict:
         return self._call("summary", state)
