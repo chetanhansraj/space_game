@@ -1440,6 +1440,7 @@ built the right way round: the caretaker is deterministic code acting
 through the same seven requests a player has (invariants 1 and 2), its fee
 is a real payment that leaves the world (invariant 7), and it keeps the town
 alive, it does not grow it. A town that plays itself is not a game.
+*Built since: D79.*
 
 ### F9 — The Moon's own firms did not last, and nobody was told
 
@@ -1601,6 +1602,42 @@ arrears covered. That hands an old company nothing a new one could not have
 from the same fund by signing up, and a company with money still gets only
 the ordinary grant.
 
+### D79 — The caretaker is built: urgent work only, for a wage
+
+D73 was direction. This is the thing, because without it a town founded in
+a lunch break is dead by the evening, and Chetan asked for exactly this
+remedy.
+
+A company may hire a caretaker for its town, and let one go, at any time.
+While one is hired, each game hour:
+
+1. The wage is paid: 200 cr, burned. *Invented.* It is 4,800 cr a game
+   day, about what a town of ten pays for its supplies, so a small town
+   feels it and a large one does not. Eight real hours away costs 96 town
+   credits. By D37 a wage paid to nobody who is modelled is a sink, and
+   this is the sink the feature needs (invariant 7).
+2. The steward (D77) is asked what is urgent, and each answer is put to the
+   town's rules through the same door as a player's request. Urgent is the
+   crew's own list: something broken, something not linked, air, water,
+   food, shelter, and enough stored power for tonight.
+
+It does not follow the missions, zone land to grow on, answer offers or
+set prices. On the first morning of a new town nothing is urgent yet, so a
+caretaker hired at founding builds nothing: it will keep a town and it will
+not found one. What it builds is paid for by the town like anything else.
+If the wage cannot be paid it leaves, and a letter says so.
+
+Invariant 2 is untouched: the caretaker is the steward, deterministic code
+inside the tick. Nothing asks a model anything.
+
+Measured on a private world with the same town each time. Left after one
+real hour of play: alone, lost at hour 828 (in its first night); with a
+caretaker, alive with all four crew at hour 1,500, having paid 288 town
+credits in wages. Left after two and a half real hours, by which time the
+night was already provided for, it lived either way and the caretaker was
+270 credits spent for nothing. So it is insurance, and it is priced so that
+the choice is a real one.
+
 ---
 
 ## Still open — needs you
@@ -1635,7 +1672,9 @@ Deliberately not decided, because these are yours.
     hours forty minutes of lander air, and the first night falls about six
     real hours after founding. That is tense, which may be right, or it may
     lose people who found a town and go to dinner. Say which.
-13. **The caretaker's price and powers** — D73.
+13. **The caretaker's price and powers** — D79. Built with a wage of 200 cr
+    a game hour and urgent work only. Say if it should cost more, or do
+    more, or need the town to reach some size before one can be hired.
 14. **Eight people to trade** — D71.
 15. **The Moon's firms are all dead** — F9. This is the big one. Towns
     run by agents (D68) are the repair you have pointed at, and they are

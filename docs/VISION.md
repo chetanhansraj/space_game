@@ -299,6 +299,9 @@ for lunar parts. Trade opens with a landing pad and eight people. Working
 foundries are jobs, jobs bring people, and people cost more to keep than
 the last ones did. D74 to D78.
 
+A caretaker can be hired for a wage to deal with what is urgent while the
+owner is away (D79). It keeps a town alive. It does not play it.
+
 ### The Moon's firms are dead (F9)
 
 Found on day 49: every bot firm on the live Moon went bankrupt weeks ago.
@@ -312,8 +315,6 @@ what replaces them.
   is the companies, their founding, and letting them trade with each other.
 - **Towns that need each other**: a town's supplies bought from other
   towns and from the polar works, not from Earth by formula.
-- **A caretaker for hire** while the owner is away (D73), from the same
-  steward.
 - **Land first at signup**, with the ship earned (D53).
 - **The plot's real longitude**, so that dawn in the town is dawn on the
   Moon map.
