@@ -223,3 +223,48 @@ def test_base_letters_are_written(client, game):
     for m in letters.values():
         assert "could not be written" not in " ".join(m["body"])
         assert "No words" not in " ".join(m["body"])
+
+
+# -- the town -------------------------------------------------------------------
+
+def test_found_a_town_and_build_in_it(client, game):
+    who = _join(client)
+    assert client.get("/api/town").status_code == 401
+    r = client.get("/api/town", headers=who).json()
+    assert r["meta"]["founded"] is False and r["state"] is None
+
+    r = client.post("/api/town/found", headers=who)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["meta"]["founded"] and body["state"]["phase"] == "playing"
+    assert [c["name"] for c in body["state"]["crew"]][0] == "Asha Rao"
+    assert client.post("/api/town/found", headers=who).status_code == 400
+
+    # The rules refuse; the API reports why.
+    r = client.post("/api/town/intent", headers=who,
+                    json={"k": "place", "type": "lander", "x": 4, "y": 4})
+    assert r.status_code == 400 and "cannot be built" in r.json()["detail"]
+    r = client.post("/api/town/intent", headers=who,
+                    json={"k": "place", "type": "solar", "x": 4, "y": 4,
+                          "hours": 99})
+    assert r.status_code == 422                      # no extra fields
+    built = None
+    for x in range(8, 30, 2):
+        for y in range(8, 30, 2):
+            r = client.post("/api/town/intent", headers=who,
+                            json={"k": "place", "type": "solar", "x": x, "y": y})
+            if r.status_code == 200:
+                built = r.json()
+                break
+        if built:
+            break
+    assert built and any(b["type"] == "solar" for b in built["state"]["buildings"])
+    for _ in range(3):
+        game.step()
+    after = client.get("/api/town", headers=who).json()
+    assert round(after["state"]["t"], 6) == 3
+    assert after["meta"]["tick"] == game.world.tick
+    assert after["meta"]["trade"]["open"] is False
+    assert client.post("/api/town/refound", headers=who).status_code == 400
+    kinds = [m["kind"] for m in client.get("/api/inbox", headers=who).json()]
+    assert "town_charter" in kinds

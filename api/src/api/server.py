@@ -20,6 +20,7 @@ catching up after downtime still answers requests between hours.
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import os
 import secrets
@@ -31,7 +32,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -110,6 +111,21 @@ class BaseTradeIn(BaseModel):
 class StowIn(BaseModel):
     asset: str = Field(max_length=16)
     tonnes: int = Field(ge=1, le=200)
+
+
+class TownIntent(BaseModel):
+    """One of the city builder's own requests. Its rules judge the content;
+    this only bounds the shape."""
+
+    model_config = {"extra": "forbid"}
+    k: str = Field(max_length=12)
+    type: str | None = Field(default=None, max_length=24)
+    x: int | None = Field(default=None, ge=0, le=255)
+    y: int | None = Field(default=None, ge=0, le=255)
+    z: int | None = Field(default=None, ge=0, le=9)
+    uid: int | None = Field(default=None, ge=1, le=10**9)
+    level: int | None = Field(default=None, ge=0, le=9)
+    accept: bool | None = None
 
 
 class PolicyIn(BaseModel):
@@ -501,6 +517,40 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
     def base_seen(player: Player = Depends(player_for)):
         with lock:
             return the_game().base_seen(player)
+
+    # -- the town --------------------------------------------------------
+    #
+    # The town's state is the JSON text its own rules produced. It is sent
+    # as it stands, never parsed and rebuilt here, with what the world
+    # knows about the town beside it.
+
+    def town_reply(player: Player, meta: dict) -> Response:
+        state = the_game().town_state(player)
+        return Response(
+            content='{"meta":' + json.dumps(meta) + ',"state":'
+                    + (state or "null") + "}",
+            media_type="application/json")
+
+    @app.get("/api/town")
+    def town_view(player: Player = Depends(player_for)):
+        with lock:
+            return town_reply(player, the_game().town_meta(player))
+
+    @app.post("/api/town/found")
+    def town_found(player: Player = Depends(player_for)):
+        with lock:
+            return town_reply(player, the_game().found_town(player))
+
+    @app.post("/api/town/refound")
+    def town_refound(player: Player = Depends(player_for)):
+        with lock:
+            return town_reply(player, the_game().refound_town(player))
+
+    @app.post("/api/town/intent")
+    def town_intent(body: TownIntent, player: Player = Depends(player_for)):
+        with lock:
+            intent = body.model_dump(exclude_none=True)
+            return town_reply(player, the_game().town_intent(player, intent))
 
     # -- the client ------------------------------------------------------
 

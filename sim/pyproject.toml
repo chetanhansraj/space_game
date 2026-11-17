@@ -26,13 +26,19 @@ requires-python = ">=3.11"
 # that is safe to request from an index. They are always installed together
 # from paths, and the README and CI workflow do exactly that. Re-add a
 # dependency here only if these are ever published under a namespace we own.
-dependencies = []
+#
+# mini-racer is a published package and safe to name. It is the embedded
+# JavaScript engine that runs the town's rules (sim/town.py, DECISIONS D69).
+dependencies = ["mini-racer>=0.12,<0.15"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "hypothesis>=6"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+sim = ["town_engine.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

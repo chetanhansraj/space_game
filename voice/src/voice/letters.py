@@ -306,7 +306,36 @@ def _base_departure(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     ])
 
 
+def _town_charter(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    return ("Your town on the equator", [
+        f"{d['company']}: four of your people are down on the lunar equator "
+        "at sunrise, with a lander, a little air and two weeks of daylight "
+        "ahead of them.",
+        f"This office has added {cr(d['grant'])} to your account for the "
+        "founding. The town has no purse of its own: it spends from your "
+        "company's account and what it earns comes back to it.",
+        "The lander's canisters last about a week. Get air and power "
+        "standing before then, and enough stored to last a night that is "
+        "two weeks long. The town keeps its own time, the same as "
+        "everyone's, and it does not wait for you.",
+        f"When it has a working landing pad and {d['trade_population']} "
+        "people, the market is open to it.",
+        "Yusuf Brandt, Ark Development Office",
+    ])
+
+
+def _town_lost(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    return ("Your town has fallen silent", [
+        f"{d['company']}: we have had nothing from your town for some "
+        f"hours. It stood for {d['hours']} hours.",
+        "The ground is still yours. When you are ready, a new crew can be "
+        "sent to it.",
+        "Yusuf Brandt, Ark Development Office",
+    ])
+
+
 _LETTERS = {
+    "town_charter": _town_charter, "town_lost": _town_lost,
     "base_departure": _base_departure,
     "welcome": _welcome, "charter": _charter, "offers": _offers,
     "arrival": _arrival, "contract_paid": _contract_paid,

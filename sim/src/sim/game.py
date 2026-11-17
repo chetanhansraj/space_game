@@ -40,6 +40,7 @@ from orbital.clock import DISPLAY_OFFSET_YEARS, real_seconds
 
 from . import TICKS_PER_GAME_DAY, persist, schema
 from .basegame import BaseOps
+from .towngame import TownOps
 from .errors import GameError
 from .contracts import ContractBoard, ContractError, encode
 from .routes import DOCKING_FEE, NODE_ANCHOR
@@ -92,7 +93,7 @@ _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,'&-]{1,30}[A-Za-z0-9.]$")
 FEED_KINDS = ("solar_flare", "equipment_failure", "insolvency", "spinoff",
               "contract_posted", "contract_fulfilled", "player_joined",
               "player_departure", "player_arrival", "base_chartered",
-              "base_milestone")
+              "base_milestone", "town_founded", "town_lost")
 
 
 @dataclass(frozen=True)
@@ -117,7 +118,7 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-class Game(BaseOps):
+class Game(BaseOps, TownOps):
     """One world, persisted, on a clock, with players in it.
 
     What a company does on the ground -- its base -- is `BaseOps`, in
@@ -260,6 +261,7 @@ class Game(BaseOps):
                     events += self._settle_arrival(event, now)
             events += self.board.tick(now)
             events += self._tick_bases(now)
+            events += self._tick_towns(now)
             if world.tick % TICKS_PER_GAME_DAY == 0:
                 events += self._charge_upkeep(now)
             self._route_messages(events)
