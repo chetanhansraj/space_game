@@ -52,15 +52,35 @@ LEASE_BP_PER_DAY = 10
 UPKEEP_BP_PER_DAY = 3
 #: Paid to the port's households, like every other payroll in the world.
 WAGE_PER_CREW_DAY = 1_500
-#: List price of everything a company may hold on lease at once.
+#: List price of everything a company may hold on lease at once: so much
+#: for a founding crew, and more for every resident after them. The Ark
+#: extends credit to towns, not to machinery. D65.
 LEASE_CAP = 12_000_000
+LEASE_CAP_PER_RESIDENT = 1_000_000
+LEASE_CAP_MAX = 40_000_000
+
+#: People. The daily shuttle brings at most this many, and only to a town
+#: where everyone already there had air, water and food all day. A need
+#: unmet for this many hours of a day sends one resident home. D64.
+ARRIVALS_PER_DAY = 2
+UNMET_HOURS_TO_LEAVE = 12
+#: The six who found a site. The first four are the city builder's crew.
+FOUNDING_CREW = (("Asha", "Commander"), ("Kenji", "Flight surgeon"),
+                 ("Lena", "Systems engineer"), ("Rafael", "Geologist"),
+                 ("Noor", "Agronomist"), ("Idris", "Plant operator"))
+NAMES = ("Amara", "Bao", "Carmen", "Dev", "Elif", "Farid", "Grace", "Hana",
+         "Ivo", "Jun", "Kavya", "Luca", "Mina", "Nikhil", "Oksana", "Pablo",
+         "Qing", "Rosa", "Sami", "Tala", "Uma", "Viktor", "Wen", "Ximena",
+         "Yara", "Zaid", "Anouk", "Bilal", "Chidi", "Dana", "Emre", "Freya")
+TRADES = ("Miner", "Plant operator", "Agronomist", "Electrician", "Medic",
+          "Cook", "Mechanic", "Surveyor", "Teacher", "Pilot")
 #: Share of propellant held beyond tank capacity that boils off in an hour.
 BOIL_OFF_PERCENT = 2
 #: A problem is worth a letter once it has lasted this long.
 ALERT_AFTER_HOURS = 6
 
 #: What a base holds and trades.
-STOCKED = ("ICE", "PROP")
+STOCKED = ("ICE", "PROP", "FOOD")
 
 #: The Ark's development bonuses: (id, what for, credits). Each is paid once,
 #: out of the development fund, and only while the fund can afford it.
@@ -70,6 +90,7 @@ MILESTONES = (
     ("first_sale", "First sale from the base", 30_000),
     ("full_feed", "Thirty tonnes of ice through the plant in a day", 40_000),
     ("own", "First module bought outright", 30_000),
+    ("town10", "A town of ten", 50_000),
 )
 
 NODE_NAMES = {
@@ -85,6 +106,12 @@ def lease_per_day(cost: int) -> int:
 
 def upkeep_per_day(cost: int) -> int:
     return cost * UPKEEP_BP_PER_DAY // 10_000
+
+
+def lease_cap(state: dict) -> int:
+    """What the Ark will lease this company, by the size of its town."""
+    extra = max(0, len(state.get("residents", ())) - base.FOUNDERS)
+    return min(LEASE_CAP_MAX, LEASE_CAP + extra * LEASE_CAP_PER_RESIDENT)
 
 
 class BaseOps:
@@ -192,6 +219,9 @@ class BaseOps:
                         "target_t": 10},
             },
             milestones=[], alerts={}, told=[],
+            residents=[{"name": n, "trade": t, "since": tick, "founder": True}
+                       for n, t in FOUNDING_CREW],
+            unmet={"air": 0, "water": 0, "food": 0},
             accrual={"lease": 0, "upkeep": 0, "crew_hours": 0},
             books={"day": tick // TICKS_PER_GAME_DAY, "today": {},
                    "yesterday": {}},
@@ -210,7 +240,8 @@ class BaseOps:
                            "kit_modules": len(base.KIT),
                            "lease_per_day": lease_per_day(
                                base.leased_value(state)),
-                           "lease_cap": LEASE_CAP})
+                           "lease_cap": lease_cap(state),
+                           "founders": len(FOUNDING_CREW)})
             self._log([Event(
                 tick=tick, kind="base_chartered", subject=player.id,
                 detail=f"{player.name} took a charter on {spec['name']}",
@@ -236,11 +267,12 @@ class BaseOps:
                 base.place(state, layout, kind, x, y, tick, leased=True)
                 state["crates"].remove(kind)
             elif how == "lease":
-                if base.leased_value(state) + spec.cost > LEASE_CAP:
+                if base.leased_value(state) + spec.cost > lease_cap(state):
                     raise GameError(
-                        f"The Ark leases a company {LEASE_CAP:,} cr of plant "
-                        f"and no more. Buy this one, or buy out something "
-                        f"you lease.")
+                        f"The Ark leases a town this size "
+                        f"{lease_cap(state):,} cr of plant and no more. Grow "
+                        f"the town, buy this one, or buy out something you "
+                        f"lease.")
                 base.place(state, layout, kind, x, y, tick, leased=True)
             elif how == "buy":
                 self._afford(player, spec.cost, f"A {spec.name}")
@@ -467,6 +499,8 @@ class BaseOps:
         row, state = self._base(player)
         if asset not in STOCKED:
             raise GameError("Your base does not handle that.")
+        if asset not in state["policy"]:
+            raise GameError("There are no standing orders for that.")
         current = state["policy"][asset]
         for key, value in rule.items():
             if value is None or key not in current:
@@ -501,10 +535,16 @@ class BaseOps:
                 self._try_order(state, player, account, node, "ICE", BID,
                                 ice["max_price"], want, now)
         for asset in STOCKED:
-            rule = state["policy"][asset]
-            if not rule.get("sell"):
+            rule = state["policy"].get(asset)
+            if not rule or not rule.get("sell"):
                 continue
             spare = ledger.balance(account, asset) - rule["keep_t"] * TONNE
+            if asset == "ICE":      # never sell the people's water
+                spare -= base.water_reserve(hour.people)
+            # Nor what has been promised to another port. A promise is kept
+            # from stock, so the market gets only what is left over.
+            spare -= sum(c.qty_kg for c in self.board.held_by(player.id)
+                         if c.asset == asset)
             bid = book.best_bid(asset)
             if spare < TONNE or not bid or bid < rule["min_price"]:
                 continue
@@ -612,6 +652,10 @@ class BaseOps:
             self._tally(state, "arrears_paid", owed)
             owed = 0
 
+        residents = state.setdefault("residents", [
+            {"name": n, "trade": t, "since": tick, "founder": True}
+            for n, t in FOUNDING_CREW])
+        state["people"] = len(residents)
         stock = {a: ledger.balance(account, a) for a in STOCKED}
         hour = base.run_hour(state, layout, tick, stock,
                              flaring=self.world.weather.flaring(tick),
@@ -624,6 +668,10 @@ class BaseOps:
         for asset, kg in hour.made.items():
             self._tally(state, f"made_kg_{asset}", kg)
         self._tally(state, "used_kg_ICE", hour.used.get("ICE", 0))
+        unmet = state.setdefault("unmet", {"air": 0, "water": 0, "food": 0})
+        for need, met in hour.needs.items():
+            if not met:
+                unmet[need] = unmet.get(need, 0) + 1
 
         over = ledger.balance(account, "PROP") - hour.tank_kg
         if over > 0:
@@ -656,7 +704,14 @@ class BaseOps:
         due["crew_hours"] += hour.crew_working
         if tick % TICKS_PER_GAME_DAY == 0:
             owed = self._daily_charges(state, player, node, owed, now)
+            self._people_day(state, pid, hour, tick)
+        if len(state["residents"]) >= 10:
+            events += self._milestone(state, player, "town10", now)
 
+        for need, code in (("air", "stifled"), ("water", "thirsty"),
+                           ("food", "hungry")):
+            if not hour.needs.get(need, True):
+                status.add(code)
         self._alerts(state, pid, status, hour, owed, tick)
         state["report"] = base.report(state, hour, tick)
         self._save_base(pid, state, owed)
@@ -709,13 +764,73 @@ class BaseOps:
             self._tally(state, "upkeep", max(0, paid - lease), "yesterday")
         return owed + (bill - paid)
 
+    def _people_day(self, state: dict, pid: str, hour, tick: int) -> None:
+        """The daily shuttle: who goes home, and who comes to stay.
+
+        People are not on the ledger. They are who the town can house, feed
+        and give air to, and they are its workforce: a module that needs
+        crew runs only if someone lives here to run it. So a town grows its
+        industry by growing itself.
+
+        A need that went unmet for half the day sends one resident home,
+        newest first. The founders stay whatever happens, so a site can
+        always be brought back. If nothing went unmet at all, the shuttle
+        brings up to two new residents, while there are berths with air for
+        them and the bays grow enough to feed them.
+        """
+        residents = state["residents"]
+        unmet = state["unmet"]
+        bad = sorted(n for n, h in unmet.items() if h >= UNMET_HOURS_TO_LEAVE)
+        left = []
+        for need in bad:
+            movable = [r for r in residents if not r.get("founder")]
+            if not movable:
+                break
+            gone = movable[-1]
+            residents.remove(gone)
+            left.append({"name": gone["name"], "why": need})
+        # Nobody stays without a berth, founders aside.
+        while (len(residents) > max(hour.crew_cap, base.FOUNDERS)
+               and any(not r.get("founder") for r in residents)):
+            gone = [r for r in residents if not r.get("founder")][-1]
+            residents.remove(gone)
+            left.append({"name": gone["name"], "why": "air"})
+        came = []
+        # A bay waiting for hands counts: the people it would feed are the
+        # ones who will come and tend it.
+        fed = sum(MODULES[m["type"]].feeds for m in state["modules"]
+                  if hour.status.get(m["id"]) in ("on", "no_crew"))
+        if not any(unmet.values()) and not left:
+            room = min(hour.crew_cap, fed) - len(residents)
+            for _ in range(max(0, min(ARRIVALS_PER_DAY, room))):
+                serial = state.get("arrived", 0)
+                state["arrived"] = serial + 1
+                person = {
+                    "name": NAMES[base._h(state["seed"], "name", serial)
+                                  % len(NAMES)],
+                    "trade": TRADES[base._h(state["seed"], "trade", serial)
+                                    % len(TRADES)],
+                    "since": tick}
+                residents.append(person)
+                came.append(person["name"])
+        state["unmet"] = {"air": 0, "water": 0, "food": 0}
+        state["people"] = len(residents)
+        self._tally(state, "arrived", len(came), "yesterday")
+        self._tally(state, "left", len(left), "yesterday")
+        state["shuttle"] = {"tick": tick, "came": came, "left": left}
+        if left:
+            self._message(pid, "base_commander", "base_departure",
+                          {"left": left, "people": len(residents),
+                           "site_name": SITES[state["site"]]["name"]})
+
     def _alerts(self, state: dict, pid: str, status: set, hour, owed: int,
                 tick: int) -> None:
         """Write home about a problem once it has lasted, and only once."""
         if "desk" not in state["milestones"]:
             return                      # still unpacking; nothing to report
         now_wrong = {c for c in ("unlinked", "no_power", "no_crew", "hot",
-                                 "no_feed", "full", "no_ice", "worked_out")
+                                 "no_feed", "full", "no_ice", "worked_out",
+                                 "stifled", "thirsty", "hungry")
                      if c in status}
         if owed:
             now_wrong.add("arrears")
@@ -733,6 +848,31 @@ class BaseOps:
         state["alerts"], state["told"] = alerts, told
 
     # -- views ---------------------------------------------------------------
+
+    def _base_jobs(self, player, row) -> list[dict]:
+        """Supply contracts this base could fill, and the ones it has taken.
+
+        A job is a promise with a deadline: so many tonnes at another port
+        by such an hour. The base makes the goods on the world's clock and
+        the company's ship carries them, so whether a promise can be kept
+        is arithmetic the player can see: what is in stock, what a day
+        makes, how long the flight is.
+        """
+        jobs = []
+        seen = set()
+        for c in self.board.held_by(player.id) + self.board.open():
+            if c.id in seen or c.asset not in STOCKED or c.node == row["node"]:
+                continue
+            seen.add(c.id)
+            leg = self.world.routes.leg(row["node"], c.node)
+            jobs.append({
+                "id": c.id, "issuer": c.issuer, "node": c.node,
+                "node_name": NODE_NAMES.get(c.node, c.node),
+                "asset": c.asset, "qty_kg": c.qty_kg, "payment": c.payment,
+                "deadline_tick": c.deadline_tick,
+                "mine": c.taker == player.id,
+                "flight_ticks": leg.ticks() if leg else None})
+        return jobs
 
     def base_seen(self, player) -> dict:
         """Record a visit. Returns what the base did since the last one."""
@@ -771,7 +911,8 @@ class BaseOps:
                                "prices": self.prices(v["node"])}
                               for k, v in SITES.items()],
                     "kit": list(base.KIT), "catalog": self.base_catalog(),
-                    "lease_cap": LEASE_CAP, **clock}
+                    "lease_cap": LEASE_CAP, "founders": len(FOUNDING_CREW),
+                    **clock}
         state = json.loads(row["state"])
         layout = base.site_layout(state["seed"], state["size"])
         for p in layout["patches"]:
@@ -803,8 +944,24 @@ class BaseOps:
                 "stock": {a: ledger.balance(row["account"], a)
                           for a in STOCKED},
                 "capacity": {"ICE": report.get("store_kg", base.YARD_KG),
-                             "PROP": report.get("tank_kg", 0)},
+                             "PROP": report.get("tank_kg", 0),
+                             "FOOD": report.get("store_kg", base.YARD_KG)},
                 "policy": state["policy"],
+                "people": {
+                    "residents": state.get("residents", []),
+                    "housed": (report.get("crew") or [0, 0])[1],
+                    "needs": report.get("needs", {}),
+                    "unmet": state.get("unmet", {}),
+                    "shuttle": state.get("shuttle"),
+                    "next_shuttle_tick": (world.tick // TICKS_PER_GAME_DAY
+                                          + 1) * TICKS_PER_GAME_DAY,
+                    "fed": sum(MODULES[m["type"]].feeds for m in standing
+                               if status.get(str(m["id"])) in ("on",
+                                                               "no_crew")),
+                    "arrivals_per_day": ARRIVALS_PER_DAY,
+                    "unmet_hours_to_leave": UNMET_HOURS_TO_LEAVE,
+                },
+                "jobs": self._base_jobs(player, row),
                 "milestones": [{"id": i, "title": t, "bonus": b,
                                 "done": i in state["milestones"]}
                                for i, t, b in MILESTONES],
@@ -821,7 +978,8 @@ class BaseOps:
                     * (report.get("crew") or [0])[0],
                     "leased_value": base.leased_value(state),
                     "owned_value": base.owned_value(state),
-                    "lease_cap": LEASE_CAP,
+                    "lease_cap": lease_cap(state),
+                    "lease_cap_per_resident": LEASE_CAP_PER_RESIDENT,
                     "conduit_cost": base.CONDUIT_COST,
                 },
                 "ship": {"id": ship.id, "docked_here": docked,

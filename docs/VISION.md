@@ -270,10 +270,21 @@ D63.
 The arc has changed with it (D53): a company will start on the ground and
 earn its ship, rather than the other way round.
 
+### Done: people
+
+The base is a town. Six found it, more come on the daily shuttle to a town
+that can house and feed them, and they are who runs its industry. Promises to
+other ports are taken and kept from the town's own stock. D64 to D66.
+
+**One universal time** (D64): the town runs on the world's clock, with no
+speed-up and no pause, and lives on the server.
+
 ### Next
 
-- **Industry zones and residents** on the base, as real firms and real
-  households (D53, step 2).
+- **Zones and tenant firms**: companies that set up on the town's land and
+  pay rent out of what they earn.
+- **Places to visit and stay**, and the visitors who use them.
+- **Towns run by agents** (D68), so the Moon has an economy to join.
 - **Land first at signup**, with the Kestrel chartered out of what the base
   earns (D53, step 3).
 - **The flats**, with the lunar night and a helium-3 licence.

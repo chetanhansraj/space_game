@@ -220,7 +220,7 @@ def test_midnight_takes_the_lease_wear_and_payroll(game, works):
         sum(base.MODULES[k].cost for k in base.KIT))
     # To the credit, give or take the fraction carried from the day before.
     assert abs(y["upkeep"] - money["upkeep_per_day"]) <= 1
-    assert y["wages"] == money["wages_per_day"] == 4 * basegame.WAGE_PER_CREW_DAY
+    assert y["wages"] == money["wages_per_day"] == 6 * basegame.WAGE_PER_CREW_DAY
     assert ledger.credits_destroyed() - burned >= y["lease"] + y["upkeep"]
     # Payroll is not burned: it is in the households' accounts, to be spent.
     assert y["wages"] % len(households) == 0 and paid >= 0
@@ -238,7 +238,7 @@ def test_taking_plant_down_before_midnight_does_not_dodge_the_day(game, works):
     run(game, 2)
     y = view(game, works)["books"]["yesterday"]
     assert y["lease"] > rent * 22 // 24 - 100
-    assert y["wages"] >= 4 * basegame.WAGE_PER_CREW_DAY * 22 // 24 - 10
+    assert y["wages"] >= 6 * basegame.WAGE_PER_CREW_DAY * 22 // 24 - 10
 
 
 def test_a_company_that_cannot_pay_stands_down_until_it_can(game, works):
@@ -346,26 +346,170 @@ def test_a_policy_is_checked(game, works):
         game.base_policy(works, "GOODS", sell=True)
 
 
+# -- the people -------------------------------------------------------------------
+
+def grow(game, player, kind, how="lease"):
+    """Stand one more module against the cluster, on open ground."""
+    b = view(game, player)
+    rocks = {tuple(r) for r in b["layout"]["rocks"]}
+    ice = {tuple(t) for p in b["layout"]["patches"] for t in p["tiles"]}
+    taken = {(m["x"], m["y"]) for m in b["modules"]} | {
+        tuple(c) for c in b["conduits"]}
+    core = [(m["x"], m["y"]) for m in b["modules"] if m["type"] != "ice_miner"]
+    for x, y in sorted(core):
+        for t in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if (t not in rocks and t not in ice and t not in taken
+                    and 0 <= t[0] < 24 and 0 <= t[1] < 24):
+                game.base_build(player, kind, t[0], t[1], how=how)
+                return
+    raise AssertionError("no open ground beside the base")
+
+
+def people(game, player) -> int:
+    return len(view(game, player)["people"]["residents"])
+
+
+def test_six_found_a_site_and_run_it(game, works):
+    run(game, 8)
+    b = view(game, works)
+    names = [r["name"] for r in b["people"]["residents"]]
+    assert names[:4] == ["Asha", "Kenji", "Lena", "Rafael"] and len(names) == 6
+    assert b["report"]["crew"] == [6, 6, 6]
+    assert b["report"]["needs"] == {"air": True, "water": True, "food": True}
+
+
+def test_a_full_town_gets_no_one_new(game, works):
+    midnight(game)
+    run(game, 48)
+    assert people(game, works) == 6
+
+
+def test_a_town_with_berths_air_and_food_grows_and_the_ark_leases_it_more(
+        game, works):
+    cap = view(game, works)["money"]["lease_cap"]
+    for kind in ("hab", "hydroponics", "radiator", "solar", "solar"):
+        grow(game, works, kind)
+    midnight(game)
+    run(game, 24)
+    b = view(game, works)
+    # Twelve berths, one life-support unit good for eight, food for twelve.
+    assert people(game, works) == 8
+    assert b["people"]["shuttle"]["came"] and not b["people"]["shuttle"]["left"]
+    assert b["money"]["lease_cap"] == cap + 2 * basegame.LEASE_CAP_PER_RESIDENT
+    run(game, 48)
+    assert people(game, works) == 8                 # air for eight, no more
+    grow(game, works, "eclss")
+    run(game, 72)
+    assert people(game, works) == 12
+    b = view(game, works)
+    assert b["report"]["needs"] == {"air": True, "water": True, "food": True}
+    assert "town10" in [m["id"] for m in b["milestones"] if m["done"]]
+    # The newcomers are who tends the second bay and the second unit.
+    assert b["report"]["crew"][0] >= 9
+
+
+def test_hunger_sends_the_newest_home_and_the_founders_stay(game, works):
+    for kind in ("hab", "hydroponics", "radiator", "solar", "solar"):
+        grow(game, works, kind)
+    midnight(game)
+    run(game, 24)
+    assert people(game, works) == 8
+    for m in view(game, works)["modules"]:
+        if m["type"] == "hydroponics":
+            game.base_remove(works, m["id"])
+            game.base_conduit(works, [[m["x"], m["y"]]])
+    eaten = game.world.ledger.balance(f"base:{works.id}", "FOOD")
+    if eaten:
+        game.world.ledger.consume(f"base:{works.id}", "FOOD", eaten,
+                                  game.world.game_time(), memo="test")
+    run(game, 24 * 5)
+    b = view(game, works)
+    assert people(game, works) == 6
+    assert all(r.get("founder") for r in b["people"]["residents"])
+    assert b["report"]["needs"]["food"] is False
+    assert "base_departure" in [m["kind"] for m in game.inbox(works)]
+    assert b["money"]["lease_cap"] == basegame.LEASE_CAP
+
+
+def test_people_drink_the_ice_and_eat_what_the_bays_grow(game, works):
+    run(game, 6)
+    midnight(game)
+    run(game, 24)
+    y = view(game, works)["books"]["yesterday"]
+    # Six people, a kilogram of water an hour each; the plant takes the rest.
+    assert y["used_kg_ICE"] >= 6 * 24
+    b = view(game, works)
+    assert b["people"]["unmet"]["food"] == 0 and b["report"]["needs"]["food"]
+    # One bay feeds six exactly, so nothing reaches the pantry.
+    assert game.world.ledger.balance(f"base:{works.id}", "FOOD") == 0
+
+
+# -- promises ---------------------------------------------------------------------
+
+def test_jobs_are_other_ports_wanting_what_the_base_makes(game, works):
+    run(game, 30)
+    jobs = view(game, works)["jobs"]
+    board = [c for c in game.board.open()
+             if c.asset in basegame.STOCKED and c.node != SHACK]
+    assert {j["id"] for j in jobs} == {c.id for c in board}
+    for j in jobs:
+        assert j["node"] != SHACK and j["flight_ticks"] >= 1 and not j["mine"]
+
+
+def test_a_promise_kept_from_the_base_by_ship(game, works):
+    """The whole loop: take a job, make the goods, load, fly, get paid."""
+    ledger = game.world.ledger
+    job = None
+    for _ in range(24 * 12):
+        game.step()
+        job = next((j for j in view(game, works)["jobs"]
+                    if j["asset"] == "PROP"
+                    and j["qty_kg"] <= KESTREL.cargo_capacity_kg), None)
+        if job:
+            break
+    assert job, "no propellant job was posted in twelve days"
+    game.base_policy(works, "PROP", sell=True)       # sell as usual...
+    game.accept(works, job["id"])
+    assert next(j for j in view(game, works)["jobs"]
+                if j["id"] == job["id"])["mine"]
+    run(game, 3)
+    sold = view(game, works)["books"]["today"].get("sold_kg_PROP", 0)
+    held = view(game, works)["stock"]["PROP"]
+    assert held >= min(job["qty_kg"], held)          # ...but not the promise
+    assert held > 0 or sold == 0
+    while view(game, works)["stock"]["PROP"] < job["qty_kg"]:
+        game.step()
+        assert game.world.tick < job["deadline_tick"], "could not make it in time"
+    before = cash(game, works.account)
+    game.base_load(works, "PROP", job["qty_kg"] // TONNE)
+    game.dispatch(works, job["node"], sell_on_arrival=False)
+    while game.ship_of(works).state is ShipState.IN_TRANSIT:
+        game.step()
+    paid = cash(game, works.account) - before
+    assert paid >= job["payment"] - 5_000           # less fees and charges
+    assert game.board.get(job["id"]).status == "FULFILLED"
+
+
 # -- ship and base ------------------------------------------------------------------
 
 def test_the_ship_loads_from_the_base_only_at_its_port(game, works):
     game.base_policy(works, "PROP", sell=False)
-    game.base_policy(works, "ICE", buy=False)
     run(game, 12)
     ship = game.ship_of(works)
     stock = view(game, works)["stock"]
-    ice_t = stock["ICE"] // TONNE
-    assert ice_t >= 1
-    aboard = game.world.ledger.balance(works.account, "ICE")
-    game.base_load(works, "ICE", ice_t)
-    assert game.world.ledger.balance(works.account, "ICE") == aboard + ice_t * TONNE
-    assert view(game, works)["stock"]["ICE"] == stock["ICE"] - ice_t * TONNE
-    assert ship.loaded.get("ICE") == ice_t * TONNE
-    assert game.hold_used(works) == ice_t * TONNE
+    tonnes = stock["PROP"] // TONNE
+    assert tonnes >= 1
+    ledger = game.world.ledger
+    aboard = ledger.balance(works.account, "PROP")      # a full tank of fuel
+    game.base_load(works, "PROP", tonnes)
+    assert ledger.balance(works.account, "PROP") == aboard + tonnes * TONNE
+    assert view(game, works)["stock"]["PROP"] == stock["PROP"] - tonnes * TONNE
+    assert ship.loaded.get("PROP") == tonnes * TONNE
+    assert game.hold_used(works) == tonnes * TONNE      # beyond the tank: cargo
     with pytest.raises(GameError, match="holds"):
-        game.base_load(works, "ICE", 500)
-    game.base_unload(works, "ICE", ice_t)
-    assert game.hold_used(works) == 0 and ship.loaded.get("ICE") == 0
+        game.base_load(works, "PROP", 500)
+    game.base_unload(works, "PROP", tonnes)
+    assert game.hold_used(works) == 0 and ship.loaded.get("PROP") == 0
     game.dispatch(works, PEARY, sell_on_arrival=False)
     with pytest.raises(GameError, match="in flight"):
         game.base_load(works, "PROP", 1)

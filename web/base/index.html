@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lunar Ark · Your base</title>
+<title>Lunar Ark · Your town</title>
 <meta name="description" content="Your base on the rim of Shackleton crater, in the same world as your ship.">
 <meta name="theme-color" content="#030014">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -71,7 +71,7 @@ button{cursor:pointer}
 #advice .who{font-family:var(--mono);font-size:10px;color:var(--faint);margin-bottom:4px}
 #advice .act{margin-top:8px}
 #rail{display:flex;gap:6px;flex-wrap:wrap}
-#rail button{flex:1;border:1px solid var(--border);background:var(--glass);border-radius:10px;padding:8px 4px;
+#rail button{flex:1 0 30%;border:1px solid var(--border);background:var(--glass);border-radius:10px;padding:8px 4px;
   font-family:var(--disp);font-size:8.5px;letter-spacing:.16em;color:var(--dim);position:relative}
 #rail button.on{border-color:var(--cyan);color:var(--cyan-soft)}
 #rail .dot{position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;background:var(--pink);box-shadow:0 0 8px var(--pink)}
@@ -175,7 +175,7 @@ a.btn{color:var(--text);text-decoration:none;display:inline-block}
   <div class="chip" id="cCash"><span class="lbl">Credits</span><b>0</b></div>
   <div class="chip" id="cPower" title="Power drawn against power generated"><span class="lbl">Power kW</span><b>0</b></div>
   <div class="chip" id="cHeat" title="Heat made against heat the radiators reject"><span class="lbl">Heat kW</span><b>0</b></div>
-  <div class="chip" id="cCrew" title="Crew at work against crew the base can keep alive"><span class="lbl">Crew</span><b>0</b></div>
+  <div class="chip" id="cCrew" title="People living here against berths with air"><span class="lbl">People</span><b>0</b></div>
   <div class="chip opt" id="cIce"><span class="lbl">Ice t</span><b>0</b></div>
   <div class="chip" id="cProp"><span class="lbl">Propellant t</span><b>0</b></div>
   <div class="clock"><b id="date"></b><div class="hourbar"><i id="hour"></i></div></div>
@@ -186,8 +186,8 @@ a.btn{color:var(--text);text-decoration:none;display:inline-block}
 <aside id="left" hidden>
   <div id="advice" class="glass"></div>
   <div id="rail">
-    <button data-d="market">MARKET</button><button data-d="money">MONEY</button>
-    <button data-d="ship">SHIP</button><button data-d="goals">GOALS</button>
+    <button data-d="market">MARKET</button><button data-d="money">MONEY</button><button data-d="people">PEOPLE</button>
+    <button data-d="jobs">JOBS</button><button data-d="ship">SHIP</button><button data-d="goals">GOALS</button>
   </div>
   <div id="drawer" class="glass" hidden></div>
 </aside>

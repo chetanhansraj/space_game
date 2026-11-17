@@ -176,7 +176,7 @@ def test_charter_stand_the_kit_and_see_it(client, game):
     assert r.status_code == 400 and "site" in r.json()["detail"]
     r = client.post("/api/base/charter", json={"site": "shackleton_rim"},
                     headers=who)
-    assert r.status_code == 200 and len(r.json()["base"]["crates"]) == 27
+    assert r.status_code == 200 and len(r.json()["base"]["crates"]) == 29
 
     r = client.post("/api/base/build", headers=who,
                     json={"type": "command", "x": 12, "y": 12, "how": "crate"})
