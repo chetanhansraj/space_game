@@ -286,6 +286,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .budget div { display: flex; justify-content: space-between; align-items: baseline; }
 .budget dt { letter-spacing: 0.04em; } .budget dd { font-size: 13.5px; }
 .budget .net { grid-column: 1 / 3; margin-top: 4px; padding-top: 5px; border-top: 1px solid var(--line); } .budget .net dd { font-size: 14.5px; color: var(--cyan); }
+.budget.one { grid-template-columns: 1fr; }
+.dbar.yard { display: block; margin: 2px 0 10px; }
 .prices { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font: 500 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
 .prices button { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--raise); font: 500 11px var(--mono); }
 .prices button[aria-pressed="true"] { background: var(--grad); border-color: transparent; color: #fff; }

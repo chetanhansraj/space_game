@@ -4,7 +4,7 @@
 
 import { BUILDINGS, BUILD_MENU, BuildingType, ZONES, ZONE_COST } from '../sim/buildings';
 import { MISSIONS } from '../sim/missions';
-import {
+import { FOUNDRY_KG,
   State, Building, LUNAR_DAY, SHUTTLE_EVERY, TIERS, aliveCount, dayNumber, hoursToSunrise, hoursToSunset,
   PRICES, needs, bedsOf, habAt, jobsOf, drawOf, isNight, nightCover, nightNeed, phaseOf, population, support, tierOf,
 } from '../sim/sim';
@@ -30,8 +30,19 @@ export interface Handlers {
   readOffer(): void;
   offer(accept: boolean): void;
   deselect(): void;
+  /** The yard, in a town on the shared world: change the standing instruction, sell now, or load the ship. */
+  yard?(act: 'sell' | 'hold' | 'now' | 'load'): void;
 }
-export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; }
+/** A live town's yard as the server reports it. Kilograms and whole credits; the page only shows it. */
+export interface Yard {
+  held_kg: number; cap_kg: number; lot_kg: number; anchor: number; kcr: number;
+  make_kg_per_hour: number; foundries: number; full: boolean;
+  bid: number | null; last: number | null; sell: boolean; min_price: number;
+  sold_kg: number; sales: number; sold_today: number; sales_today: number; sold_yesterday: number; sales_yesterday: number;
+  open: boolean; pad: boolean; needs: number;
+  ship: { here: boolean; aboard_kg: number; room_kg: number };
+}
+export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const num = (n: number, dp = 0) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -164,6 +175,8 @@ export class Hud {
       const el = e.target as HTMLElement;
       const pr = el.closest('button[data-price]') as HTMLButtonElement | null;
       if (pr) { h.price(Number(pr.dataset.price)); this.drawerKey = '?'; }
+      const yd = el.closest('button[data-yard]') as HTMLButtonElement | null;
+      if (yd && h.yard) { h.yard(yd.dataset.yard as 'sell' | 'hold' | 'now' | 'load'); this.drawerKey = '?'; }
       if (el.closest('[data-act="close"]')) this.openDrawer(null);
       if (el.closest('[data-act="read"]')) h.readOffer();
       if (el.closest('[data-act="adv"]')) this.doAdv();
@@ -291,8 +304,8 @@ export class Hud {
     $('hint').textContent = ui.hint;
     this.messages(s);
     this.alerts(s);
-    this.rail(s);
-    this.drawerBody(s);
+    this.rail(s, ui);
+    this.drawerBody(s, ui);
     this.inspector(s, ui);
   }
 
@@ -360,7 +373,7 @@ export class Hud {
   }
 
   /** Badges and the little demand meter on the rail. A green count is unread messages, as in a chat app. */
-  private rail(s: State) {
+  private rail(s: State, ui: UiState) {
     const u = urgent(s), m = MISSIONS[s.mission], nd = needs(s);
     const blocked = ZONES.some(z => s.want[z.key] > 0.15 && !!s.block[z.key]);
     const unmet = nd.some(q => !q.met), soon = s.deals.some(d => d.due - s.t < 40);
@@ -369,7 +382,7 @@ export class Hud {
     const crewTone = s.crew.map(c => (!c.alive ? 'dead' : c.health < 35 ? 'bad' : c.health < 70 ? 'warn' : 'ok'));
     const fresh = s.crew.map((_, i) => (m && m.who === i && s.mission > this.seenMis ? 1 : 0) + s.alerts.filter(a => a.who === i && a.id > this.seenBy[i] && !a.msg.includes(': done.')).length);
     const want = ZONES.map(z => Math.round(s.want[z.key] * 10));
-    const key = [u?.who, m?.who, blocked, unmet, soon, !!s.offer, s.materials < 0, unread, this.drawer, crewTone.join(), fresh.join(), want.join()].join('|');
+    const key = [u?.who, m?.who, blocked, unmet, soon, !!s.offer, s.materials < 0, !!ui.yard?.full, unread, this.drawer, crewTone.join(), fresh.join(), want.join()].join('|');
     if (key === this.railKey) return;
     this.railKey = key;
     const badge = (id: DrawerId, tone: string | null, text = '') => {
@@ -382,7 +395,7 @@ export class Hud {
       const b = $(`rb-crew${i}`); b.dataset.tone = crewTone[i]; b.classList.toggle('asking', m?.who === i);
     });
     badge('demand', blocked ? 'warn' : unmet ? 'warn' : null);
-    badge('money', s.materials < 0 ? 'bad' : null);
+    badge('money', s.materials < 0 ? 'bad' : ui.yard?.full ? 'warn' : null);
     badge('people', s.flows.exposed + s.flows.atRisk > 0 ? 'bad' : null);
     badge('deals', s.offer ? 'sun' : soon ? 'warn' : null);
     badge('log', unread ? 'dim' : null, unread > 9 ? '9+' : String(unread || ''));
@@ -404,8 +417,25 @@ export class Hud {
     return `${s.rovers.length ? `${s.stats.trips} rover trips so far` : 'No rovers yet'}, ${s.finds.length} survey find${s.finds.length === 1 ? '' : 's'}. ${raw ? `${raw} zoned tile${raw > 1 ? 's' : ''} still to level.` : 'The graders are idle.'}`;
   }
 
+  /** The yard: what the foundries have made, what the port will pay, and what to do with it. */
+  private yardHtml(y: Yard): string {
+    const t = (kg: number, dp = 1) => `${num(kg / 1000, dp)} t`;
+    const per = (cr: number | null) => (cr === null ? 'no buyer' : `${num(cr / y.kcr, 1)} a tonne`);
+    const whole = Math.floor(y.held_kg / y.lot_kg), tone = y.full ? '#ff6b6b' : y.held_kg > y.cap_kg / 2 ? '#f0a04e' : 'var(--cyan)';
+    const making = y.full ? 'Yard full: the foundries have stopped' : y.foundries === 0 ? 'No foundry yet. Zone land for Industry'
+      : y.make_kg_per_hour > 0 ? `Making ${num(y.make_kg_per_hour)} kg an hour` : 'Foundries resting';
+    const sold = (kg: number, cr: number) => (kg ? `${t(kg, 0)} · +${num(cr / y.kcr)}` : 'nothing');
+    const gate = !y.open ? `<p class="txt">Nothing leaves the yard until the town has ${y.pad ? '' : 'a working landing pad and '}${y.needs} people. What is made waits here.</p>` : '';
+    const acts = y.open ? `<div class="prices"><span>As made</span><button type="button" data-yard="sell" aria-pressed="${y.sell}">Sell</button><button type="button" data-yard="hold" aria-pressed="${!y.sell}">Hold</button></div>
+      <div class="acts" style="margin-bottom:8px">${whole >= 1 && y.bid !== null && y.bid >= y.min_price ? `<button type="button" class="primary" data-yard="now">Sell ${whole} t now</button>` : ''}${y.ship.here && whole >= 1 && y.ship.room_kg >= y.lot_kg ? `<button type="button" data-yard="load">Load ${Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg))} t into your ship</button>` : ''}</div>` : '';
+    return `<h3>Yard · manufactured goods</h3><p class="sub">${t(y.held_kg)} of ${t(y.cap_kg, 0)} · ${esc(making)}</p>
+      <span class="dbar yard"><i style="left:0;width:${Math.min(100, Math.round((y.held_kg / y.cap_kg) * 100))}%;background:${tone}"></i></span>
+      <dl class="budget one"><div><dt>Best bid at the Flats</dt><dd>${per(y.bid)}</dd></div><div><dt>Earth pays</dt><dd>${per(y.anchor)}</dd></div><div><dt>Sold today</dt><dd>${sold(y.sold_today, y.sales_today)}</dd></div><div><dt>Sold in all</dt><dd>${sold(y.sold_kg, y.sales)}</dd></div></dl>
+      ${acts}${gate}<p class="txt">Goods sell by the tonne to whoever at the port bids most${y.sell && y.open ? ', and never below Earth\'s price' : ''}.${y.ship.aboard_kg ? ` ${t(y.ship.aboard_kg, 0)} aboard your ship.` : ''}</p><h3>The town</h3>`;
+  }
+
   /** Whatever drawer is open. Only one at a time, and none by default. */
-  private drawerBody(s: State) {
+  private drawerBody(s: State, ui: UiState) {
     const box = $('drawer'), id = this.drawer;
     if (!id) { if (!box.hidden) { box.hidden = true; box.innerHTML = ''; } this.drawerKey = ''; return; }
     const f = s.flows, crew = aliveCount(s), pop = population(s);
@@ -424,10 +454,11 @@ export class Hud {
     } else if (id === 'money') {
       const e = f.earn, money = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}`;
       const pi = PRICES.indexOf(s.price);
-      html = `${head('Money')}<p class="sub">${num(Math.floor(s.materials))} credits · per hour</p>
-        <dl class="budget"><div><dt>Foundries</dt><dd>${money(e.foundry)}</dd></div><div><dt>Rent</dt><dd>${money(e.rent)}</dd></div><div><dt>Visitors</dt><dd>${money(e.visitors)}</dd></div><div><dt>Concourses</dt><dd>${money(e.shops)}</dd></div><div><dt>Earth grant</dt><dd>${money(e.grant)}</dd></div><div><dt>Upkeep</dt><dd>${money(-f.upkeep)}</dd></div><div class="net"><dt>Net an hour</dt><dd>${money(f.income)}</dd></div></dl>
+      const y = ui.yard;
+      html = `${head('Money')}${y ? this.yardHtml(y) : ''}<p class="sub">${num(Math.floor(s.materials))} credits · per hour</p>
+        <dl class="budget">${y ? '' : `<div><dt>Foundries</dt><dd>${money(e.foundry)}</dd></div>`}<div><dt>Rent</dt><dd>${money(e.rent)}</dd></div><div><dt>Visitors</dt><dd>${money(e.visitors)}</dd></div><div><dt>Concourses</dt><dd>${money(e.shops)}</dd></div><div><dt>Earth grant</dt><dd>${money(e.grant)}</dd></div><div><dt>Upkeep</dt><dd>${money(-f.upkeep)}</dd></div><div class="net"><dt>Net an hour</dt><dd>${money(f.income)}</dd></div></dl>
         <div class="prices"><span>Prices</span>${['Low', 'Fair', 'High'].map((n, i) => `<button type="button" data-price="${i}" aria-pressed="${i === pi}">${n}</button>`).join('')}</div>
-        <p class="txt">Rover fares, landing fees, contracts and mission rewards come on top of this.</p>`;
+        <p class="txt">${y ? 'Goods sold, rover' : 'Rover'} fares, landing fees, contracts and mission rewards come on top of this.</p>`;
     } else if (id === 'people') {
       const nextTier = TIERS.find(t => t[0] > pop), sh = s.shuttle;
       const pad = s.buildings.find(b => b.type === 'pad' && b.progress >= 1);
@@ -476,7 +507,7 @@ export class Hud {
     // so a button is never swapped out from under the pointer.
     const u2 = urgent(s), m2 = MISSIONS[s.mission], ci = id.startsWith('crew') ? Number(id.slice(4)) : -1;
     const struct = ci >= 0 ? `${u2 && u2.who === ci ? u2.title : ''}|${m2 && m2.who === ci ? `${s.mission}:${m2.tool ? s.materials >= BUILDINGS[m2.tool].cost : ''}` : ''}|${s.alerts.filter(a => a.who === ci).length}`
-      : id === 'money' ? `${s.price}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
+      : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full].join() : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
     if (this.drawerKey !== '?' && (this.pressing || (struct === this.drawerStruct && now - this.drawerAt < 3000))) return;
     this.drawerKey = html; this.drawerAt = now; this.drawerStruct = struct;
     const top = box.scrollTop;
@@ -519,12 +550,13 @@ export class Hud {
         let now = '', read = '';   // `now` is live status worth seeing at once; `read` waits behind More
         if (b.type === 'pad') read = `<p>Flights so far: ${s.stats.flights}. A shuttle comes every ${SHUTTLE_EVERY} hours while the pad has power.</p>`;
         if (b.type === 'garage') { const mine = s.rovers.filter(r => r.bay === b.uid); now = `<p>${mine.map(r => r.phase === 'idle' ? 'In the bay' : `${r.phase === 'back' ? 'Returning from' : 'Out to'} ${esc(s.pois[r.poi].name)}${r.pax ? ` with ${r.pax} visitor${r.pax > 1 ? 's' : ''}` : ', survey run'}`).join('. ')}.</p>`; }
-        if (b.type === 'printer') { const o = s.ore[b.y * s.size + b.x] || s.ore[(b.y + 1) * s.size + b.x + 1], r = richOf(s, b); if (r > 0 && o) now = `<p class="effect">On ${esc(ORES[o - 1].name.toLowerCase())}: earns ${Math.round(r * 100)}% more.</p>`; else read = '<p>Plain regolith. A foundry on a survey find earns more.</p>'; }
+        if (b.type === 'printer') { const o = s.ore[b.y * s.size + b.x] || s.ore[(b.y + 1) * s.size + b.x + 1], r = richOf(s, b); if (r > 0 && o) now = `<p class="effect">On ${esc(ORES[o - 1].name.toLowerCase())}: ${s.cargo ? 'makes' : 'earns'} ${Math.round(r * 100)}% more.</p>`; else read = `<p>Plain regolith. A foundry on a survey find ${s.cargo ? 'makes' : 'earns'} more.</p>`;
+          if (s.cargo) { now += `<p class="effect">${s.cargo.room <= 0 ? 'Standing idle: the yard is full.' : `Makes ${FOUNDRY_KG} kg of goods an hour a level into the yard, when fully staffed.`}</p>`; } }
         if (dusty(s, b)) now = '<p class="effect">Coated in dust from a hard landing: half power until it is swept off.</p>';
         key = `b:${b.uid}:${st.text}:${night}:${b.on}:${b.level}:${hab}:${b.asleep}:${Math.floor(s.materials) >= repairCost(b)}:${now}:${this.more}`;
         html = `<button type="button" class="x" data-act="close" data-uid="0" aria-label="Close">×</button><p class="eyebrow">${esc(d.cluster)}</p><h2>${esc(d.name)}${d.zone && b.type !== 'greenhouse' ? ` · level ${b.level}` : ''}</h2><p class="state" data-tone="${b.asleep ? 'dim' : st.tone}">${esc(b.asleep ? 'Resting to save the batteries' : st.text)}</p>
           ${now}<dl>${draw ? `<div><dt>Draw now</dt><dd>${draw} kW</dd></div>` : ''}${d.gen ? `<div><dt>Output</dt><dd>${d.solar ? 'follows the Sun' : d.gen + ' kW'}</dd></div>` : ''}${beds ? `<div><dt>Beds</dt><dd>${beds}</dd></div>` : ''}${jobs ? `<div><dt>Jobs</dt><dd>${jobs}</dd></div>` : ''}<div><dt>Habitability</dt><dd>${hab}</dd></div></dl>
-          ${more(`<p class="effect">${esc(d.effect)}</p><p>${esc(d.desc)}</p>${read}${codex(b.type)}`)}<div class="acts">${acts.join('')}</div>`;
+          ${more(`<p class="effect">${esc(b.type === 'printer' && s.cargo ? `${FOUNDRY_KG} kg of goods an hour per level when fully staffed · 3 jobs per level` : d.effect)}</p><p>${esc(b.type === 'printer' && s.cargo ? 'Sinters moon dust into parts and fittings. They go to the yard and are sold at the port by the tonne. Contractors build these on land you zone for Industry. They need workers, and they are dusty neighbours.' : d.desc)}</p>${read}${codex(b.type)}`)}<div class="acts">${acts.join('')}</div>`;
       }
     }
     if (key === this.inspKey || (this.pressing && !!html && this.inspKey !== '?')) return;
