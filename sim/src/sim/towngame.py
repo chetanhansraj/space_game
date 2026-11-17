@@ -74,6 +74,9 @@ TOWN_GRANT = 40_000
 #: a new company would not get: anyone can have 160,000 cr from the same
 #: fund by founding one. *Invented*, D78.
 TOWN_START = 160_000
+#: How long the lander's air lasts, in game hours. The rules own this number
+#: (city/src/sim); it is repeated here only for the letters.
+LANDER_HOURS = 160
 #: A town may use the market once it has a working landing pad and this
 #: many people: the city builder's "Base" tier. D71.
 TRADE_POPULATION = 8
@@ -390,20 +393,45 @@ class TownOps:
         return self.town_meta(player)
 
     def refound_town(self, player) -> dict:
-        """Send a new crew to a town that has fallen silent."""
+        """Send a new crew to a town that has fallen silent.
+
+        The new crew lands with stores: a company that has less than the
+        floor a town is founded with is brought up to it from the Ark's
+        fund, with its capped arrears covered, and what the lost town owed
+        is written off. Without this a company whose town died with an
+        empty account could never start again, which is how the first
+        town on the live world ended, on its first day (D80).
+
+        Nothing above the floor is given, so a company with money pays for
+        its own second start, and what was built and lost stays lost.
+        """
         row = self._town(player)
         if self.town_engine.summary(row["state"])["phase"] != "lost":
             raise GameError("Your town is still alive.")
         attempt = row["attempt"] + 1
         seed = town_seed(player.id, attempt)
+        ledger, now = self.world.ledger, self.world.game_time()
+        arrears = min(player.upkeep_owed, self.arrears_cap)
+        relief = max(0, TOWN_START + arrears
+                     - ledger.balance(player.account, CREDIT))
         with self._mutation():
-            made = self._engine_call(
-                "create", seed, self._town_wallet(player, row["owed"]))
+            if relief and ledger.balance(self.dev_fund_account,
+                                         CREDIT) >= relief:
+                ledger.transfer(self.dev_fund_account, player.account, CREDIT,
+                                relief, kind="grant", game_time=now,
+                                ref=player.id, memo="town relief crew stores")
+            else:
+                relief = 0
+            made = self._engine_call("create", seed,
+                                     self._town_wallet(player, 0))
             self.db.execute(
                 "UPDATE town SET state = ?, seed = ?, attempt = ?, "
-                "founded_tick = ?, carry = 0, lost_tick = NULL "
-                "WHERE player_id = ?",
+                "founded_tick = ?, owed = 0, carry = 0, lost_tick = NULL, "
+                "caretaker = 0 WHERE player_id = ?",
                 (made.state, seed, attempt, self.world.tick, player.id))
+            self._message(player.id, "ark_development_office", "town_relief",
+                          {"company": player.name, "relief": relief,
+                           "hours": LANDER_HOURS})
         return self.town_meta(player)
 
     def _engine_call(self, name: str, *args):

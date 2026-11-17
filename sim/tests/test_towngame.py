@@ -384,3 +384,49 @@ def test_a_rich_company_gets_the_ordinary_grant_and_no_more(game):
 def meta_wallet(g, player) -> float:
     return g.town_meta(player)["wallet"]
 
+
+def test_a_new_crew_lands_with_stores_when_the_company_has_nothing(game):
+    """How the first town on the live world ended, and what follows it."""
+    from sim.game import ARREARS_CAP
+    player, _ = game.signup("Second Wind")
+    game.found_town(player)
+    run(game, 230)                                        # nobody came
+    assert game.town_meta(player)["summary"]["phase"] == "lost"
+    with game._mutation():
+        game.world.ledger.burn(player.account, cash(game, player.account),
+                               game.world.game_time(), memo="test: ruin")
+    game.db.execute("UPDATE player SET upkeep_owed = 1000000 WHERE id = ?",
+                    (player.id,))
+    game.db.execute("UPDATE town SET owed = 55000, caretaker = 1 "
+                    "WHERE player_id = ?", (player.id,))
+    player = game.player(player.id)
+    fund, made = cash(game, DEV_FUND), minted(game)
+    meta = game.refound_town(player)
+    relief = towngame.TOWN_START + ARREARS_CAP
+    assert cash(game, DEV_FUND) == fund - relief          # paid, not minted
+    assert minted(game) == made
+    assert meta["owed"] == 0 and meta["caretaker"]["on"] is False
+    assert meta["wallet"] * KCR == relief
+    assert meta["summary"]["phase"] == "playing" and meta["summary"]["t"] == 0
+    assert "town_relief" in [m["kind"] for m in game.inbox(player)]
+    while game.world.tick % 24 != 23:
+        game.step()
+    game.step()                                           # the first midnight
+    assert game.player(player.id).upkeep_owed == 0
+    assert meta_wallet(game, game.player(player.id)) >= 150
+
+
+def test_a_new_crew_is_paid_for_by_a_company_that_can_afford_one(game):
+    player, _ = game.signup("Deep Pockets")
+    game.found_town(player)
+    run(game, 230)
+    with game._mutation():
+        game.world.ledger.transfer(DEV_FUND, player.account, CREDIT, 400_000,
+                                   kind="grant",
+                                   game_time=game.world.game_time(),
+                                   memo="test: other business went well")
+    fund, before = cash(game, DEV_FUND), cash(game, player.account)
+    game.refound_town(game.player(player.id))
+    assert cash(game, DEV_FUND) == fund                   # nothing given
+    assert cash(game, player.account) == before
+

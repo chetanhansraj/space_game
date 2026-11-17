@@ -1639,6 +1639,34 @@ night was already provided for, it lived either way and the caretaker was
 270 credits spent for nothing. So it is insurance, and it is priced so that
 the choice is a real one.
 
+### D80 — A new crew lands with stores
+
+*Found on the live world on 17 November 2026.* The first town founded
+there was founded by the September company, an hour after the town went
+live and before D78 was deployed. It had no credits and a million in
+arrears. Nobody was at the controls that afternoon. It fell silent 197 game
+hours later, in the first lunar day, with nothing built.
+
+D72 said a lost town may be founded again with whatever the company has
+left and no second grant. For that company "whatever is left" is nothing,
+so the new crew would land unable to buy a solar panel and die the same
+way. A lost town with an empty account was a dead account.
+
+So a new crew lands with stores. When a company sends one, it is brought
+up to the same floor a town is founded with (D78: 160,000 cr, with its
+capped arrears covered) from the Ark's fund, and what the lost town still
+owed is written off. A caretaker's contract ends with the town it was for.
+
+What D72 meant is kept: nothing above the floor is given, so a company
+with money pays for its own second start, and everything that was built
+and lost stays lost. What changes is that losing a town can no longer end
+a company.
+
+*Invented, and it has a cost:* a company that keeps losing towns draws on
+the Ark's fund each time. The fund is finite and pays only while it can.
+If that is ever abused, the remedy is a waiting time before a relief crew
+is sent, not a return to the dead account.
+
 ---
 
 ## Still open — needs you
