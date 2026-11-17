@@ -41,6 +41,8 @@ class Result:
     credits: float      # the wallet as the rules left it, in town credits
     summary: dict
     made: int = 0       # whole kilograms of goods the foundries made
+    used: int = 0       # whole kilograms the buildings took from the yard as parts
+    landed: float = 0.0  # kilograms of parts Earth landed, already paid for
 
 
 class Engine:
@@ -73,7 +75,9 @@ class Engine:
     @staticmethod
     def _result(reply: dict) -> Result:
         return Result(reply["state"], float(reply["credits"]),
-                      reply["summary"], int(reply.get("made") or 0))
+                      reply["summary"], int(reply.get("made") or 0),
+                      int(reply.get("used") or 0),
+                      float(reply.get("landed") or 0))
 
     def create(self, seed: int, credits: float) -> Result:
         return self._result(self._call("create", int(seed), float(credits)))
@@ -92,6 +96,11 @@ class Engine:
 
         Given a yard, the foundries make goods into it instead of being
         paid, and ``Result.made`` is the whole kilograms they made.
+
+        With ``"wear": True`` in the yard the buildings also use goods as
+        spare parts: ``Result.used`` is the whole kilograms they took from
+        it, and ``Result.landed`` what Earth landed because it was empty,
+        charged to the wallet at ``"importAt"`` town credits a kilogram.
         """
         args = [state, float(hours), float(credits)]
         if yard is not None:

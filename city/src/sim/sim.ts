@@ -35,6 +35,20 @@ export const O2_PLANT = 1, GREENHOUSE_FOOD = 0.6, SHUTTLE_FOOD = 20, SHUTTLE_WAT
  * the root docs/DECISIONS.md D75) thirteen kilograms is worth what FOUNDRY pays in the practice game.
  */
 export const FOUNDRY_KG = 13;
+/**
+ * Kilograms of spare parts a town's buildings wear out in an hour, for each credit an hour of
+ * their upkeep. Parts are the same manufactured goods the foundries make, so a town's own industry
+ * is what keeps it standing, and a town without enough of it buys from one that has. A town of
+ * ninety buildings needs about thirteen kilograms an hour: two thirds of what its foundries make
+ * over a lunar day and night. Invented; root docs/DECISIONS.md D82.
+ */
+export const PARTS_KG = 5;
+/**
+ * A full yard sends the foundry shift home. Once buildings take parts out of it a full yard is
+ * never quite full, so the shift is called back only when there is real room again: this share of
+ * the yard, which is less than the smallest sale.
+ */
+export const YARD_RESTART = 0.02;
 export const PRICES = [0.75, 1, 1.3];   // low, fair, high
 
 export const GROUND = { flat: 0, rim: 1, floor: 2, boulder: 3, heritage: 4 } as const;
@@ -63,10 +77,23 @@ export type DemandKey = 'r' | 'i' | 'v';
  * The server owns the yard: it says how much room is left before each hour and takes away what was made.
  * A practice game has no yard and its foundries are paid by Earth as before.
  */
-export interface Cargo { cap: number; room: number; made: number; }
+export interface Cargo {
+  cap: number; room: number; made: number;
+  /** Kilograms in the yard now, as the rules count them through the hour. */
+  stock?: number;
+  /** The town is past its founding spares: its buildings wear and need parts. The server says when. */
+  wear?: boolean;
+  /** Credits a kilogram for parts landed from Earth when the yard has none. The server's price. */
+  importAt?: number;
+  /** Kilograms taken from the yard as parts and not yet reported, and kilograms Earth landed this hour. */
+  used?: number; landed?: number;
+  /** The yard filled and the shift went home; it stays home until there is room worth coming back for. */
+  full?: boolean;
+}
 
 export interface Flows {
   make: number;           // kilograms of goods per hour, when there is a yard
+  parts: number;          // kilograms of spare parts the buildings need per hour, once they wear
   yardFull: boolean;      // foundries are standing idle because the yard has no room
   gen: number; load: number; demand: number; battCap: number;
   o2Cap: number; waterCap: number; housing: number; lodging: number;
@@ -158,7 +185,7 @@ const isQuarters = (t: BuildingType) => t === 'habitat' || t === 'lander' || t =
 
 // ---------- setup ----------
 function emptyFlows(): Flows {
-  return { make: 0, yardFull: false, gen: 0, load: 0, demand: 0, battCap: 0, o2Cap: 0, waterCap: 0, housing: 0, lodging: 0, o2Rate: 0, waterRate: 0, foodRate: 0,
+  return { make: 0, parts: 0, yardFull: false, gen: 0, load: 0, demand: 0, battCap: 0, o2Cap: 0, waterCap: 0, housing: 0, lodging: 0, o2Rate: 0, waterRate: 0, foodRate: 0,
     jobs: 0, workers: 0, staff: 1, earn: { foundry: 0, rent: 0, visitors: 0, shops: 0, grant: 0 }, upkeep: 0, income: 0,
     nightDeficit: 0, essentialDeficit: 0, exposed: 0, atRisk: 0, lackO2: false, lackWater: false, lackFood: false, offline: 0,
     saving: false, habHomes: 50, habLodges: 50 };
@@ -500,7 +527,8 @@ function computeFlows(s: State, dt = 0) {
   const sunset = hoursToSunset(s.t), toDawn = hoursToSunrise(s.t);
 
   // First pass: capacity and what life support needs.
-  const full = !!s.cargo && s.cargo.room <= 0;
+  if (s.cargo) { if (s.cargo.room <= 0) s.cargo.full = true; else if (s.cargo.room >= s.cargo.cap * YARD_RESTART) s.cargo.full = false; }
+  const full = !!s.cargo?.full;
   let nightDraw = 0, steady = 0, essential = 0, planned = 0;
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
@@ -556,6 +584,7 @@ function computeFlows(s: State, dt = 0) {
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
     f.upkeep += b.progress >= 1 ? d.upkeep * (grows(b.type) ? b.level : 1) : 0;
+    if (s.cargo?.wear && b.progress >= 1) f.parts += PARTS_KG * d.upkeep * (grows(b.type) ? b.level : 1);
     if (!b.powered || !working(b)) continue;
     if (b.type === 'o2plant') f.o2Rate += O2_PLANT;
     else if (b.type === 'recycler') recycling = true;
@@ -786,7 +815,17 @@ export function tick(s: State) {
   s.water = Math.min(f.waterCap, s.water + f.waterRate * dt);
   s.food = s.food + f.foodRate * dt;
   s.materials += f.income * dt; if (f.income > 0) s.stats.earned += f.income * dt;
-  if (s.cargo && f.make > 0) { const made = Math.min(f.make * dt, s.cargo.room); s.cargo.made += made; s.cargo.room -= made; }
+  if (s.cargo && f.make > 0) { const made = Math.min(f.make * dt, s.cargo.room); s.cargo.made += made; s.cargo.room -= made; if (s.cargo.stock !== undefined) s.cargo.stock += made; if (made < f.make * dt - 1e-9) s.cargo.full = true; }
+  // Buildings wear. Parts come out of the yard; when it has none Earth lands them, at Earth's price.
+  if (s.cargo?.wear && f.parts > 0 && dt > 0) {
+    const c = s.cargo, need = f.parts * dt, take = Math.min(need, Math.max(0, c.stock ?? 0));
+    c.stock = (c.stock ?? 0) - take; c.used = (c.used ?? 0) + take; c.room = Math.min(c.cap, c.room + take);
+    const short = need - take;
+    if (short > 1e-9) {
+      c.landed = (c.landed ?? 0) + short; s.materials -= short * (c.importAt ?? 0);
+      alertOnce(s, 'parts', 'warn', 'The yard is out of spare parts, so Earth is landing them at twice what goods fetch at the port. Keep goods in the yard for the buildings, or buy them at the Flats.', 240);
+    }
+  }
   f.lackO2 = s.o2 <= 0; f.lackWater = s.water <= 0; f.lackFood = s.food <= 0;
   s.o2 = Math.max(0, s.o2); s.water = Math.max(0, s.water); s.food = Math.max(0, s.food);
 

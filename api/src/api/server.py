@@ -121,6 +121,7 @@ class YardSellIn(BaseModel):
 class YardPolicyIn(BaseModel):
     sell: bool
     min_price: int = Field(ge=1, le=100_000_000)
+    keep_t: int | None = Field(default=None, ge=0, le=1000)
 
 
 class YardStowIn(BaseModel):
@@ -597,7 +598,7 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
     def town_policy(body: YardPolicyIn, player: Player = Depends(player_for)):
         with lock:
             return town_reply(player, the_game().town_policy(
-                player, body.sell, body.min_price))
+                player, body.sell, body.min_price, body.keep_t))
 
     @app.post("/api/town/load")
     def town_load(body: YardStowIn, player: Player = Depends(player_for)):

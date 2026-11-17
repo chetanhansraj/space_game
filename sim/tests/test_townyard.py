@@ -137,7 +137,8 @@ def test_foundries_make_goods_and_earth_no_longer_pays_for_them(town):
         "ON t.id = p.txn_id WHERE p.account_id = ? AND p.asset = ? "
         "AND t.kind = 'extraction'", (account, YARD_ASSET)).fetchone()[0]
     assert extracted == y["made_kg"]
-    assert y["held_kg"] == y["made_kg"] - y["sold_kg"]
+    assert y["held_kg"] == (y["made_kg"] - y["sold_kg"]
+                            - y["parts"]["used_kg"])
 
 
 def test_an_hour_of_foundry_work_creates_no_credit(town):
@@ -179,11 +180,15 @@ def test_a_full_yard_stops_the_foundries_and_sends_the_shift_home(town):
     g.town_policy(player, False, ANCHOR)
     jobs = state(g, player)["flows"]["jobs"]
     account = stock(g, player, YARD_KG - goods(g, f"town:{player.id}"))
-    made = yard(g, player)["made_kg"]
+    before = yard(g, player)
+    made, used = before["made_kg"], before["parts"]["used_kg"]
     for _ in range(3):
         g.step()
     s = state(g, player)
-    assert goods(g, account) == YARD_KG                 # not a gram over
+    # not a gram over, and under only by the parts the buildings took,
+    # which is not room enough to call the shift back
+    worn = yard(g, player)["parts"]["used_kg"] - used
+    assert 0 < worn < 100 and goods(g, account) == YARD_KG - worn
     assert yard(g, player)["made_kg"] == made
     assert s["flows"]["yardFull"] and s["flows"]["make"] == 0
     assert s["flows"]["jobs"] < jobs                    # the shift went home
@@ -246,7 +251,8 @@ def test_the_standing_order_sells_whole_tonnes_while_the_owner_is_away(town):
     assert y["sold_kg"] >= sold + TONNE
     assert y["sold_kg"] % TONNE == 0
     assert y["sales"] > 0 and y["last"] is not None
-    assert goods(g, account) == y["made_kg"] + 2 * TONNE - y["sold_kg"]
+    assert goods(g, account) == (y["made_kg"] + 2 * TONNE - y["sold_kg"]
+                                 - y["parts"]["used_kg"])
 
 
 def test_hold_means_hold_and_a_floor_is_a_floor(town):
@@ -402,6 +408,148 @@ def test_a_new_crew_earns_its_place_at_the_port_again(played, tmp_path, routes):
                                    (pid,)).fetchone()[0])
     assert "trading" not in book and book["sold_kg"] > 0, "the record stays"
     g.db.close()
+
+
+# -- spare parts (D82) ---------------------------------------------------------------
+
+def consumed(g, account) -> int:
+    return g.db.execute(
+        "SELECT COALESCE(SUM(-p.amount), 0) FROM posting p JOIN txn t "
+        "ON t.id = p.txn_id WHERE p.account_id = ? AND p.asset = ? "
+        "AND t.kind = 'consumption'", (account, YARD_ASSET)).fetchone()[0]
+
+
+def foundries_off(g, player):
+    for b in state(g, player)["buildings"]:
+        if b["type"] == "printer" and b["on"]:
+            g.town_intent(player, {"k": "toggle", "uid": b["uid"]})
+
+
+def test_a_town_that_trades_wears_parts_out_of_its_own_yard(town):
+    """Goods leave the world as mass, on the ledger, and no credit moves."""
+    g, player = town
+    g.town_policy(player, False, ANCHOR)
+    account = stock(g, player, 3 * TONNE)
+    y0, made = yard(g, player), g.world.ledger.credits_in_existence()
+    assert y0["parts"]["wear"] and y0["parts"]["kg_per_hour"] > 0
+    for _ in range(6):
+        g.step()
+    y = yard(g, player)
+    used = y["parts"]["used_kg"] - y0["parts"]["used_kg"]
+    assert 5 * y0["parts"]["kg_per_hour"] - 1 <= used
+    assert used <= 7 * y["parts"]["kg_per_hour"] + 1
+    assert consumed(g, account) == y["parts"]["used_kg"]
+    assert y["parts"]["landed_kg"] == y0["parts"]["landed_kg"], \
+        "Earth lands nothing while the yard has stock"
+    assert goods(g, account) == (y0["held_kg"] + y["made_kg"] - y0["made_kg"]
+                                 - used)
+    assert g.world.ledger.credits_in_existence() == made
+    g.world.ledger.assert_conserved()
+
+
+def test_a_town_too_small_to_trade_still_has_its_founding_spares(routes):
+    g = Game.open(":memory:", now=T0, routes=routes)
+    player, _ = g.signup("New Ground")
+    g.found_town(player)
+    account = stock(g, player, 500)
+    for _ in range(5):
+        g.step()
+    parts = yard(g, player)["parts"]
+    assert parts["wear"] is False and parts["kg_per_hour"] == 0
+    assert parts["used_kg"] == 0 and parts["landed_kg"] == 0
+    assert goods(g, account) == 500 and consumed(g, account) == 0
+    g.db.close()
+
+
+def test_an_empty_yard_is_filled_from_earth_at_twice_the_price(town):
+    """To the credit: what Earth lands is what the buildings needed and the
+    yard did not have, and it costs twice the port's price for goods."""
+    g, player = town
+    foundries_off(g, player)
+    row = g._town_row(player.id)
+    engine, credits = g.town_engine, 500.0
+    price = g._parts_price() / TONNE / 1000
+    assert g._parts_price() == 2 * ANCHOR
+
+    def hour(held, wear):
+        return engine.tick(row["state"], 1.0, credits,
+                           {"cap": YARD_KG, "held": held, "wear": wear,
+                            "importAt": price})
+
+    plain, stocked, dry = hour(0, False), hour(5000, True), hour(0, True)
+    need = stocked.summary["parts"]
+    assert need > 0 and plain.summary["make"] == 0
+    assert plain.used == 0 and plain.landed == 0
+    assert stocked.landed == 0 and need - 1 <= stocked.used <= need + 1
+    assert stocked.credits == pytest.approx(plain.credits, abs=1e-9)
+    assert dry.used == 0 and dry.landed == pytest.approx(need, rel=1e-6)
+    assert plain.credits - dry.credits == pytest.approx(dry.landed * price,
+                                                        abs=1e-9)
+
+
+def test_what_earth_lands_is_counted_and_paid_through_the_ordinary_sink(town):
+    g, player = town
+    foundries_off(g, player)
+    account = g._yard_account(player)
+    with g._mutation():
+        g.world.ledger.consume(account, YARD_ASSET, goods(g, account),
+                               g.world.game_time(), memo="test: yard emptied")
+    made = g.world.ledger.credits_in_existence()
+    for _ in range(4):
+        g.step()
+    parts = yard(g, player)["parts"]
+    assert parts["landed_kg"] == pytest.approx(4 * parts["kg_per_hour"],
+                                               rel=0.1)
+    assert goods(g, account) == 0, "landed parts are fitted, not stored"
+    assert g.world.ledger.credits_in_existence() == made
+    assert any("spare parts" in a["msg"]
+               for a in state(g, player)["alerts"])
+
+
+def test_a_standing_sale_never_sells_the_parts_the_town_needs(town):
+    g, player = town
+    y = yard(g, player)
+    keep = y["parts"]["keep_kg"]
+    assert y["parts"]["keep_t"] is None and keep == y["parts"]["auto_kg"]
+    assert 0 < keep <= towngame.PARTS_KEEP_MAX
+    account = stock(g, player, keep + 2 * TONNE + 500 - goods(
+        g, f"town:{player.id}"))
+    sold = y["sold_kg"]
+    for _ in range(8):
+        g.step()
+        assert goods(g, account) >= yard(g, player)["parts"]["keep_kg"] - 5
+    assert yard(g, player)["sold_kg"] >= sold + 2 * TONNE
+
+    # Told to keep nothing, it sells every whole tonne.
+    g.town_policy(player, True, ANCHOR, keep_t=0)
+    assert yard(g, player)["parts"]["keep_kg"] == 0
+    for _ in range(8):
+        g.step()
+    assert goods(g, account) < TONNE
+
+
+def test_how_much_to_keep_is_the_owners_to_say(town):
+    g, player = town
+    for bad in (-1, 21, 1.5, True, "3"):
+        with pytest.raises(GameError):
+            g.town_policy(player, True, ANCHOR, keep_t=bad)
+    meta = g.town_policy(player, True, ANCHOR, keep_t=3)
+    assert meta["yard"]["parts"]["keep_kg"] == 3 * TONNE
+    assert meta["yard"]["parts"]["keep_t"] == 3
+    meta = g.town_policy(player, True, ANCHOR)
+    assert meta["yard"]["parts"]["keep_t"] is None
+
+
+def test_a_yard_kept_full_sends_the_shift_home_though_parts_are_taken(town):
+    """Buildings taking a few kilograms an hour is not room worth working for."""
+    g, player = town
+    g.town_policy(player, False, ANCHOR)
+    stock(g, player, YARD_KG - goods(g, f"town:{player.id}"))
+    for _ in range(3):
+        g.step()
+    s = state(g, player)
+    assert s["cargo"]["full"] and s["flows"]["yardFull"]
+    assert s["flows"]["make"] == 0
 
 
 # -- the steward --------------------------------------------------------------------

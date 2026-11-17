@@ -93,6 +93,20 @@ YARD_ASSET = "GOODS"
 #: game days of what Earth will take, so a town that stops selling has days,
 #: not hours, before its industry stands idle.
 YARD_KG = 20 * TONNE
+#: What a kilogram of parts landed from Earth costs, against what the
+#: Moon's own goods are worth at the port (the seed anchor). Twice: lifting
+#: them out of Earth's gravity is the reason anything is made here at all.
+#: It is also the most a town would ever pay another for goods, so it is
+#: the ceiling of the goods market as Earth's standing bid is its floor.
+#: *Invented*, D82.
+PARTS_IMPORT_PREMIUM = 2
+#: Hours of parts a standing sale leaves in the yard when the owner has not
+#: said how much to keep: a lunar night of 354 hours, when no foundry runs,
+#: and a few over. *Invented*, D82.
+PARTS_KEEP_HOURS = 360
+#: And the most it will keep by itself, so a big town's reserve never
+#: counts as goods piling up, which stops industry growing (D76).
+PARTS_KEEP_MAX = YARD_KG // 2 - 2 * TONNE
 
 
 #: A caretaker's wage, in credits a game hour, while one is hired. Burned:
@@ -237,10 +251,24 @@ class TownOps:
         book.setdefault("min_price", anchor)
         for key in ("made_kg", "sold_kg", "sales", "day", "made_today",
                     "sold_today", "sales_today", "made_yesterday",
-                    "sold_yesterday", "sales_yesterday"):
+                    "sold_yesterday", "sales_yesterday", "used_kg",
+                    "landed_kg"):
             book.setdefault(key, 0)
         book.setdefault("first_sale", False)
+        book.setdefault("keep_t", None)     # None: the yard decides (D82)
         return book
+
+    def _parts_price(self) -> int:
+        """Credits a tonne for parts landed from Earth."""
+        return (self.world.ledger.asset(YARD_ASSET).base_value
+                * PARTS_IMPORT_PREMIUM)
+
+    def _keep_kg(self, book: dict, summary: dict) -> int:
+        """What a standing sale leaves in the yard for the town's own use."""
+        if book.get("keep_t") is not None:
+            return min(book["keep_t"] * TONNE, YARD_KG)
+        return min(math.ceil(summary.get("parts", 0) * PARTS_KEEP_HOURS),
+                   PARTS_KEEP_MAX)
 
     def _yard_roll(self, book: dict) -> None:
         """Start a new game day's totals when the day has turned."""
@@ -332,13 +360,25 @@ class TownOps:
         report = self._fill_report(result, "sold", YARD_ASSET)
         return {**self.town_meta(player), "report": report}
 
-    def town_policy(self, player, sell: bool, min_price: int) -> dict:
-        """Set the standing instruction: sell what is made, or hold it."""
+    def town_policy(self, player, sell: bool, min_price: int,
+                    keep_t: int | None = None) -> dict:
+        """Set the standing instruction: sell what is made, or hold it.
+
+        ``keep_t`` is how many tonnes a standing sale leaves in the yard
+        for the town's own buildings. Left out, the yard keeps a lunar
+        night's worth of parts by itself.
+        """
         row = self._town(player)
         if not isinstance(sell, bool):
             raise GameError("Say whether to sell or to hold.")
+        if keep_t is not None and (isinstance(keep_t, bool)
+                                   or not isinstance(keep_t, int)
+                                   or not 0 <= keep_t <= YARD_KG // TONNE):
+            raise GameError("Keep a whole number of tonnes, no more than "
+                            "the yard holds.")
         book = self._yard_book(row)
         book["sell"], book["min_price"] = sell, self._price(min_price)
+        book["keep_t"] = keep_t
         with self._mutation():
             self._save_yard(player.id, book)
         return self.town_meta(player)
@@ -723,8 +763,13 @@ class TownOps:
         ledger, account = self.world.ledger, self._yard_account(player)
         held = ledger.balance(account, YARD_ASSET)
         before = self._town_wallet(player, row["owed"])
-        result = self.town_engine.tick(row["state"], 1.0, before,
-                                       {"cap": YARD_KG, "held": held})
+        # A town big enough to trade is past its founding spares: from then
+        # on its buildings wear, and what they wear out is goods (D82).
+        wear = bool(json.loads(row["yard"] or "{}").get("trading"))
+        result = self.town_engine.tick(
+            row["state"], 1.0, before,
+            {"cap": YARD_KG, "held": held, "wear": wear,
+             "importAt": self._parts_price() / TONNE / KCR})
         owed, carry = self._town_settle(
             player, before, result.credits, row["owed"], row["carry"], now,
             building=False)
@@ -753,20 +798,31 @@ class TownOps:
                       "population": seen["population"]}))
         book.update(pop=seen["population"], buildings=seen["buildings"],
                     tier=seen["tier"], peak=max(rank, book.get("peak", 0)))
-        made = min(result.made, YARD_KG - held)
+        used = min(result.used, held + result.made)
+        made = min(result.made, YARD_KG - held + used)
         if made > 0:
             ledger.extract(account, YARD_ASSET, made, now,
                            memo=f"{player.name} town foundries")
             book["made_kg"] += made
             book["made_today"] += made
+        # What the buildings wore out leaves the world as mass, the way
+        # propellant burned does. Parts Earth landed instead were paid for
+        # in the hour's credits, above, and never touch the yard.
+        if used > 0:
+            ledger.consume(account, YARD_ASSET, used, now,
+                           memo=f"{player.name} spare parts fitted")
+            book["used_kg"] += used
+        if result.landed:
+            book["landed_kg"] = round(book["landed_kg"] + result.landed, 3)
         if self._trade_open(result.summary, book) and not lost and book["sell"]:
             bid = self.world.books[TOWN_NODE].best_bid(YARD_ASSET)
-            if bid and bid >= book["min_price"]:
+            spare = (ledger.balance(account, YARD_ASSET)
+                     - self._keep_kg(book, result.summary))
+            if bid and bid >= book["min_price"] and spare > 0:
                 try:
                     with transaction(self.db):
                         sold = self._yard_sell(
-                            player, account, book,
-                            ledger.balance(account, YARD_ASSET),
+                            player, account, book, spare,
                             book["min_price"], now)
                     events += self._first_sale(player, book, sold)
                 except MarketError:
@@ -839,6 +895,16 @@ class TownOps:
             "bid": market.best_bid(YARD_ASSET),
             "last": market.last_price(YARD_ASSET),
             "sell": book["sell"], "min_price": book["min_price"],
+            "parts": {
+                "wear": bool(book.get("trading")),
+                "kg_per_hour": summary.get("parts", 0),
+                "keep_kg": self._keep_kg(book, summary),
+                "keep_t": book["keep_t"],
+                "auto_kg": self._keep_kg({"keep_t": None}, summary),
+                "used_kg": book["used_kg"],
+                "landed_kg": book["landed_kg"],
+                "import": self._parts_price(),
+            },
             "made_kg": book["made_kg"], "sold_kg": book["sold_kg"],
             "sales": book["sales"],
             "made_today": book["made_today"] if today else 0,
