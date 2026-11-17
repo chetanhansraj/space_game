@@ -9,7 +9,7 @@ paid out, with what each town made, fitted as spare parts and had landed
 from Earth (D82). The same command prints the same thing every time: the world is
 seeded and the house companies have fixed ids.
 
-About two seconds a game day. 120 days is the run quoted in D81.
+About two seconds a game day. 120 days is the run quoted in D81 to D83.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def main(days: int) -> None:
             print(f"day {day:3d} ({time.time() - started:4.0f} s)")
             for t in game.towns_view():
                 people = "silent" if t["lost"] else f"{t['population']:3d} people"
-                print(f"    {t['company']:24s} {people:>10s}  {t['tier']:7s} "
+                print(f"    {t['company']:24s} {t['kind']:12s} {people:>10s}  {t['tier']:7s} "
                       f"{t['buildings']:3d} buildings  {t['sold_t']:3d} t sold  "
                       f"crew {t['crews']}")
     assert ledger.credits_in_existence() == made, "credits were created"
@@ -65,7 +65,9 @@ def main(days: int) -> None:
               f"owed at most {owed.get(row['id'], 0):>8,}; made "
               f"{book.get('made_kg', 0) / 1000:5.1f} t, fitted "
               f"{book.get('used_kg', 0) / 1000:5.1f} t as parts, Earth "
-              f"landed {book.get('landed_kg', 0) / 1000:5.1f} t")
+              f"landed {book.get('landed_kg', 0) / 1000:5.1f} t, bought "
+              f"{book.get('bought_kg', 0) / 1000:5.1f} t at the port for "
+              f"{book.get('spent', 0):,} cr")
 
 
 if __name__ == "__main__":

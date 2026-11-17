@@ -1832,6 +1832,91 @@ in its first night, where before it was never close.
 *Invented, and yours to change:* 5 kg per credit of upkeep, twice the
 anchor for Earth's parts, 360 hours kept, 8 t at most, 2% to restart.
 
+### D83 — Five temperaments, and towns that buy from each other
+
+*Direction from Chetan, 17 November 2026: "they must have different
+temperaments, since this is the seed of the world of the game diversity
+will make it awesome."* He also asked whether AI agents will have to play
+this. They will not: see the end of this entry.
+
+**A temperament** is a small set of choices handed to the steward: the
+most lots of each zone it lays out unasked, the price level it charges,
+the contracts it turns down, and the most foundries it keeps running
+once the crew's own foundry missions are done. It changes what the
+steward chooses, never what it may do. What the crew asks for and what
+is urgent are done whatever the temperament. A caretaker has none.
+
+| Company | Kind | How it plays |
+|---|---|---|
+| Mare Cooperative | Mixed town | as before: the reference |
+| Serenitatis Foundry Co | Foundry town | low prices, one commercial lot, no film contracts |
+| Imbrium Works | Works town | two commercial lots, no film contracts |
+| Tycho Settlement Trust | Resort | high prices, runs no foundry, no works contracts |
+| Fecunditatis Union | Hostel town | one foundry, no works contracts |
+
+**Buying at the port.** A town whose yard is below its reserve leaves a
+bid at the Flats, a resting order that any town's hourly sale can fill.
+Whole lots, two at most at a time, paid in full when placed from the
+company's own credits, renewed every hour. It comes off the book at once
+when the town is lost, recalled or told to stop. The price is 500 cr a
+tonne above the best bid that is not another town's, and never above the
+owner's limit or Earth's price. So a town in need is served before the
+households and Earth, and two towns in need share what is sold and do
+not bid each other up. The owner can switch it off or set a limit.
+
+**Money.** Nothing is created. Credits pass from the town that needs
+parts to the town that made them, through the order book's escrow. The
+sinks are D82's.
+
+**Measured.** `python scripts/demo_towns.py 120`:
+
+| Town | People | Buildings | Made | Fitted | Sold | Bought at the port | Earth landed | Holds |
+|---|---|---|---|---|---|---|---|---|
+| Imbrium Works | 54 | 76 | 56 t | 24 t | 34 t | 4 t | 0.3 t | 7.7 M |
+| Fecunditatis Union | 50 | 152 | 29 t | 31 t | 4 t | 10 t | 0.3 t | 1.2 M |
+| Mare Cooperative (2nd crew) | 48 | 146 | 45 t | 23 t | 23 t | 4 t | 0.0 t | 2.6 M |
+| Tycho Settlement Trust | 47 | 122 | 5 t | 28 t | 1 t | 26 t | 2.9 t | 5.9 M |
+| Serenitatis Foundry Co | 44 | 80 | 59 t | 20 t | 39 t | 1 t | 0.6 t | 4.1 M |
+
+45 t of goods and 3.7 million credits passed between towns. The resort
+makes almost nothing and buys nearly every part it fits. The foundry
+town sells twice what it uses. Earth landed 4 t in all, where under D82
+alone the resort would have had over 24 t landed. No credit created, no
+failed town hours.
+
+**Found on the way, and recorded because they are about the rules, not
+the agents.**
+- *The rules pull towns toward one shape.* Capping a company's industrial
+  land barely changed what it made, because foundries grow in level where
+  they stand and industry follows workers. Only switching foundries off
+  made a town that does not supply itself. Real variety between towns
+  will need the rules to offer real choices: more kinds of building, and
+  ground that favours one thing over another.
+- *Price level is not a trade-off.* With high prices a resort and a works
+  town each ended near ten million credits, about twice the others. With
+  low prices a town living on visitors lost its first crew. As the rules
+  stand, High is simply better. So only the resort charges high, and
+  this is yours to look at (question 23).
+- *Goods are scarce and the households know it.* With over half the
+  Moon's goods now fitted as parts, the Flats' households bid 80,000 cr a
+  tonne and more, against Earth's 45,000. A fixed offer of 67,500 bought
+  a town almost nothing, which is why a town's bid follows the book. Good
+  news for anyone with a foundry. It also means Earth's order for lunar
+  parts is never filled: the Moon uses what it makes.
+
+**Will AI agents have to play this?** No. Everything above is rules in
+ordinary code: no model is called, it costs nothing to run, and it
+replays from the seed. A language model can be added later for what
+rules cannot do: change its mind, bargain, speak. The shape is already
+fixed by D68 and invariant 2: the model sets a company's policy now and
+then (its temperament, its limits, what it signs) through the public
+API, the steward carries it out hour by hour, and no model touches the
+ledger. One decision a game day is sixty calls a real day for each town,
+so it is a cost to choose, not a requirement.
+
+*Invented, and yours to change:* the five temperaments themselves, the
+500 cr step, two lots at a time.
+
 ---
 
 ## Still open — needs you
@@ -1899,6 +1984,13 @@ Deliberately not decided, because these are yours.
     cost that much to run once they need goods and parts, or the rate is
     too generous. This is the number that decides whether flying a ship
     is worth anyone's time.
+23. **Prices are not a trade-off** — D83. Charging High made a town about
+    twice as rich and cost it nothing that could be measured. Either High
+    should empty beds and Low fill them more strongly than they do, or
+    there should be no price button. Your design, your call.
+24. **The temperaments** — D83. Five were chosen so the seed world has a
+    foundry town, a resort and three in between. Say if you want others:
+    a mining town, a research base, one that hoards, one that undercuts.
 22. **What parts cost** — D82. Five kilograms per credit of upkeep and
     twice the anchor from Earth. Play a town past eight people and say
     whether the yard panel's numbers feel like pressure or like noise.

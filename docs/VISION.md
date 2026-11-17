@@ -319,17 +319,23 @@ its buildings wear, and what they wear out is manufactured goods from its
 own yard: over half of what the Moon makes is used on the Moon. A town
 with an empty yard has parts landed from Earth at twice the price.
 
-What a town cannot yet do is buy those parts from the town next door.
+The five are five different towns (D83): a mixed town, a foundry town,
+a works town, a resort that runs no foundry, a hostel town with one. A
+town short of parts bids at the port and another town's sale fills it,
+so the resort buys nearly every part it fits from its neighbours and
+credits pass between towns. None of this calls an AI model. It is rules.
 
 ### Next
 
-- **Towns that buy from each other**, now the most urgent thing: a town
-  short of parts leaves a standing bid at the port, another town's sale
-  fills it, and Earth's price is only the last resort. Then food, water
-  and air the same way, from other towns and from the polar works, so
-  that a ship has something to carry.
-- **Agents with temperaments, then agents that think** (D68): today all
-  five house towns are played the same way.
+- **More to trade than parts**: food, water and air bought the same way,
+  from other towns and from the polar works, so that a ship has something
+  to carry between ports.
+- **Rules that let towns really differ**: more kinds of building and
+  ground that favours one thing over another. Today the rules pull every
+  town toward one shape (D83).
+- **Agents that think** (D68): a model that sets a company's policy now
+  and then, through the public API, with the steward carrying it out.
+  Optional, and a cost to choose.
 - **Land first at signup**, with the ship earned (D53).
 - **The plot's real longitude**, so that dawn in the town is dawn on the
   Moon map.
