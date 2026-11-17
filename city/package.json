@@ -6,11 +6,12 @@
     "test": "test"
   },
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --minify --format=iife --target=es2020 --outfile=dist/game.js && cp src/index.html dist/index.html",
-    "dev": "esbuild src/main.ts --bundle --format=iife --sourcemap --outfile=dist/game.js --servedir=dist --watch",
+    "build": "esbuild src/main.ts --bundle --minify --format=iife --target=es2020 --define:LIVE=false --outfile=dist/game.js && cp src/index.html dist/index.html",
+    "dev": "esbuild src/main.ts --bundle --format=iife --sourcemap --define:LIVE=false --outfile=dist/game.js --servedir=dist --watch",
     "check": "tsc --noEmit",
     "test": "esbuild test/bot.ts --bundle --platform=node --outfile=dist/bot.cjs --log-level=warning && node dist/bot.cjs",
-    "build:engine": "esbuild src/engine.ts --bundle --minify --format=iife --target=es2020 --outfile=../sim/src/sim/town_engine.js"
+    "build:engine": "esbuild src/engine.ts --bundle --minify --format=iife --target=es2020 --outfile=../sim/src/sim/town_engine.js",
+    "build:live": "esbuild src/main.ts --bundle --minify --format=iife --target=es2020 --define:LIVE=true --outfile=../web/town/game.js && cp src/index.html ../web/town/index.html"
   },
   "keywords": [],
   "author": "",
