@@ -370,6 +370,40 @@ def test_a_town_from_before_yards_gains_one(played, tmp_path, routes):
     g.db.close()
 
 
+def test_the_size_to_trade_is_passed_once(routes):
+    """A town that shrinks keeps its place at the port. One that never grew
+    has none, and nothing leaves without a working pad. D81."""
+    g = Game.open(":memory:", now=T0, routes=routes)
+    book: dict = {}
+    assert not g._trade_open({"pad": True, "population": 7}, book)
+    assert not g._trade_open({"pad": False, "population": 8}, book)
+    assert g._trade_open({"pad": True, "population": 8}, book)
+    assert g._trade_open({"pad": True, "population": 4}, book)
+    assert not g._trade_open({"pad": False, "population": 4}, book)
+    g.db.close()
+
+
+def test_a_new_crew_earns_its_place_at_the_port_again(played, tmp_path, routes):
+    path, pid = played
+    copy = str(tmp_path / "again.db")
+    shutil.copy(path, copy)
+    g = Game.open(copy, routes=routes)
+    row = g.db.execute("SELECT * FROM town WHERE player_id = ?",
+                       (pid,)).fetchone()
+    assert json.loads(row["yard"]).get("trading") is True
+    state = json.loads(row["state"])
+    state["phase"] = "lost"
+    g.db.execute("UPDATE town SET state = ?, lost_tick = ? WHERE player_id = ?",
+                 (json.dumps(state), g.world.tick, pid))
+    g.db.commit()
+    meta = g.refound_town(g.player(pid))
+    assert meta["trade"]["open"] is False
+    book = json.loads(g.db.execute("SELECT yard FROM town WHERE player_id = ?",
+                                   (pid,)).fetchone()[0])
+    assert "trading" not in book and book["sold_kg"] > 0, "the record stays"
+    g.db.close()
+
+
 # -- the steward --------------------------------------------------------------------
 
 def test_the_steward_only_ever_asks_for_what_a_player_may():

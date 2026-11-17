@@ -221,9 +221,15 @@ class TownOps:
                 book[f"{key}_today"] = 0
             book["day"] = day
 
-    def _trade_open(self, summary: dict) -> bool:
-        return bool(summary["pad"]
-                    and summary["population"] >= TRADE_POPULATION)
+    def _trade_open(self, summary: dict, book: dict) -> bool:
+        """May goods leave the yard? A working pad, and a town that has
+        once been big enough to trade. The size is a milestone, passed
+        once: a town that shrinks keeps its place at the port, because a
+        town that could no longer sell could never pay its way back (D81).
+        """
+        if summary["population"] >= TRADE_POPULATION:
+            book["trading"] = True
+        return bool(summary["pad"] and book.get("trading"))
 
     def _yard_sell(self, player, account: str, book: dict, qty_kg: int,
                    limit: int, now: str):
@@ -266,7 +272,7 @@ class TownOps:
         summary = self.town_engine.summary(row["state"])
         if summary["phase"] == "lost":
             raise GameError("Your town has fallen silent.")
-        if not self._trade_open(summary):
+        if not self._trade_open(summary, self._yard_book(row)):
             raise GameError(
                 "Nothing leaves the yard until the town has a working "
                 f"landing pad and {TRADE_POPULATION} people.")
@@ -424,11 +430,14 @@ class TownOps:
                 relief = 0
             made = self._engine_call("create", seed,
                                      self._town_wallet(player, 0))
+            book = self._yard_book(row)     # the company's record stays;
+            book.pop("trading", None)       # the new town earns its place
             self.db.execute(
                 "UPDATE town SET state = ?, seed = ?, attempt = ?, "
                 "founded_tick = ?, owed = 0, carry = 0, lost_tick = NULL, "
-                "caretaker = 0 WHERE player_id = ?",
-                (made.state, seed, attempt, self.world.tick, player.id))
+                "caretaker = 0, yard = ? WHERE player_id = ?",
+                (made.state, seed, attempt, self.world.tick,
+                 json.dumps(book, separators=(",", ":")), player.id))
             self._message(player.id, "ark_development_office", "town_relief",
                           {"company": player.name, "relief": relief,
                            "hours": LANDER_HOURS})
@@ -588,7 +597,7 @@ class TownOps:
                            memo=f"{player.name} town foundries")
             book["made_kg"] += made
             book["made_today"] += made
-        if (not lost and book["sell"] and self._trade_open(result.summary)):
+        if self._trade_open(result.summary, book) and not lost and book["sell"]:
             bid = self.world.books[TOWN_NODE].best_bid(YARD_ASSET)
             if bid and bid >= book["min_price"]:
                 try:
@@ -635,7 +644,7 @@ class TownOps:
             faults=row["faults"], attempt=row["attempt"],
             wallet=self._town_wallet(player, row["owed"]),
             summary=summary,
-            trade={"open": self._trade_open(summary),
+            trade={"open": self._trade_open(summary, self._yard_book(row)),
                    "pad": bool(summary["pad"]),
                    "population": summary["population"],
                    "needs_population": TRADE_POPULATION},
