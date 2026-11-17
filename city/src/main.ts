@@ -109,6 +109,7 @@ async function boot(hot: any) {
       const whole = Math.floor(y.held_kg / y.lot_kg), kept = y.parts?.wear ? y.parts.keep_kg : 0, keep_t = y.parts?.keep_t ?? null;
       const call = act === 'sell' || act === 'hold' ? api('/town/policy', { sell: act === 'sell', min_price: y.min_price, keep_t })
         : act === 'keep' || act === 'keepnone' ? api('/town/policy', { sell: y.sell, min_price: y.min_price, keep_t: act === 'keep' ? null : 0 })
+        : act === 'buy' || act === 'nobuy' ? api('/town/policy', { sell: y.sell, min_price: y.min_price, keep_t, buy: act === 'buy' })
         : act === 'now' ? api('/town/sell', { tonnes: Math.floor(Math.max(0, y.held_kg - kept) / y.lot_kg), price: y.min_price })
         : api('/town/load', { tonnes: Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg)) });
       call.then(r => {
