@@ -24,7 +24,7 @@ from market.money import CREDIT
 
 from sim import towngame
 from sim.earth import ACCOUNT as EARTH
-from sim.game import Game, GameError
+from sim.game import DEV_FUND, Game, GameError
 from sim.persist import default_routes
 from sim.town import Engine
 from sim.towngame import (TOWN_NODE, TRADE_POPULATION, YARD_ASSET, YARD_KG)
@@ -550,6 +550,137 @@ def test_a_yard_kept_full_sends_the_shift_home_though_parts_are_taken(town):
     s = state(g, player)
     assert s["cargo"]["full"] and s["flows"]["yardFull"]
     assert s["flows"]["make"] == 0
+
+
+# -- buying parts at the port (D83) --------------------------------------------------
+
+def bids(g, account):
+    return [dict(r) for r in g.world.books[TOWN_NODE].open_orders(account)
+            if r["side"] == "BID"]
+
+
+def rival_bid(g) -> int:
+    return g.db.execute(
+        "SELECT MAX(price) FROM book_order WHERE node = ? AND asset = ? "
+        "AND side = 'BID' AND status = 'OPEN' AND account_id NOT LIKE 'town:%'",
+        (TOWN_NODE, YARD_ASSET)).fetchone()[0]
+
+
+def short_town(g, player):
+    """A town with no goods and no working foundry, and money: it must buy."""
+    foundries_off(g, player)
+    account = g._yard_account(player)
+    with g._mutation():
+        g.world.ledger.transfer(DEV_FUND, player.account, CREDIT, 600_000,
+                                kind="test", game_time=g.world.game_time())
+        g.world.ledger.consume(account, YARD_ASSET, goods(g, account),
+                               g.world.game_time(), memo="test: yard emptied")
+    return account
+
+
+def test_a_town_short_of_parts_bids_at_the_port_just_above_the_rest(town):
+    g, player = town
+    account = short_town(g, player)
+    g.town_policy(player, True, ANCHOR, keep_t=3)
+    wallet = cash(g, player.account)
+    g.step()
+    mine = bids(g, account)
+    assert len(mine) == 1
+    order = mine[0]
+    assert order["remaining_kg"] == towngame.PARTS_ORDER_LOTS * TONNE
+    assert order["price"] == rival_bid(g) + towngame.PARTS_BID_STEP
+    assert order["price"] <= g._parts_price()
+    # paid for in full when placed, out of the company's own credits
+    paid = order["price"] * towngame.PARTS_ORDER_LOTS
+    assert cash(g, account) == 0
+    assert cash(g, player.account) <= wallet - paid + 5000
+    y = yard(g, player)["parts"]
+    assert y["buy"] and y["on_order_kg"] == order["remaining_kg"]
+    # and it is renewed, not stacked: an hour later there is still one
+    g.step()
+    assert len(bids(g, account)) == 1
+
+
+def test_another_towns_sale_fills_it_and_the_money_goes_to_the_seller(town):
+    g, player = town
+    account = short_town(g, player)
+    g.town_policy(player, True, ANCHOR, keep_t=3)
+    g.step()
+    price = bids(g, account)[0]["price"]
+    made = g.world.ledger.credits_in_existence()
+    seller, _ = g.signup("Next Door Foundry")
+    with g._mutation():
+        g.world.ledger.extract(seller.account, YARD_ASSET, TONNE,
+                               g.world.game_time(), memo="test: a neighbour's goods")
+        before = cash(g, seller.account)
+        result = g._ioc(TOWN_NODE, YARD_ASSET, "ASK", ANCHOR, TONNE,
+                        seller.account, g.world.game_time())
+    assert result.filled_kg == TONNE
+    assert cash(g, seller.account) - before == price, "the best bid was the town's"
+    assert goods(g, account) == TONNE
+    g.step()
+    y = yard(g, player)["parts"]
+    assert y["bought_kg"] == TONNE and y["spent"] == price
+    assert cash(g, account) == 0, "no credit stays in the yard"
+    assert g.world.ledger.credits_in_existence() == made
+    g.world.ledger.assert_conserved()
+
+
+def test_the_owners_limit_and_earths_price_are_never_passed(town):
+    g, player = town
+    account = short_town(g, player)
+    g.town_policy(player, True, ANCHOR, keep_t=3, max_price=46_000)
+    g.step()
+    assert bids(g, account)[0]["price"] == 46_000
+    assert yard(g, player)["parts"]["max_price"] == 46_000
+    # an owner who would pay anything still pays no more than Earth asks
+    g.town_policy(player, True, ANCHOR, keep_t=3, max_price=500_000)
+    g.step()
+    assert bids(g, account)[0]["price"] <= g._parts_price()
+
+
+def test_told_to_stop_the_bid_comes_off_at_once_and_the_money_comes_home(town):
+    g, player = town
+    account = short_town(g, player)
+    g.town_policy(player, True, ANCHOR, keep_t=3)
+    g.step()
+    locked = bids(g, account)[0]["price"] * towngame.PARTS_ORDER_LOTS
+    wallet = cash(g, player.account)
+    meta = g.town_policy(player, True, ANCHOR, keep_t=3, buy=False)
+    assert bids(g, account) == [] and cash(g, account) == 0
+    assert cash(g, player.account) == wallet + locked
+    assert meta["yard"]["parts"]["buy"] is False
+    for _ in range(3):
+        g.step()
+    assert bids(g, account) == []
+    with pytest.raises(GameError):
+        g.town_policy(player, True, ANCHOR, buy="yes")
+
+
+def test_a_town_with_its_reserve_in_the_yard_bids_for_nothing(town):
+    g, player = town
+    account = stock(g, player, 5 * TONNE)
+    for _ in range(3):
+        g.step()
+        assert bids(g, account) == []
+
+
+def test_a_lost_town_leaves_nothing_on_the_book(town):
+    g, player = town
+    account = short_town(g, player)
+    g.town_policy(player, True, ANCHOR, keep_t=3)
+    g.step()
+    assert bids(g, account)
+    row = g._town_row(player.id)
+    dead = json.loads(row["state"])
+    for member in dead["crew"]:
+        member["alive"], member["health"] = False, 0
+    g.db.execute("UPDATE town SET state = ? WHERE player_id = ?",
+                 (json.dumps(dead), player.id))
+    g.db.commit()
+    g.step()
+    assert g._town_row(player.id)["lost_tick"] is not None
+    assert bids(g, account) == [] and cash(g, account) == 0
 
 
 # -- temperaments (D83) --------------------------------------------------------------

@@ -42,7 +42,7 @@ import json
 import logging
 import math
 
-from market.book import ASK
+from market.book import ASK, BID
 from market.db import transaction
 from market.errors import MarketError
 from market.money import CREDIT
@@ -107,6 +107,17 @@ PARTS_KEEP_HOURS = 360
 #: And the most it will keep by itself, so a big town's reserve never
 #: counts as goods piling up, which stops industry growing (D76).
 PARTS_KEEP_MAX = YARD_KG // 2 - 2 * TONNE
+#: A town short of parts offers this much a tonne more than the best bid
+#: at the port that is not another town's, and never more than its owner's
+#: limit or what Earth charges. So a town in need is served before the
+#: households and Earth's order, pays no more than it must, and two towns
+#: in need share what is sold and do not bid each other up to Earth's
+#: price. *Invented*, D83.
+PARTS_BID_STEP = 500
+#: The most a town bids for at once, in trading lots. The bid is renewed
+#: every hour, so this limits how much of the owner's money waits on the
+#: book, not how much the town can buy. *Invented*, D83.
+PARTS_ORDER_LOTS = 2
 
 
 #: A caretaker's wage, in credits a game hour, while one is hired. Burned:
@@ -276,12 +287,83 @@ class TownOps:
             book.setdefault(key, 0)
         book.setdefault("first_sale", False)
         book.setdefault("keep_t", None)     # None: the yard decides (D82)
+        book.setdefault("buy", True)        # bid at the port when short (D83)
+        book.setdefault("max_price", None)  # None: up to Earth's price
+        book.setdefault("bought_kg", 0)
+        book.setdefault("spent", 0)
         return book
 
     def _parts_price(self) -> int:
         """Credits a tonne for parts landed from Earth."""
         return (self.world.ledger.asset(YARD_ASSET).base_value
                 * PARTS_IMPORT_PREMIUM)
+
+    def _parts_settle(self, player, account: str, book: dict, now: str
+                      ) -> None:
+        """Take the town's bid off the book and bring its money home.
+
+        What the bid bought is already in the yard. What it did not spend
+        goes back to the company, so no credit is ever left in the yard.
+        """
+        ledger = self.world.ledger
+        last = book.pop("order", None)
+        if last:
+            row = self.db.execute(
+                "SELECT remaining_kg, status FROM book_order WHERE id = ?",
+                (last["id"],)).fetchone()
+            if row["status"] == "OPEN":
+                self.world.books[TOWN_NODE].cancel(last["id"], now)
+            left = ledger.balance(account, CREDIT)
+            book["bought_kg"] += last["kg"] - row["remaining_kg"]
+            book["spent"] += last["funded"] - left
+        left = ledger.balance(account, CREDIT)
+        if left > 0:
+            ledger.transfer(account, player.account, CREDIT, left,
+                            kind="sweep", game_time=now, ref=player.id,
+                            memo="parts order money returned")
+
+    def _parts_order(self, player, account: str, book: dict, summary: dict,
+                     now: str) -> None:
+        """Bid at the port for the parts the yard is short of.
+
+        A resting bid, like a household's or Earth's, that another town's
+        sale can fill: this is how one town buys from another. It is for
+        whole lots up to the reserve, never above the owner's price or
+        what Earth charges, and it is paid for in full when placed, from
+        the company's own credits. Renewed every hour, so it never stands
+        on the book after the town that placed it has stopped needing it.
+        """
+        ledger = self.world.ledger
+        spec = ledger.asset(YARD_ASSET)
+        lot = spec.lot_mass_kg
+        held = ledger.balance(account, YARD_ASSET)
+        short = min(self._keep_kg(book, summary), YARD_KG) - held
+        rival = self.db.execute(
+            "SELECT MAX(price) FROM book_order WHERE node = ? AND asset = ? "
+            "AND side = 'BID' AND status = 'OPEN' "
+            "AND account_id NOT LIKE 'town:%'",
+            (TOWN_NODE, YARD_ASSET)).fetchone()[0] or spec.base_value
+        price = min(book["max_price"] or self._parts_price(),
+                    self._parts_price(), rival + PARTS_BID_STEP)
+        lots = min(short // lot, PARTS_ORDER_LOTS,
+                   ledger.balance(player.account, CREDIT) // price)
+        if lots < 1:
+            return
+        cost = spec.cost(price, lots * lot)
+        ledger.transfer(player.account, account, CREDIT, cost, kind="sweep",
+                        game_time=now, ref=player.id,
+                        memo="parts order paid in")
+        placed = self.world.books[TOWN_NODE].place(
+            YARD_ASSET, BID, price, lots * lot, account, now)
+        book["order"] = {"id": placed.order_id, "kg": lots * lot,
+                         "funded": cost}
+
+    def _yard_close(self, player, now: str) -> None:
+        """A town that has stopped: nothing of its is left on the book."""
+        row = self._town_row(player.id)
+        book = self._yard_book(row)
+        self._parts_settle(player, self._yard_account(player), book, now)
+        self._save_yard(player.id, book)
 
     def _keep_kg(self, book: dict, summary: dict) -> int:
         """What a standing sale leaves in the yard for the town's own use."""
@@ -381,12 +463,15 @@ class TownOps:
         return {**self.town_meta(player), "report": report}
 
     def town_policy(self, player, sell: bool, min_price: int,
-                    keep_t: int | None = None) -> dict:
+                    keep_t: int | None = None, buy: bool | None = None,
+                    max_price: int | None = None) -> dict:
         """Set the standing instruction: sell what is made, or hold it.
 
         ``keep_t`` is how many tonnes a standing sale leaves in the yard
         for the town's own buildings. Left out, the yard keeps a lunar
-        night's worth of parts by itself.
+        night's worth of parts by itself. ``buy`` is whether to bid at the
+        port when the yard is short of that, and ``max_price`` the most to
+        offer a tonne; left out, they stay as they are.
         """
         row = self._town(player)
         if not isinstance(sell, bool):
@@ -397,9 +482,18 @@ class TownOps:
             raise GameError("Keep a whole number of tonnes, no more than "
                             "the yard holds.")
         book = self._yard_book(row)
+        if buy is not None and not isinstance(buy, bool):
+            raise GameError("Say whether to buy parts at the port or not.")
         book["sell"], book["min_price"] = sell, self._price(min_price)
         book["keep_t"] = keep_t
+        if buy is not None:
+            book["buy"] = buy
+        if max_price is not None:
+            book["max_price"] = self._price(max_price)
         with self._mutation():
+            if not book["buy"]:     # told to stop: the bid comes off now
+                self._parts_settle(player, self._yard_account(player), book,
+                                   self.world.game_time())
             self._save_yard(player.id, book)
         return self.town_meta(player)
 
@@ -518,6 +612,12 @@ class TownOps:
         attempt = row["attempt"] + 1
         seed = town_seed(player.id, attempt)
         ledger = self.world.ledger
+        book = self._yard_book(row)     # the company's record stays; the
+        for key in ("pop", "buildings", "tier", "peak", "trading"):
+            book.pop(key, None)         # town's standing starts again
+        # Anything the lost town still had on the book comes home first, so
+        # the relief is measured against all the company really has.
+        self._parts_settle(player, self._yard_account(player), book, now)
         arrears = min(player.upkeep_owed, self.arrears_cap)
         relief = max(0, TOWN_START + arrears
                      - ledger.balance(player.account, CREDIT))
@@ -528,9 +628,6 @@ class TownOps:
         else:
             relief = 0
         made = self._engine_call("create", seed, self._town_wallet(player, 0))
-        book = self._yard_book(row)     # the company's record stays; the
-        for key in ("pop", "buildings", "tier", "peak", "trading"):
-            book.pop(key, None)         # town's standing starts again
         self.db.execute(
             "UPDATE town SET state = ?, seed = ?, attempt = ?, "
             "founded_tick = ?, owed = 0, carry = 0, lost_tick = NULL, "
@@ -700,6 +797,7 @@ class TownOps:
                 (HOUSE_RECALL_DEBT,)).fetchall():
             self.db.execute("UPDATE town SET lost_tick = ? WHERE player_id = ?",
                             (tick, row["player_id"]))
+            self._yard_close(self.player(row["player_id"]), now)
             events.append(Event(
                 tick=tick, kind="town_lost", subject=row["player_id"],
                 detail=f"{row['name']} has recalled its crew: the town "
@@ -838,6 +936,17 @@ class TownOps:
             book["used_kg"] += used
         if result.landed:
             book["landed_kg"] = round(book["landed_kg"] + result.landed, 3)
+        # Last hour's bid for parts comes off the book and its change comes
+        # home. If the town still stands and its yard is still short, a
+        # fresh one goes on, which another town's sale can fill (D83).
+        self._parts_settle(player, account, book, now)
+        if self._trade_open(result.summary, book) and not lost and book["buy"]:
+            try:
+                with transaction(self.db):
+                    self._parts_order(player, account, book, result.summary,
+                                      now)
+            except MarketError:
+                pass    # the book refused it this hour; try the next
         if self._trade_open(result.summary, book) and not lost and book["sell"]:
             bid = self.world.books[TOWN_NODE].best_bid(YARD_ASSET)
             spare = (ledger.balance(account, YARD_ASSET)
@@ -928,6 +1037,10 @@ class TownOps:
                 "used_kg": book["used_kg"],
                 "landed_kg": book["landed_kg"],
                 "import": self._parts_price(),
+                "buy": book["buy"],
+                "max_price": book["max_price"] or self._parts_price(),
+                "bought_kg": book["bought_kg"], "spent": book["spent"],
+                "on_order_kg": (book.get("order") or {}).get("kg", 0),
             },
             "made_kg": book["made_kg"], "sold_kg": book["sold_kg"],
             "sales": book["sales"],

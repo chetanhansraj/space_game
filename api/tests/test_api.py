@@ -310,6 +310,12 @@ def test_the_yard_is_shown_and_its_door_is_shut_until_trade_opens(client, game):
     assert r.json()["meta"]["yard"]["parts"]["keep_t"] == 2
     assert client.post("/api/town/policy", headers=who, json={
         "sell": False, "min_price": 50_000, "keep_t": 21}).status_code == 400
+    # Whether to bid at the port when short, and the most to offer (D83).
+    assert parts["buy"] is True and parts["max_price"] == 90_000
+    r = client.post("/api/town/policy", headers=who, json={
+        "sell": False, "min_price": 50_000, "buy": False, "max_price": 60_000})
+    assert r.json()["meta"]["yard"]["parts"]["buy"] is False
+    assert r.json()["meta"]["yard"]["parts"]["max_price"] == 60_000
 
     # Selling and loading wait for a landing pad and eight people.
     for path, body in (("/api/town/sell", {"tonnes": 1, "price": 45_000}),
