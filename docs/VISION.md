@@ -314,15 +314,20 @@ the Flats, and one of them may lose its town and send a second crew. A
 person who founds a town finds neighbours, and a list that says where
 they stand among them.
 
-They are sellers only. Nothing on the Moon yet needs what another town
-makes, and that is the next thing.
+A town now needs what towns make (D82). Once it is big enough to trade
+its buildings wear, and what they wear out is manufactured goods from its
+own yard: over half of what the Moon makes is used on the Moon. A town
+with an empty yard has parts landed from Earth at twice the price.
+
+What a town cannot yet do is buy those parts from the town next door.
 
 ### Next
 
-- **Towns that need each other**, now the most urgent thing: a town's
-  upkeep paid in goods and parts bought on the book from other towns and
-  from the polar works, not from Earth by formula. This is what gives the
-  house towns' money somewhere to go and a ship something to carry.
+- **Towns that buy from each other**, now the most urgent thing: a town
+  short of parts leaves a standing bid at the port, another town's sale
+  fills it, and Earth's price is only the last resort. Then food, water
+  and air the same way, from other towns and from the polar works, so
+  that a ship has something to carry.
 - **Agents with temperaments, then agents that think** (D68): today all
   five house towns are played the same way.
 - **Land first at signup**, with the ship earned (D53).

@@ -1752,6 +1752,86 @@ as town income.
 *Invented, and yours to change:* five companies, two days apart, seven
 days before a new crew, recall at 160,000 cr.
 
+### D82 — Goods are spare parts
+
+*Delegated: Chetan's "go" on 17 November 2026 to the step proposed after
+D81.* House towns only sold, and what they earned piled up. A town now
+needs what towns make.
+
+**The rule.** Once a town has passed the port milestone its buildings
+wear. They use 5 kg of manufactured goods an hour for each credit an hour
+of building upkeep, taken from the town's own yard. A town of ninety
+buildings uses about 13 kg an hour, which is two thirds of what its
+foundries make across a lunar day and night. Credit upkeep is unchanged:
+parts are a new need, not a new price for an old one. The seed table has
+always said what goods are for: "outposts, upgrades, modules".
+
+**Before the milestone** a town wears nothing. It is living on the spares
+it landed with, so the first days of a new crew are exactly as hard as
+they were.
+
+**An empty yard.** Earth lands the parts, at twice the seed anchor for
+goods: 90,000 cr a tonne. Lifting things out of Earth's gravity is the
+reason anything is made on the Moon, so parts from Earth cost more than
+parts from next door. Twice is also now the ceiling of the goods market,
+as Earth's standing bid of 45,000 is its floor: no town would pay another
+more than Earth charges.
+
+**The reserve.** A standing sale leaves 360 hours of parts in the yard, a
+lunar night and a little, because no foundry runs at night. Never more
+than 8 t, so the reserve is not counted as goods piling up (D76). The
+owner can set it in whole tonnes or to nothing. Selling by hand and
+loading the ship are not limited: those are the owner's own acts.
+
+**A full yard** (amends D76). With parts leaving it a full yard is never
+exactly full. The shift goes home when the yard cannot take what was
+made, and comes back when 2% of the yard is free, which is less than the
+smallest sale.
+
+**Money.** Nothing is created (invariant 3) and there is no new faucet.
+Two sinks are added (invariant 7): goods consumed, which leave the world
+as mass on the ledger, and the premium on Earth's parts, which goes
+through the sink a town's other costs go through.
+
+**Who owns which number.** The rules own the physical need (`PARTS_KG`,
+`YARD_RESTART` in `city/src/sim/sim.ts`), so the engine stays the one
+place a town's physics lives. The server owns the price and the reserve
+(`PARTS_IMPORT_PREMIUM`, `PARTS_KEEP_HOURS`, `PARTS_KEEP_MAX` in
+`sim/src/sim/towngame.py`), because they come from the market.
+
+**Measured.** `python scripts/demo_towns.py 120`, five house towns left
+alone for 120 game days:
+
+| Town | People | Made | Fitted as parts | Sold | Earth landed | Holds |
+|---|---|---|---|---|---|---|
+| Mare Cooperative (2nd crew) | 81 | 47 t | 24 t | 21 t | 0.8 t | 2.4 M |
+| Serenitatis Foundry Co | 63 | 51 t | 36 t | 14 t | 0.9 t | 3.3 M |
+| Tycho Settlement Trust | 60 | 54 t | 35 t | 17 t | 0.4 t | 4.1 M |
+| Imbrium Works | 56 | 74 t | 34 t | 38 t | 0.2 t | 5.0 M |
+| Fecunditatis Union | 52 | 60 t | 30 t | 26 t | 0.2 t | 3.9 M |
+
+All five still reach town size. Over half of what the Moon makes is now
+used on the Moon. The five hold 18.8 million credits between them, against
+24.4 million before. Serenitatis came within 40,000 cr of being recalled
+in its first night, where before it was never close.
+
+**What this does not do, plainly.**
+- *Towns still do not buy from each other.* A town short of parts gets
+  them from Earth, not from the town next door. That needs a town to
+  leave a standing bid at the port for another town's sale to fill, and
+  it is not built. Measured, it would have had almost no customers: the
+  five agents play alike, keep a reserve, and ran short of less than a
+  tonne each. It starts to matter when towns differ, which means agents
+  with temperaments and people who build resorts without foundries.
+- *A ship has nothing new to carry.* Every town is at the Flats. Parts
+  will give ships work when the polar works needs them too, or when
+  towns stand on different ground.
+- *Towns are still rich.* Parts took about a quarter off what a house
+  company holds. Question 20 stands.
+
+*Invented, and yours to change:* 5 kg per credit of upkeep, twice the
+anchor for Earth's parts, 360 hours kept, 8 t at most, 2% to restart.
+
 ---
 
 ## Still open — needs you
@@ -1811,13 +1891,17 @@ Deliberately not decided, because these are yours.
     recall their own crew and start again, as a house company does, and
     if so with what wait? Without a wait it is a way to draw on the Ark's
     fund again and again.
-20. **How rich a town gets** — D70, D81. Left alone for two real days a
-    house company holds four to six million credits, against the 120,000
+20. **How rich a town gets** — D70, D81, D82. Left alone for two real
+    days a house company holds two and a half to five million credits
+    (four to six before spare parts), against the 120,000
     a new company starts with and the few thousand a cargo run earns.
     Town money is a thousand trade credits to one. Either towns should
     cost that much to run once they need goods and parts, or the rate is
     too generous. This is the number that decides whether flying a ship
     is worth anyone's time.
+22. **What parts cost** — D82. Five kilograms per credit of upkeep and
+    twice the anchor from Earth. Play a town past eight people and say
+    whether the yard panel's numbers feel like pressure or like noise.
 21. **Do house towns step back when people arrive?** — D81. Five agents
     are company on an empty Moon and competition on a full one. They
     could be capped at a share of all towns, or stay for good.

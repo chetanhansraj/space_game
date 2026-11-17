@@ -5,7 +5,8 @@
 Nobody signs up. Every ten game days it prints each town: people, standing,
 buildings, tonnes of goods sold, crews sent. At the end it checks that no
 credit was created and prints what each house company holds and what Earth
-paid out. The same command prints the same thing every time: the world is
+paid out, with what each town made, fitted as spare parts and had landed
+from Earth (D82). The same command prints the same thing every time: the world is
 seeded and the house companies have fixed ids.
 
 About two seconds a game day. 120 days is the run quoted in D81.
@@ -13,6 +14,7 @@ About two seconds a game day. 120 days is the run quoted in D81.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import sys
 import time
 
@@ -55,10 +57,15 @@ def main(days: int) -> None:
     print(f"Earth paid {income:,} cr as town income and is down "
           f"{earth - ledger.balance(EARTH, CREDIT):,} cr in all")
     for row in game.db.execute(
-            "SELECT id, name FROM player WHERE house = 1 ORDER BY created_tick"):
+            "SELECT p.id, p.name, t.yard FROM player p JOIN town t "
+            "ON t.player_id = p.id WHERE p.house = 1 ORDER BY p.created_tick"):
+        book = json.loads(row["yard"] or "{}")
         print(f"    {row['name']:24s} holds "
               f"{ledger.balance('player:' + row['id'], CREDIT):>10,} cr, "
-              f"owed at most {owed.get(row['id'], 0):,}")
+              f"owed at most {owed.get(row['id'], 0):>8,}; made "
+              f"{book.get('made_kg', 0) / 1000:5.1f} t, fitted "
+              f"{book.get('used_kg', 0) / 1000:5.1f} t as parts, Earth "
+              f"landed {book.get('landed_kg', 0) / 1000:5.1f} t")
 
 
 if __name__ == "__main__":
