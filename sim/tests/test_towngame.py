@@ -218,8 +218,10 @@ def test_town_income_is_earths_money_and_town_costs_are_burned(game, town):
         "SELECT p.account_id, SUM(p.amount) FROM posting p JOIN txn t "
         "ON t.id = p.txn_id WHERE t.kind = 'town_income' AND t.id > ? "
         "GROUP BY p.account_id", (mark,)).fetchall())
-    assert paid_by == {town.account: kinds["town_income"],
-                       EARTH: -kinds["town_income"]}
+    # Earth is the only payer, of this town and of any the world runs.
+    assert paid_by[town.account] == kinds["town_income"]
+    assert [a for a, n in paid_by.items() if n < 0] == [EARTH]
+    assert sum(paid_by.values()) == 0
     assert cash(game, town.account) - wallet == sum(kinds.values())
     assert minted(game) == made
     # And the town's own count of its money is the ledger's. The ship's

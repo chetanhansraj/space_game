@@ -103,6 +103,33 @@ YARD_KG = 20 * TONNE
 CARETAKER_FEE = 200
 
 
+#: Companies the world runs, in the order it charters them. Each is an
+#: ordinary company: the same grant from the same fund, the same ship and
+#: fee, the same town rules, the same seven requests, through the same
+#: door. What is different is who is at the controls: the steward, every
+#: hour (D77, D81). Their ids are fixed so that a world replayed from its
+#: seed founds the same towns on the same ground.
+HOUSE = (
+    ("house_mare", "Mare Cooperative"),
+    ("house_serenitatis", "Serenitatis Foundry Co"),
+    ("house_tycho", "Tycho Settlement Trust"),
+    ("house_imbrium", "Imbrium Works"),
+    ("house_fecunditatis", "Fecunditatis Union"),
+)
+#: Game days between one house company's chartering and the next, so the
+#: Moon's towns are of different ages. *Invented*, D81.
+HOUSE_EVERY_DAYS = 2
+#: Game days a house company waits before sending a new crew to a town it
+#: lost. A relief crew draws on the Ark's fund (D80); this stops a town
+#: that keeps failing from draining it. *Invented*, D81.
+HOUSE_RETURN_DAYS = 7
+#: What a house town may owe before its company recalls the crew: as much
+#: as founding a new one costs. A person in that hole can fly cargo to pay
+#: it off; a house company has no other business, and the rules stop a
+#: town in debt from building, so past this it would only sit there owing
+#: more. Measured: towns that recover never owed half of it. D81.
+HOUSE_RECALL_DEBT = TOWN_START
+
 def town_seed(player_id: str, attempt: int = 0) -> int:
     digest = hashlib.sha256(f"town|{player_id}|{attempt}".encode()).digest()
     return int.from_bytes(digest[:4], "big") & 0x7FFFFFFF
@@ -373,30 +400,34 @@ class TownOps:
         """Land four people on an equatorial plot at sunrise. One per company."""
         if self._town_row(player.id) is not None:
             raise GameError("Your company already has a town.")
-        ledger, tick, now = self.world.ledger, self.world.tick, self.world.game_time()
+        with self._mutation():
+            self._log([self._found_town(player, self.world.game_time())])
+        return self.town_meta(player)
+
+    def _found_town(self, player, now: str) -> Event:
+        """Found a company's town. Call inside a transaction."""
+        ledger, tick = self.world.ledger, self.world.tick
         arrears = min(player.upkeep_owed, self.arrears_cap)
         grant = max(TOWN_GRANT, TOWN_START + arrears
                     - ledger.balance(player.account, CREDIT))
-        with self._mutation():
-            if ledger.balance(self.dev_fund_account, CREDIT) >= grant:
-                ledger.transfer(self.dev_fund_account, player.account, CREDIT,
-                                grant, kind="grant", game_time=now,
-                                ref=player.id, memo="town founding grant")
-            seed = town_seed(player.id)
-            made = self._engine_call(
-                "create", seed, self._town_wallet(player, 0))
-            self.db.execute(
-                "INSERT INTO town (player_id, founded_tick, seed, attempt, "
-                "state) VALUES (?, ?, ?, 0, ?)",
-                (player.id, tick, seed, made.state))
+        if ledger.balance(self.dev_fund_account, CREDIT) >= grant:
+            ledger.transfer(self.dev_fund_account, player.account, CREDIT,
+                            grant, kind="grant", game_time=now,
+                            ref=player.id, memo="town founding grant")
+        seed = town_seed(player.id)
+        made = self._engine_call("create", seed, self._town_wallet(player, 0))
+        self.db.execute(
+            "INSERT INTO town (player_id, founded_tick, seed, attempt, "
+            "state) VALUES (?, ?, ?, 0, ?)",
+            (player.id, tick, seed, made.state))
+        if not player.house:
             self._message(player.id, "ark_development_office", "town_charter",
                           {"company": player.name, "grant": grant,
                            "trade_population": TRADE_POPULATION})
-            self._log([Event(
-                tick=tick, kind="town_founded", subject=player.id,
-                detail=f"{player.name} founded a town on the lunar equator",
-                data={"player": player.id, "company": player.name})])
-        return self.town_meta(player)
+        return Event(
+            tick=tick, kind="town_founded", subject=player.id,
+            detail=f"{player.name} founded a town on the lunar equator",
+            data={"player": player.id, "company": player.name})
 
     def refound_town(self, player) -> dict:
         """Send a new crew to a town that has fallen silent.
@@ -414,34 +445,38 @@ class TownOps:
         row = self._town(player)
         if self.town_engine.summary(row["state"])["phase"] != "lost":
             raise GameError("Your town is still alive.")
+        with self._mutation():
+            self._refound_town(player, row, self.world.game_time())
+        return self.town_meta(player)
+
+    def _refound_town(self, player, row, now: str) -> None:
+        """Land a new crew. Call inside a transaction."""
         attempt = row["attempt"] + 1
         seed = town_seed(player.id, attempt)
-        ledger, now = self.world.ledger, self.world.game_time()
+        ledger = self.world.ledger
         arrears = min(player.upkeep_owed, self.arrears_cap)
         relief = max(0, TOWN_START + arrears
                      - ledger.balance(player.account, CREDIT))
-        with self._mutation():
-            if relief and ledger.balance(self.dev_fund_account,
-                                         CREDIT) >= relief:
-                ledger.transfer(self.dev_fund_account, player.account, CREDIT,
-                                relief, kind="grant", game_time=now,
-                                ref=player.id, memo="town relief crew stores")
-            else:
-                relief = 0
-            made = self._engine_call("create", seed,
-                                     self._town_wallet(player, 0))
-            book = self._yard_book(row)     # the company's record stays;
-            book.pop("trading", None)       # the new town earns its place
-            self.db.execute(
-                "UPDATE town SET state = ?, seed = ?, attempt = ?, "
-                "founded_tick = ?, owed = 0, carry = 0, lost_tick = NULL, "
-                "caretaker = 0, yard = ? WHERE player_id = ?",
-                (made.state, seed, attempt, self.world.tick,
-                 json.dumps(book, separators=(",", ":")), player.id))
+        if relief and ledger.balance(self.dev_fund_account, CREDIT) >= relief:
+            ledger.transfer(self.dev_fund_account, player.account, CREDIT,
+                            relief, kind="grant", game_time=now,
+                            ref=player.id, memo="town relief crew stores")
+        else:
+            relief = 0
+        made = self._engine_call("create", seed, self._town_wallet(player, 0))
+        book = self._yard_book(row)     # the company's record stays; the
+        for key in ("pop", "buildings", "tier", "peak", "trading"):
+            book.pop(key, None)         # town's standing starts again
+        self.db.execute(
+            "UPDATE town SET state = ?, seed = ?, attempt = ?, "
+            "founded_tick = ?, owed = 0, carry = 0, lost_tick = NULL, "
+            "caretaker = 0, yard = ? WHERE player_id = ?",
+            (made.state, seed, attempt, self.world.tick,
+             json.dumps(book, separators=(",", ":")), player.id))
+        if not player.house:
             self._message(player.id, "ark_development_office", "town_relief",
                           {"company": player.name, "relief": relief,
                            "hours": LANDER_HOURS})
-        return self.town_meta(player)
 
     def _engine_call(self, name: str, *args):
         try:
@@ -533,10 +568,20 @@ class TownOps:
                     memo="town caretaker's wage")
         self.db.execute("UPDATE town SET caretaker_paid = caretaker_paid + ? "
                         "WHERE player_id = ?", (CARETAKER_FEE, player.id))
+        return self._steward_hour(player, row, now, keep=True)
+
+    def _steward_hour(self, player, row, now: str, keep: bool):
+        """Ask the steward what to do this hour and put each answer to the rules.
+
+        Returns the town's row as it stands afterwards. With ``keep`` only
+        what is urgent is asked for; without it the steward plays the town
+        as a careful owner would. Either way every request goes through the
+        door a player's does.
+        """
         try:
             asked = self.town_engine.steward(
                 row["state"], self._town_wallet(player, row["owed"]),
-                keep=True)
+                keep=keep)
         except TownError as exc:
             log.error("%s", exc)
             asked = []
@@ -544,11 +589,83 @@ class TownOps:
             self._apply_intent(player, self._town_row(player.id), intent, now)
         return self._town_row(player.id)
 
+    # -- towns the world runs --------------------------------------------------
+
+    def _house_business(self, now: str) -> list[Event]:
+        """Once a game day: charter the next house company, recall a crew
+        from a town that cannot recover, relieve a lost one.
+
+        A world with nobody in it is not a market. The firms the Moon was
+        seeded with did not last (F9), so the world founds towns of its own
+        and plays them by the rules a person plays by.
+        """
+        tick = self.world.tick
+        if tick % TICKS_PER_GAME_DAY:
+            return []
+        events: list[Event] = []
+        have = {r["id"]: r["created_tick"] for r in self.db.execute(
+            "SELECT id, created_tick FROM player WHERE house = 1")}
+        gap = HOUSE_EVERY_DAYS * TICKS_PER_GAME_DAY
+        if all(tick - made >= gap for made in have.values()):
+            for pid, name in HOUSE:
+                if pid in have or self.db.execute(
+                        "SELECT 1 FROM player WHERE name = ?",
+                        (name,)).fetchone():
+                    continue
+                try:
+                    self._charter_office_open()
+                except GameError:
+                    break
+                ships = len(self.world.ships)
+                try:
+                    with transaction(self.db):
+                        self._charter_company(pid, name, f"house:{pid}", now,
+                                              house=True)
+                        founded = self._found_town(self.player(pid), now)
+                    events += [self._joined(pid, name), founded]
+                except Exception:
+                    del self.world.ships[ships:]    # the books rolled back
+                    log.exception("could not charter %s", name)
+                break
+        for row in self.db.execute(
+                "SELECT t.player_id, p.name FROM town t JOIN player p "
+                "ON p.id = t.player_id WHERE p.house = 1 "
+                "AND t.lost_tick IS NULL AND t.owed > ?",
+                (HOUSE_RECALL_DEBT,)).fetchall():
+            self.db.execute("UPDATE town SET lost_tick = ? WHERE player_id = ?",
+                            (tick, row["player_id"]))
+            events.append(Event(
+                tick=tick, kind="town_lost", subject=row["player_id"],
+                detail=f"{row['name']} has recalled its crew: the town "
+                       "owed more than a new one costs",
+                data={"player": row["player_id"], "company": row["name"],
+                      "recalled": True}))
+        wait = HOUSE_RETURN_DAYS * TICKS_PER_GAME_DAY
+        for row in self.db.execute(
+                "SELECT t.* FROM town t JOIN player p ON p.id = t.player_id "
+                "WHERE p.house = 1 AND t.lost_tick IS NOT NULL").fetchall():
+            if tick - row["lost_tick"] >= wait:
+                player = self.player(row["player_id"])
+                try:
+                    with transaction(self.db):
+                        self._refound_town(player, row, now)
+                    events.append(Event(
+                        tick=tick, kind="town_founded", subject=player.id,
+                        detail=f"{player.name} sent a new crew to its town",
+                        data={"player": player.id, "company": player.name}))
+                except Exception:
+                    log.exception("could not relieve %s", player.name)
+        return events
+
     # -- the hour ------------------------------------------------------------
 
     def _tick_towns(self, now: str) -> list[Event]:
         """Every town's hour, inside the world's. One failure stops one town."""
         events: list[Event] = []
+        try:
+            events += self._house_business(now)
+        except Exception:
+            log.exception("house business failed at tick %d", self.world.tick)
         rows = self.db.execute(
             "SELECT * FROM town WHERE lost_tick IS NULL "
             "ORDER BY founded_tick, player_id").fetchall()
@@ -568,7 +685,9 @@ class TownOps:
 
     def _tick_town(self, row, now: str) -> list[Event]:
         player = self.player(row["player_id"])
-        if row["caretaker"]:
+        if player.house:
+            row = self._steward_hour(player, row, now, keep=False)
+        elif row["caretaker"]:
             row = self._caretake(player, row, now)
         ledger, account = self.world.ledger, self._yard_account(player)
         held = ledger.balance(account, YARD_ASSET)
@@ -612,9 +731,10 @@ class TownOps:
         self._save_yard(player.id, book)
         if not lost:
             return events
-        self._message(player.id, "ark_development_office", "town_lost",
-                      {"company": player.name,
-                       "hours": int(result.summary["t"])})
+        if not player.house:
+            self._message(player.id, "ark_development_office", "town_lost",
+                          {"company": player.name,
+                           "hours": int(result.summary["t"])})
         return events + [Event(
             tick=self.world.tick, kind="town_lost", subject=player.id,
             detail=f"{player.name}'s town has fallen silent",
