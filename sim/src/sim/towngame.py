@@ -140,15 +140,22 @@ HOUSE = (
     ("house_tycho", "Tycho Settlement Trust", "resort"),
     ("house_imbrium", "Imbrium Works", "works"),
     ("house_fecunditatis", "Fecunditatis Union", "hostel"),
+    ("house_shackleton", "Shackleton Ice Company", "icehouse"),
+    ("house_korolev", "Korolev Quiet Trust", "observatory"),
 )
 #: Where each house company's town stands: the place it is named for.
-#: Latitude and longitude in degrees, north and east positive (D84).
+#: Latitude and longitude in degrees, north and east positive. Five on
+#: the near side's plains and highlands, one on the south polar rim and
+#: one deep on the far side, so the seed of the world covers every kind
+#: of ground a person can be given (D84).
 HOUSE_PLACE = {
     "house_mare": (0.7, 23.5),            # Mare Tranquillitatis, by Apollo 11
     "house_serenitatis": (28.0, 17.5),
     "house_tycho": (-43.3, -11.4),
     "house_imbrium": (32.8, -15.6),
     "house_fecunditatis": (-7.8, 51.3),
+    "house_shackleton": (-89.5, 0.0),
+    "house_korolev": (-4.0, -157.4),
 }
 #: How each kind of house company likes to build once its crew is safe: the
 #: most lots of a zone it lays out unasked (r homes, i industry, v
@@ -164,11 +171,14 @@ TEMPERAMENTS: dict[str, dict] = {
     "resort": {"lots": {"i": 0}, "price": 2, "foundries": 0,
                "refuse": ["works"]},
     "hostel": {"lots": {"i": 1}, "foundries": 1, "refuse": ["works"]},
+    "icehouse": {"lots": {"v": 0}, "refuse": ["broadcast"]},
+    "observatory": {"lots": {"i": 1}, "refuse": ["works", "oxygen"]},
 }
 #: What each is called where towns are listed.
 TEMPER_NAMES = {"balanced": "Mixed town", "foundry": "Foundry town",
                 "works": "Works town", "resort": "Resort",
-                "hostel": "Hostel town"}
+                "hostel": "Hostel town", "icehouse": "Ice town",
+                "observatory": "Observatory town"}
 HOUSE_TEMPER = {pid: temper for pid, _, temper in HOUSE}
 #: Game days between one house company's chartering and the next, so the
 #: Moon's towns are of different ages. *Invented*, D81.

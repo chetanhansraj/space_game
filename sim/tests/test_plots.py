@@ -136,6 +136,10 @@ def test_house_companies_stand_where_they_are_named_for():
     assert names["house_imbrium"] == "Mare Imbrium"
     assert names["house_fecunditatis"] == "Mare Fecunditatis"
     assert names["house_tycho"] == "Near-side highlands"
+    assert names["house_shackleton"] == "South polar rim"
+    assert names["house_korolev"] == "Far-side highlands"
+    # between them, every kind of ground a person can be given
+    assert {plots.kind_of(*place) for place in HOUSE_PLACE.values()} == set(plots.KINDS)
 
 
 def test_a_town_from_before_plots_plays_on_as_it_was(tmp_path):
