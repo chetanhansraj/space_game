@@ -29,9 +29,10 @@ from market.money import CREDIT
 
 from . import TICKS_PER_GAME_DAY
 from .deposits import Deposit
-from .earth import EarthMarket
+from .earth import GOODS, GOODS_LOTS_PER_REFRESH, EarthMarket
 from .estate import Receiver
-from .firms import ELASTICITY, REVERSION, Firm, FirmBehaviour, Role
+from .firms import (ELASTICITY, REVERSION, Firm, FirmBehaviour, Role,
+                    reservation_price)
 from .haulage import Haulier
 from .rng import Streams
 from .shocks import REPAIR_COST, Event, Weather
@@ -198,14 +199,18 @@ class World:
         """Life support, propellant burned, food eaten. Mass leaves the world."""
         if firm.role is not Role.CONSUMER or not firm.consumes:
             return
-        wanted = firm.consumption_kg_per_day // TICKS_PER_GAME_DAY
-        held = self.ledger.balance(firm.account, firm.consumes)
-        burn = min(wanted, held)
-        if burn < 1:
-            return
-        with transaction(self.ledger.db):
-            self.ledger.consume(firm.account, firm.consumes, burn, now,
-                                memo=f"{firm.id} consumption")
+        for asset, per_day in ((firm.consumes, firm.consumption_kg_per_day),
+                               (firm.also_consumes, firm.also_kg_per_day)):
+            if not asset:
+                continue
+            wanted = per_day // TICKS_PER_GAME_DAY
+            held = self.ledger.balance(firm.account, asset)
+            burn = min(wanted, held)
+            if burn < 1:
+                continue
+            with transaction(self.ledger.db):
+                self.ledger.consume(firm.account, asset, burn, now,
+                                    memo=f"{firm.id} consumption")
 
     def _pay_upkeep(self, firm: Firm, now: str) -> None:
         """Money leaving the world. Invariant 7's drain, per firm, per hour."""
@@ -291,6 +296,8 @@ class World:
             self._sell_surplus(firm, firm.output_asset, now)
         elif firm.role is Role.CONSUMER:
             self._buy_shortfall(firm, firm.consumes, now)
+            if firm.also_consumes:
+                self._buy_from_savings(firm, firm.also_consumes, now)
         elif firm.role is Role.TRADER:
             self._make_market(firm, firm.trades, now)
 
@@ -312,6 +319,36 @@ class World:
             self.behaviour.quote(firm, asset, BID, shortfall,
                                  self.elasticity(asset), now,
                                  self.reversion(asset))
+
+    def _buy_from_savings(self, firm: Firm, asset: str, now: str) -> None:
+        """Bid for a good the firm can live without, with money it can spare.
+
+        The bid is placed after the one for what the firm must have, and is
+        sized so that paying it in full would still leave the firm its
+        opening capital. So this demand can never starve the first: a
+        household that is only getting by buys propellant and nothing else.
+        What funds it is wages saved, which until goods were made on the
+        Moon had nowhere to go. D74.
+        """
+        spec = self.ledger.asset(asset)
+        held = self.ledger.balance(firm.account, asset)
+        target = firm.targets.get(asset, 0)
+        lots = (target - held) // spec.lot_mass_kg
+        if lots < 1:
+            return
+        price = reservation_price(
+            self.behaviour.reference_price(firm, asset, self.reversion(asset)),
+            held, target, self.elasticity(asset))
+        spare = (self.ledger.balance(firm.account, CREDIT)
+                 - self.starting_capital.get(firm.id, 0))
+        lots = min(lots, spare // price)
+        if lots < 1:
+            return
+        try:
+            self.books[firm.node].place(asset, BID, price, spec.kg(lots),
+                                        firm.account, now)
+        except MarketError:
+            pass
 
     def _make_market(self, firm: Firm, asset: str, now: str) -> None:
         """Quote both sides and live on the spread.
@@ -354,6 +391,8 @@ class World:
                     pass
         for node, asset in self.earth_assets.items():
             self.earth.refresh(node, asset, now)
+            # Where Earth takes delivery of helium-3 it also takes parts.
+            self.earth.refresh(node, GOODS, now, lots=GOODS_LOTS_PER_REFRESH)
 
     # -- ships -------------------------------------------------------------
 
@@ -478,6 +517,8 @@ class World:
                 conversion_rate=firm.conversion_rate,
                 consumes=firm.consumes,
                 consumption_kg_per_day=firm.consumption_kg_per_day,
+                also_consumes=firm.also_consumes,
+                also_kg_per_day=firm.also_kg_per_day,
                 trades=firm.trades, targets=dict(firm.targets),
                 upkeep_per_day=firm.upkeep_per_day,
             )

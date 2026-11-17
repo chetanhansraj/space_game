@@ -44,7 +44,7 @@ from .towngame import TownOps
 from .errors import GameError
 from .contracts import ContractBoard, ContractError, encode
 from .routes import DOCKING_FEE, NODE_ANCHOR
-from .seed_world import NODES, SHACKLETON, TONNE, build
+from .seed_world import NODES, SHACKLETON, TONNE, add_goods_demand, build
 from .ships import KESTREL, Ship, ShipState
 from .shocks import Event
 
@@ -64,6 +64,13 @@ DEV_FUND = "institution:ark_development_fund"
 DEV_FUND_TREASURY = 30_000_000
 DEV_FUND_PROPELLANT_KG = 10_000 * TONNE
 STARTING_GRANT = 120_000
+#: The most a company can owe the Ark in unpaid charter fees: thirty game
+#: days of them. Past that the debt stands still until it is paid. A world
+#: that runs while its players are away must let them come back; the first
+#: company on the live world owed a million credits after seven weeks, and
+#: every credit it could ever earn again. *Invented*, DECISIONS.md D78.
+ARREARS_CAP_DAYS = 30
+ARREARS_CAP = ARREARS_CAP_DAYS * KESTREL.upkeep_per_day
 
 #: Where every new company starts. The Ark's home, and where fuel is made.
 START_NODE = SHACKLETON
@@ -93,7 +100,8 @@ _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,'&-]{1,30}[A-Za-z0-9.]$")
 FEED_KINDS = ("solar_flare", "equipment_failure", "insolvency", "spinoff",
               "contract_posted", "contract_fulfilled", "player_joined",
               "player_departure", "player_arrival", "base_chartered",
-              "base_milestone", "town_founded", "town_lost")
+              "base_milestone", "town_founded", "town_lost",
+              "town_first_sale")
 
 
 @dataclass(frozen=True)
@@ -111,7 +119,7 @@ class Player:
         return cls(id=row["id"], name=row["name"], account=row["account"],
                    ship_id=row["ship_id"], created_tick=row["created_tick"],
                    last_seen_tick=row["last_seen_tick"],
-                   upkeep_owed=row["upkeep_owed"])
+                   upkeep_owed=min(row["upkeep_owed"], ARREARS_CAP))
 
 
 def hash_token(token: str) -> str:
@@ -127,6 +135,7 @@ class Game(BaseOps, TownOps):
     """
 
     dev_fund_account = DEV_FUND
+    arrears_cap = ARREARS_CAP
 
     def __init__(self, db, world, launch_real: _dt.datetime) -> None:
         self.db = db
@@ -158,6 +167,10 @@ class Game(BaseOps, TownOps):
             "SELECT state FROM world_snapshot WHERE id = 1").fetchone()
         if row is not None:
             world = persist.loads(db, row["state"], routes)
+            # A world from before goods were made on the Moon gains the
+            # demand for them here. In memory only: the next tick saves it,
+            # and doing it again on a restart before then changes nothing.
+            add_goods_demand(world.firms)
             launch = _dt.datetime.fromisoformat(cls._meta(db, "launch_real"))
             return cls(db, world, launch)
 
@@ -653,7 +666,10 @@ class Game(BaseOps, TownOps):
             if paid > 0:
                 ledger.burn(player.account, paid, now, ref=player.id,
                             memo=f"{player.ship_id} charter upkeep")
-            owed = due - paid
+            # Arrears stop growing at ARREARS_CAP. The ship is already
+            # grounded; a fee that goes on mounting against an owner who is
+            # away buys nothing but a debt nobody could ever come back from.
+            owed = min(due - paid, ARREARS_CAP)
             self.db.execute("UPDATE player SET upkeep_owed = ? WHERE id = ?",
                             (owed, player.id))
             if owed and not player.upkeep_owed:

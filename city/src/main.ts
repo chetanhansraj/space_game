@@ -56,7 +56,17 @@ async function boot(hot: any) {
   let meta: Meta | null = null, pending = 0, serverT = 0, rate = PRACTICE_RATE, chain: Promise<unknown> = Promise.resolve();
   /** Take the server's word for the town. Whatever was drawn before is replaced. */
   const adopt = (r: Reply) => {
+    const was = ui.yard;
     meta = r.meta; rate = 1 / (meta.tick_seconds || 60);
+    const y = (meta as any).yard, tr = (meta as any).trade;
+    ui.yard = y ? { ...y, kcr: (meta as any).kcr || 1000, open: !!tr?.open, pad: !!tr?.pad, needs: tr?.needs_population ?? 8 } : null;
+    const ck = (meta as any).caretaker;
+    ui.caretaker = ck ? { ...ck, kcr: (meta as any).kcr || 1000 } : null;
+    // A sale made while nobody was pressing anything: say so, once, in the town's own money.
+    if (was && ui.yard && ui.yard.sold_kg > was.sold_kg) {
+      const kg = ui.yard.sold_kg - was.sold_kg, cr = ui.yard.sales - was.sales;
+      say(`Sold ${Math.round(kg / 1000)} t of goods at the Flats: +${Math.round(cr / ui.yard.kcr)} credits`, 6000);
+    }
     if (!r.state) return;
     s = r.state;
     if (meta.wallet !== undefined) s.materials = meta.wallet;
@@ -93,6 +103,24 @@ async function boot(hot: any) {
   const hud = new Hud({
     pickTool: t => { ui.tool = ui.tool === t ? null : t; if (ui.tool) ui.selected = null; if (!ui.tool) hover = null; },
     setSpeed: n => { if (!LIVE) ui.speed = n; },
+    yard: act => {
+      const y = ui.yard; if (!LIVE || !y) return;
+      const whole = Math.floor(y.held_kg / y.lot_kg);
+      const call = act === 'sell' || act === 'hold' ? api('/town/policy', { sell: act === 'sell', min_price: y.min_price })
+        : act === 'now' ? api('/town/sell', { tonnes: whole, price: y.min_price })
+        : api('/town/load', { tonnes: Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg)) });
+      call.then(r => {
+        if (!pending) adopt(r);
+        const rep = (r as any).meta?.report;
+        if (act === 'now' && rep && !rep.kg) say('Nobody at the port is buying at that price just now.', 4200);
+        if (act === 'load') say('Loaded. Fly it from the Moon page.', 4200);
+      }, err => { say(String(err.message || err), 4200); resync(); });
+    },
+    caretaker: on => {
+      if (!LIVE) return;
+      api('/town/caretaker', { on }).then(r => { if (!pending) adopt(r); say(on ? 'A caretaker is on the payroll. They deal with what is urgent, and nothing else.' : 'The caretaker has been let go.', 5200); },
+        err => { say(String(err.message || err), 4200); resync(); });
+    },
     toggle: uid => send({ k: 'toggle', uid }),
     repair: uid => send({ k: 'repair', uid }),
     demolish: uid => { if (send({ k: 'demolish', uid })) ui.selected = null; },

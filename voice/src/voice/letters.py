@@ -334,8 +334,19 @@ def _town_lost(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     ])
 
 
+def _town_caretaker_left(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    return ("Your caretaker has left", [
+        f"{d['company']}: the caretaker you hired for your town is paid "
+        f"{cr(d['fee'])} an hour, and this hour the account could not "
+        "cover it. They have gone.",
+        "The town is on its own until you are back or can hire again.",
+        "Yusuf Brandt, Ark Development Office",
+    ])
+
+
 _LETTERS = {
     "town_charter": _town_charter, "town_lost": _town_lost,
+    "town_caretaker_left": _town_caretaker_left,
     "base_departure": _base_departure,
     "welcome": _welcome, "charter": _charter, "offers": _offers,
     "arrival": _arrival, "contract_paid": _contract_paid,

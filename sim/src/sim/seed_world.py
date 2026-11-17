@@ -74,6 +74,35 @@ ICE_DEPOSIT_SCALE = 3_000 * TONNE
 REGOLITH_DEPOSIT_SCALE = 100_000 * TONNE
 
 
+#: What a settlement household uses in manufactured goods, and the stock it
+#: likes to keep. *Invented*: seed-data says every lunar node consumes goods
+#: and gives no rate. A household that burns six to eight tonnes of
+#: propellant a day is a block of a settlement, not a family; a tenth of a
+#: tonne of parts, tools and fittings a day is small beside that. The stock
+#: is two trading lots, so it reorders a tonne at a time. D74.
+HOUSEHOLD_GOODS_KG_PER_DAY = 100
+HOUSEHOLD_GOODS_STOCK = 2 * TONNE
+
+
+def add_goods_demand(firms) -> int:
+    """Give every propellant household a use for manufactured goods.
+
+    Called when a world is built and again whenever one is opened, so a
+    world from before goods were made on the Moon gains the demand without
+    being reset (migrations are forward-only). Idempotent. Returns how many
+    households it changed.
+    """
+    changed = 0
+    for firm in firms:
+        if (firm.role is Role.CONSUMER and firm.consumes == "PROP"
+                and not firm.also_consumes):
+            firm.also_consumes = "GOODS"
+            firm.also_kg_per_day = HOUSEHOLD_GOODS_KG_PER_DAY
+            firm.targets = {**firm.targets, "GOODS": HOUSEHOLD_GOODS_STOCK}
+            changed += 1
+    return changed
+
+
 def _firm(fid, role, node, **kw) -> Firm:
     return Firm(id=fid, role=role, node=node, account=f"agent:{fid}", **kw)
 
@@ -205,6 +234,8 @@ def build(db, seed: int = 20260904, game_time: str = "2190-01-01T00:00:00Z",
             ships.append(Ship(id=f"{fid}_kestrel", owner=fid,
                               account=f"agent:{fid}", ship_class=KESTREL,
                               location=node))
+
+    add_goods_demand(firms)
 
     # -- open and fund every account ------------------------------------
     with transaction(db):

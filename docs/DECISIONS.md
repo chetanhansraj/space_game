@@ -1400,7 +1400,8 @@ company's balance; afterwards the difference is posted:
 What this does not do yet, said plainly: the town's income is still the city
 builder's own, paid by Earth. Its foundries do not yet put real cargo into
 the market's order books. That is the next build, and it is the one that
-makes town and market one economy instead of one wallet.
+makes town and market one economy instead of one wallet. *Done since, for
+the foundries: D76.*
 
 ### D71 — Trade opens when the town can support it
 
@@ -1439,6 +1440,204 @@ built the right way round: the caretaker is deterministic code acting
 through the same seven requests a player has (invariants 1 and 2), its fee
 is a real payment that leaves the world (invariant 7), and it keeps the town
 alive, it does not grow it. A town that plays itself is not a game.
+*Built since: D79.*
+
+### F9 — The Moon's own firms did not last, and nobody was told
+
+*Found on the live world on 17 November 2026, day 49, while looking for
+someone to sell a town's goods to.*
+
+Every producing firm on the live Moon is bankrupt: all the ice miners, the
+propellant plants, the helium-3 separators, the six haulers and the traders.
+Eighty insolvencies between tick 721 and tick 39,913. The last one failed
+about three real weeks before it was noticed. What is left is 65 settlement
+households holding 7.3 million credits between them with no wages coming in,
+the households at two of the three ports with under 4,000 credits between
+them, and one company
+(the first, from September) with nothing and a million credits of arrears.
+Earth still holds 1,765 million of its 2,000 million and has had nothing to
+buy since the separators stopped.
+
+A private world built from the same seed does the same, quickly. The polar
+ice miners are gone by game day 100 with their deposits still about 80 per
+cent rich, so that is not depletion. The Shackleton propellant plants follow
+by day 200. On the Flats the regolith miners multiply to 37 by day 400 while
+three of the four separators fail, then the claim they share falls to the
+5 per cent at which it is abandoned by day 600, and by day 900 there is not
+one producer left on the Moon. On the 60x clock that whole story takes
+fifteen real days.
+
+So "the trading world goes on with its bots whether you trade or not" has
+not been true for most of the time the server has been up. Two causes, and
+they need different answers: the firms' prices and costs do not balance
+(the early deaths), and nothing ever opens a new claim (the late ones).
+
+D37 already ruled out the Ark standing a replacement firm up each time one
+fails, and that ruling stands. The direction Chetan has since given is that
+towns, run by people and by agents, are what the Moon's economy is made of
+(D68). That is the repair. Until it is built, what a town sells is bought by
+Earth's order and by what the households have left (D74, D75).
+
+### D74 — Households buy manufactured goods, out of savings only
+
+seed-data lists goods among what all three lunar ports consume and names no
+maker nearer than Mars, so until now no agent on the Moon had ever bid for
+any. A town's foundries make them (D76), and goods need a buyer who has
+money of their own.
+
+Every propellant household also uses 100 kg of goods a game day and keeps
+two tonnes on hand, reordering a tonne at a time. *Both numbers are
+invented.* A household burns six to eight tonnes of propellant a day, so it
+is a block of a settlement and not a family; a tenth of a tonne of parts and
+fittings beside that is small.
+
+It bids for goods after it has bid for propellant, and only with credits
+above its opening capital. So this demand cannot crowd out the one a
+household cannot live without, by construction, and it is funded by wages
+saved. On a world where firms are paying wages that is a real and growing
+market: on a private world goods settled at about 75,000 cr a tonne, well
+over the 45,000 anchor, because households were short of them. On the live
+world there are no wages (F9) and about 400,000 cr of savings above opening
+capital, so it is a few tonnes and then nothing.
+
+A world that already exists gains the demand when it is opened. Nothing is
+minted and nothing is reset.
+
+### D75 — Earth takes twelve tonnes of lunar parts a day, at the anchor
+
+The city builder's foundries were always "paid by Earth". D70 kept that as a
+payment inside the town's rules and called it a debt. It is now a standing
+bid on the order book at Tranquillitatis, where Earth already takes delivery
+of helium-3: three one-tonne lots at each refresh, four refreshes a game
+day, at the seed anchor of 45,000 cr a tonne. Parts and fittings for work in
+Earth orbit, which cost less to lift from the Moon than from the ground.
+
+*The cap is invented*, and it is the number that matters. Twelve tonnes a
+day is 540,000 cr a day at most. The helium-3 order, when all four
+separators ran, paid 4 x 0.6 kg x 236,000 = 566,400 cr a day. So the faucet
+D40 describes is about as wide as it was designed to be, through a different
+good, and it is finite: Earth alone carries about 38 foundry levels across
+the whole Moon, which is two thriving towns. Past that, towns compete for
+the bid, and what is left over waits in the yard or has to find another
+buyer.
+
+Earth pays from the account funded at genesis and buys only what it can
+afford (invariant 3). The matching sink is the one that already matches
+town income: supplies, upkeep and penalties are burned (invariant 7, D70).
+
+### D76 — A town's foundries make cargo, and the town sells it
+
+Chetan: "once I build industries and have a thriving lunar base, I can sell
+goods I mine there and more people will come to live there and the town
+will grow and so will the pressure to maintain."
+
+**Making.** On a live town a foundry level makes 13 kg of manufactured
+goods an hour at full staff, half as much again on ilmenite or pyroclastic
+glass, twice as much on helium-3 regolith, exactly as the survey finds
+always worked. *13 is invented*: at the anchor it is worth 585 credits an
+hour against the 600 the practice game pays, so the town was not made
+richer or poorer by the change, only real. The goods are on the ledger, in
+an account of the town's own at the port (`town:<player>`), and the practice
+game is untouched.
+
+**The yard** holds 20 tonnes. *Invented*: a little under two game days of
+all that Earth will take. A full yard stops the foundries and their shifts
+are sent home, which the town's own rules then feel: fewer jobs, lower
+rents, nobody new moving in. No company builds another foundry beside a
+yard more than half full.
+
+**Selling.** Whole tonnes, into the port's order book, to whoever bids
+most, immediate or cancel (D46's rule that nothing of a player's is left
+resting). By hand, or by a standing instruction that is on by default and
+never sells below the anchor. Or the goods are loaded into the company's
+ship and flown to where they are wanted.
+
+**The gate.** Nothing leaves the yard until the town has a working landing
+pad and eight people (D71). What is made before then waits, and is there to
+sell on the morning the town opens. D71's lock was on the page; this one is
+on the server.
+
+**Growth and pressure.** These were already in the city builder and needed
+no new rule, only real goods under them: foundries that are working offer
+jobs, jobs bring residents, residents want homes, gardens, a concourse and
+a clinic, and each of them costs more in supplies than the last. What is
+new is the other direction. If the goods stop selling, the yard fills, the
+foundries stop, and the town that grew on them has to be carried without
+them.
+
+**What this still does not do.** Ilmenite and glass make more of the same
+goods, not iron or volatiles, because nothing on the Moon buys those yet.
+Helium-3 still waits for its licence (D53). The town's ground does not run
+out. And a town's supplies are still bought from Earth by formula and
+burned, not bought from another town.
+
+### D77 — The steward
+
+The headless test has always carried a player who does what the crew asks
+and then answers what the town is short of. It is the proof that the game
+can be played. It now lives in `city/src/steward.ts`, acts only through the
+seven requests a player has, and the engine will answer "what would a
+careful player do this hour" for any town.
+
+Nothing in the live game uses it yet. The tests use it to grow a town to
+the morning it can trade. It is the caretaker Chetan asked for (D73) and
+the hands of a town run by the world (D68), written once.
+
+### D78 — A company that has been away can come back
+
+Found on the live world (F9). Its first company owed about a million
+credits of charter fees, 400 a game day for seven weeks on a ship that was
+grounded the whole time. Founding a town with it would have paid the grant
+in and taken all of it at the next game midnight, and then everything the
+town earned at every midnight after.
+
+Arrears stop growing at thirty game days of the fee, 12,000 cr. *Thirty is
+invented.* The ship stays grounded until they are paid, so the fee still
+does what it was for. Arrears were never ledger entries, so capping them
+destroys nothing.
+
+A town is founded with at least the 160 town credits the game was balanced
+for. A new company gets there with the ordinary 40,000 cr grant. A company
+with less is brought up to it, once, from the Ark's fund, with its capped
+arrears covered. That hands an old company nothing a new one could not have
+from the same fund by signing up, and a company with money still gets only
+the ordinary grant.
+
+### D79 — The caretaker is built: urgent work only, for a wage
+
+D73 was direction. This is the thing, because without it a town founded in
+a lunch break is dead by the evening, and Chetan asked for exactly this
+remedy.
+
+A company may hire a caretaker for its town, and let one go, at any time.
+While one is hired, each game hour:
+
+1. The wage is paid: 200 cr, burned. *Invented.* It is 4,800 cr a game
+   day, about what a town of ten pays for its supplies, so a small town
+   feels it and a large one does not. Eight real hours away costs 96 town
+   credits. By D37 a wage paid to nobody who is modelled is a sink, and
+   this is the sink the feature needs (invariant 7).
+2. The steward (D77) is asked what is urgent, and each answer is put to the
+   town's rules through the same door as a player's request. Urgent is the
+   crew's own list: something broken, something not linked, air, water,
+   food, shelter, and enough stored power for tonight.
+
+It does not follow the missions, zone land to grow on, answer offers or
+set prices. On the first morning of a new town nothing is urgent yet, so a
+caretaker hired at founding builds nothing: it will keep a town and it will
+not found one. What it builds is paid for by the town like anything else.
+If the wage cannot be paid it leaves, and a letter says so.
+
+Invariant 2 is untouched: the caretaker is the steward, deterministic code
+inside the tick. Nothing asks a model anything.
+
+Measured on a private world with the same town each time. Left after one
+real hour of play: alone, lost at hour 828 (in its first night); with a
+caretaker, alive with all four crew at hour 1,500, having paid 288 town
+credits in wages. Left after two and a half real hours, by which time the
+night was already provided for, it lived either way and the caretaker was
+270 credits spent for nothing. So it is insurance, and it is priced so that
+the choice is a real one.
 
 ---
 
@@ -1474,8 +1673,25 @@ Deliberately not decided, because these are yours.
     hours forty minutes of lander air, and the first night falls about six
     real hours after founding. That is tense, which may be right, or it may
     lose people who found a town and go to dinner. Say which.
-13. **The caretaker's price and powers** — D73.
+13. **The caretaker's price and powers** — D79. Built with a wage of 200 cr
+    a game hour and urgent work only. Say if it should cost more, or do
+    more, or need the town to reach some size before one can be hired.
 14. **Eight people to trade** — D71.
+15. **The Moon's firms are all dead** — F9. This is the big one. Towns
+    run by agents (D68) are the repair you have pointed at, and they are
+    not built. Until they are, the market a town sells into is Earth's
+    order and little else, and there is no propellant being made anywhere
+    for anyone's ship. Say whether agent towns are the next build.
+16. **Earth's purse is finite** — D40, D75. Earth has 1,765 million credits
+    left on the live world and no income. At the full twelve tonnes a day
+    of goods that is about eight real weeks. Then nothing enters the world
+    at all. Should Earth be an outside economy that never runs dry and is
+    limited only by its appetite, or is a world that ends by design what
+    you want?
+17. **Thirteen kilograms, twenty tonnes, twelve tonnes a day** — D75, D76.
+    Play it and say what feels too slow or too easy.
+18. **What a foundry on ilmenite should make** — D76. Iron and volatiles
+    are in the commodity table and nobody on the Moon buys them.
 10. **Helium-3 for players** — D53. A player separator adds to the only
     faucet in the economy (D40), so it needs a licence and a royalty before
     the flats open. The size of that royalty is the decision.

@@ -29,6 +29,12 @@ export const RENT = 0.08, VISITOR_RATE = 0.12, LANDING_FEE = 3, FARE = 5, SURVEY
 export const suppliesRate = (pop: number) => Math.min(0.09, 0.02 + 0.0009 * pop);
 export const EVAC_COST = 15, POWER_MARGIN = 1.2;
 export const O2_PLANT = 1, GREENHOUSE_FOOD = 0.6, SHUTTLE_FOOD = 20, SHUTTLE_WATER = 40, FOUNDRY = 0.6;
+/**
+ * Kilograms of goods a foundry level makes in an hour when the town's output is real cargo.
+ * At the market's anchor for manufactured goods (45 credits a kilogram in this game's money, see
+ * the root docs/DECISIONS.md D75) thirteen kilograms is worth what FOUNDRY pays in the practice game.
+ */
+export const FOUNDRY_KG = 13;
 export const PRICES = [0.75, 1, 1.3];   // low, fair, high
 
 export const GROUND = { flat: 0, rim: 1, floor: 2, boulder: 3, heritage: 4 } as const;
@@ -52,7 +58,16 @@ export interface Shuttle { phase: 'away' | 'landing' | 'landed' | 'launching'; t
 export interface Pop { id: number; x: number; y: number; text: string; }
 export type DemandKey = 'r' | 'i' | 'v';
 
+/**
+ * The yard, when what the foundries make is real cargo rather than a payment. Kilograms.
+ * The server owns the yard: it says how much room is left before each hour and takes away what was made.
+ * A practice game has no yard and its foundries are paid by Earth as before.
+ */
+export interface Cargo { cap: number; room: number; made: number; }
+
 export interface Flows {
+  make: number;           // kilograms of goods per hour, when there is a yard
+  yardFull: boolean;      // foundries are standing idle because the yard has no room
   gen: number; load: number; demand: number; battCap: number;
   o2Cap: number; waterCap: number; housing: number; lodging: number;
   o2Rate: number; waterRate: number; foodRate: number;
@@ -75,6 +90,7 @@ export interface State {
   prep: number[];         // 0 raw ground, 1 levelled and ready to build on
   rough: number[];        // hours a grader needs on each tile
   ore: number[];          // 0, or 1 + index into ORES once a rover has found it
+  cargo?: Cargo;
   pois: Poi[]; finds: Find[]; graders: Grader[];
   event: GameEvent | null; nextEvent: number; lastEvent: EventKind | '';
   buildings: Building[]; nextUid: number; rev: number; netDirty: boolean;
@@ -142,7 +158,7 @@ const isQuarters = (t: BuildingType) => t === 'habitat' || t === 'lander' || t =
 
 // ---------- setup ----------
 function emptyFlows(): Flows {
-  return { gen: 0, load: 0, demand: 0, battCap: 0, o2Cap: 0, waterCap: 0, housing: 0, lodging: 0, o2Rate: 0, waterRate: 0, foodRate: 0,
+  return { make: 0, yardFull: false, gen: 0, load: 0, demand: 0, battCap: 0, o2Cap: 0, waterCap: 0, housing: 0, lodging: 0, o2Rate: 0, waterRate: 0, foodRate: 0,
     jobs: 0, workers: 0, staff: 1, earn: { foundry: 0, rent: 0, visitors: 0, shops: 0, grant: 0 }, upkeep: 0, income: 0,
     nightDeficit: 0, essentialDeficit: 0, exposed: 0, atRisk: 0, lackO2: false, lackWater: false, lackFood: false, offline: 0,
     saving: false, habHomes: 50, habLodges: 50 };
@@ -484,6 +500,7 @@ function computeFlows(s: State, dt = 0) {
   const sunset = hoursToSunset(s.t), toDawn = hoursToSunrise(s.t);
 
   // First pass: capacity and what life support needs.
+  const full = !!s.cargo && s.cargo.room <= 0;
   let nightDraw = 0, steady = 0, essential = 0, planned = 0;
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
@@ -493,6 +510,7 @@ function computeFlows(s: State, dt = 0) {
     f.battCap += d.battery; f.o2Cap += d.o2Store; f.waterCap += d.waterStore;
     if (d.priority <= ESSENTIAL) essential += drawOf(b, true);
     if (!d.solar && b.on) steady += d.gen;
+    if (b.type === 'printer' && full) { if (b.on) f.yardFull = true; continue; }   // nowhere to put the goods: the shift is sent home
     f.jobs += b.on ? jobsOf(b) : 0;
   }
   f.essentialDeficit = essential - steady;
@@ -516,6 +534,7 @@ function computeFlows(s: State, dt = 0) {
     const optional = d.priority > ESSENTIAL && d.drawNight > 0;
     if (optional && f.saving && !(b.type === 'o2plant' && o2Short)) { b.asleep = true; b.powered = false; continue; }
     if (storm && (b.type === 'printer' || b.type === 'garage')) { b.asleep = true; b.powered = false; continue; }   // nobody works outdoors in a storm
+    if (full && b.type === 'printer') { b.asleep = true; b.powered = false; continue; }
     if (d.priority <= ESSENTIAL) nightDraw += drawOf(b, true);
     const draw = drawOf(b, night);
     f.demand += draw;
@@ -541,7 +560,7 @@ function computeFlows(s: State, dt = 0) {
     if (b.type === 'o2plant') f.o2Rate += O2_PLANT;
     else if (b.type === 'recycler') recycling = true;
     else if (b.type === 'greenhouse') { f.foodRate += GREENHOUSE_FOOD; f.o2Rate += 0.02; f.waterRate -= 0.04; }
-    else if (b.type === 'printer') f.earn.foundry += FOUNDRY * b.level * f.staff * (1 + richOf(s, b));
+    else if (b.type === 'printer') { const out = b.level * f.staff * (1 + richOf(s, b)); if (s.cargo) f.make += FOUNDRY_KG * out; else f.earn.foundry += FOUNDRY * out; }
     else if (b.type === 'habitat') { f.housing += bedsOf(b); habR += habAt(s, b.x, b.y) * b.level; nR += b.level; }
     else if (b.type === 'lodge') { f.lodging += bedsOf(b); habV += habAt(s, b.x, b.y) * b.level; nV += b.level; }
     else if (b.type === 'market') shops += b.level;
@@ -613,6 +632,8 @@ function grow(s: State) {
     s.block[key] = '';
     if (s.want[key] < 0.15) continue;
     if (s.materials < 0) { s.block[key] = 'the base is in debt'; continue; }
+    // Nobody builds a second foundry beside a yard that is filling up with what the first one made.
+    if (z.z === 2 && s.cargo && s.cargo.room < s.cargo.cap / 2) { s.block[key] = 'goods are piling up in the yard'; continue; }
     const people = type === 'habitat' || type === 'lodge';
     const first = false;
     const unmet = type === 'habitat' ? needs(s).find(q => !q.met) : undefined;
@@ -765,6 +786,7 @@ export function tick(s: State) {
   s.water = Math.min(f.waterCap, s.water + f.waterRate * dt);
   s.food = s.food + f.foodRate * dt;
   s.materials += f.income * dt; if (f.income > 0) s.stats.earned += f.income * dt;
+  if (s.cargo && f.make > 0) { const made = Math.min(f.make * dt, s.cargo.room); s.cargo.made += made; s.cargo.room -= made; }
   f.lackO2 = s.o2 <= 0; f.lackWater = s.water <= 0; f.lackFood = s.food <= 0;
   s.o2 = Math.max(0, s.o2); s.water = Math.max(0, s.water); s.food = Math.max(0, s.food);
 

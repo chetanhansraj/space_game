@@ -113,6 +113,24 @@ class StowIn(BaseModel):
     tonnes: int = Field(ge=1, le=200)
 
 
+class YardSellIn(BaseModel):
+    tonnes: int = Field(ge=1, le=5_000)
+    price: int = Field(ge=1, le=100_000_000)
+
+
+class YardPolicyIn(BaseModel):
+    sell: bool
+    min_price: int = Field(ge=1, le=100_000_000)
+
+
+class YardStowIn(BaseModel):
+    tonnes: int = Field(ge=1, le=200)
+
+
+class CaretakerIn(BaseModel):
+    on: bool
+
+
 class TownIntent(BaseModel):
     """One of the city builder's own requests. Its rules judge the content;
     this only bounds the shape."""
@@ -551,6 +569,36 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
         with lock:
             intent = body.model_dump(exclude_none=True)
             return town_reply(player, the_game().town_intent(player, intent))
+
+    @app.post("/api/town/caretaker")
+    def town_caretaker(body: CaretakerIn, player: Player = Depends(player_for)):
+        with lock:
+            return town_reply(player, the_game().town_caretaker(
+                player, body.on))
+
+    @app.post("/api/town/sell")
+    def town_sell(body: YardSellIn, player: Player = Depends(player_for)):
+        with lock:
+            return town_reply(player, the_game().town_sell(
+                player, body.tonnes, body.price))
+
+    @app.post("/api/town/policy")
+    def town_policy(body: YardPolicyIn, player: Player = Depends(player_for)):
+        with lock:
+            return town_reply(player, the_game().town_policy(
+                player, body.sell, body.min_price))
+
+    @app.post("/api/town/load")
+    def town_load(body: YardStowIn, player: Player = Depends(player_for)):
+        with lock:
+            return town_reply(player, the_game().town_load(
+                player, body.tonnes))
+
+    @app.post("/api/town/unload")
+    def town_unload(body: YardStowIn, player: Player = Depends(player_for)):
+        with lock:
+            return town_reply(player, the_game().town_unload(
+                player, body.tonnes))
 
     # -- the client ------------------------------------------------------
 

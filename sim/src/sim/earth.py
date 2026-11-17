@@ -39,6 +39,18 @@ ACCOUNT = "institution:earth_standing_order"
 DAILY_APPETITE_LOTS = 40
 
 
+#: Earth also buys what the Moon makes: structural parts and fittings for
+#: work in Earth orbit, which cost less to lift from the Moon than from the
+#: ground. Three trading lots of manufactured goods at each refresh, four
+#: refreshes a game day, so twelve tonnes a day at the seed anchor: 540,000 cr
+#: a day at most, which is about what the helium-3 order paid when all four
+#: separators ran (4 x 0.6 kg x 236,000 cr). *Invented*, docs/DECISIONS.md
+#: D75. Unlike DAILY_APPETITE_LOTS this is small enough to bind, so it is
+#: the cap on how much industry Earth alone will carry.
+GOODS = "GOODS"
+GOODS_LOTS_PER_REFRESH = 3
+
+
 @dataclass
 class StandingOrder:
     asset: str

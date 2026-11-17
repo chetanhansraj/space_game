@@ -156,6 +156,26 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        4,
+        """
+        -- A town's yard: what its foundries have made and not yet sold.
+        -- The goods themselves are on the ledger, in the account
+        -- `town:<player>` at the port the town stands beside. This column
+        -- holds only the standing instruction (sell or hold, and the least
+        -- price to take) and the running totals the screen shows.
+        ALTER TABLE town ADD COLUMN yard TEXT NOT NULL DEFAULT '{}';
+        """,
+    ),
+    (
+        5,
+        """
+        -- A caretaker on the town's payroll: 1 while hired. `caretaker_paid`
+        -- is every credit of wage burned for one, for the screen. D79.
+        ALTER TABLE town ADD COLUMN caretaker INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE town ADD COLUMN caretaker_paid INTEGER NOT NULL DEFAULT 0;
+        """,
+    ),
 ]
 
 

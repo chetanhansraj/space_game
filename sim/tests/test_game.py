@@ -301,6 +301,40 @@ def test_unpaid_upkeep_grounds_the_ship_and_never_overdraws(game):
     assert any(m["kind"] == "arrears" for m in game.inbox(me))
 
 
+def test_arrears_stop_growing_so_an_absent_owner_can_come_back(game):
+    from sim.game import ARREARS_CAP, ARREARS_CAP_DAYS
+    player, _ = game.signup("Long Gone")
+    with transaction(game.db):
+        game.world.ledger.burn(player.account,
+                               game.world.ledger.balance(player.account, CREDIT),
+                               game.world.game_time(), memo="test: ruin")
+    # the live world's first company: weeks away, a debt beyond any income
+    game.db.execute("UPDATE player SET upkeep_owed = 1000000 WHERE id = ?",
+                    (player.id,))
+    while game.world.tick % 24 != 23:
+        game.step()
+    game.step()
+    assert game.player(player.id).upkeep_owed == ARREARS_CAP
+    assert ARREARS_CAP == ARREARS_CAP_DAYS * KESTREL.upkeep_per_day
+    for _ in range(48):                               # and it stays there
+        game.step()
+    assert game.player(player.id).upkeep_owed == ARREARS_CAP
+    # money arrives: the debt is paid once, in full, and the rest is theirs
+    burned = game.world.ledger.credits_destroyed()
+    with game._mutation():
+        game.world.ledger.transfer(DEV_FUND, player.account, CREDIT, 40_000,
+                                   kind="grant", game_time=game.world.game_time(),
+                                   memo="test: back in business")
+    while game.world.tick % 24 != 23:
+        game.step()
+    game.step()
+    me = game.player(player.id)
+    assert me.upkeep_owed == 0
+    paid = ARREARS_CAP + KESTREL.upkeep_per_day
+    assert game.world.ledger.balance(player.account, CREDIT) == 40_000 - paid
+    assert game.world.ledger.credits_destroyed() >= burned + paid
+
+
 def test_a_new_world_can_open_with_a_history_and_on_time(routes):
     g = Game.open(":memory:", now=T0, routes=routes, warmup_ticks=6)
     assert g.world.tick == 6
