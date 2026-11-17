@@ -227,6 +227,20 @@ def test_base_letters_are_written(client, game):
 
 # -- the town -------------------------------------------------------------------
 
+def test_the_list_of_towns_is_public(client, game):
+    r = client.get("/api/towns")
+    assert r.status_code == 200 and r.json()["towns"] == []
+    who = _join(client, "Tranquility Co")
+    client.post("/api/town/found", headers=who)
+    towns = client.get("/api/towns").json()["towns"]
+    assert [(t["company"], t["house"], t["lost"]) for t in towns] == [
+        ("Tranquility Co", False, False)]
+    assert set(towns[0]) == {"company", "house", "lost", "crews", "age_days",
+                             "population", "tier", "buildings", "sold_t"}
+    mine = client.get("/api/town", headers=who).json()["meta"]
+    assert mine["league"] == towns and mine["company"] == "Tranquility Co"
+
+
 def test_found_a_town_and_build_in_it(client, game):
     who = _join(client)
     assert client.get("/api/town").status_code == 401

@@ -549,6 +549,17 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
                     + (state or "null") + "}",
             media_type="application/json")
 
+    @app.get("/api/towns")
+    def towns():
+        """Every town on the Moon. Public, like the market."""
+        with lock:
+            game = the_game()
+            key = ("towns", game.world.tick, game.version)
+            if cache.get("towns_key") != key:
+                cache["towns"], cache["towns_key"] = game.towns_view(), key
+            return {"towns": cache["towns"], "tick": game.world.tick,
+                    "date": game.display_date()}
+
     @app.get("/api/town")
     def town_view(player: Player = Depends(player_for)):
         with lock:

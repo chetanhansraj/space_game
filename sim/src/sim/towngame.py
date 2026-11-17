@@ -129,6 +129,10 @@ HOUSE_RETURN_DAYS = 7
 #: town in debt from building, so past this it would only sit there owing
 #: more. Measured: towns that recover never owed half of it. D81.
 HOUSE_RECALL_DEBT = TOWN_START
+#: The order of a town's standing, for saying when it has grown. The rules
+#: own the names (city/src/sim TIERS); only their order is repeated here.
+TIER_RANK = {"Outpost": 0, "Base": 1, "Colony": 2, "Town": 3}
+
 
 def town_seed(player_id: str, attempt: int = 0) -> int:
     digest = hashlib.sha256(f"town|{player_id}|{attempt}".encode()).digest()
@@ -657,6 +661,32 @@ class TownOps:
                     log.exception("could not relieve %s", player.name)
         return events
 
+    def towns_view(self) -> list[dict]:
+        """Every town on the Moon, most people first. Public."""
+        out = []
+        day = TICKS_PER_GAME_DAY
+        for row in self.db.execute(
+                "SELECT t.player_id, t.founded_tick, t.lost_tick, t.attempt, "
+                "t.yard, t.state, p.name, p.house FROM town t "
+                "JOIN player p ON p.id = t.player_id").fetchall():
+            book = json.loads(row["yard"] or "{}")
+            if "pop" not in book:           # not yet through an hour
+                seen = self.town_engine.summary(row["state"])
+                book.update(pop=seen["population"], tier=seen["tier"],
+                            buildings=seen["buildings"])
+            lost = row["lost_tick"] is not None
+            out.append({
+                "company": row["name"], "house": bool(row["house"]),
+                "lost": lost, "crews": row["attempt"] + 1,
+                "age_days": (self.world.tick - row["founded_tick"]) // day,
+                "population": 0 if lost else book["pop"],
+                "tier": book["tier"], "buildings": book["buildings"],
+                "sold_t": book.get("sold_kg", 0) // TONNE,
+            })
+        out.sort(key=lambda t: (t["lost"], -t["population"], -t["sold_t"],
+                                t["company"]))
+        return out
+
     # -- the hour ------------------------------------------------------------
 
     def _tick_towns(self, now: str) -> list[Event]:
@@ -710,6 +740,18 @@ class TownOps:
         events: list[Event] = []
         book = self._yard_book(row)
         self._yard_roll(book)
+        seen = result.summary
+        rank = TIER_RANK.get(seen["tier"], 0)
+        if "peak" in book and rank > book["peak"]:
+            events.append(Event(
+                tick=self.world.tick, kind="town_grew", subject=player.id,
+                detail=f"{player.name} has grown into a "
+                       f"{seen['tier'].lower()} of {seen['population']} people",
+                data={"player": player.id, "company": player.name,
+                      "tier": seen["tier"],
+                      "population": seen["population"]}))
+        book.update(pop=seen["population"], buildings=seen["buildings"],
+                    tier=seen["tier"], peak=max(rank, book.get("peak", 0)))
         made = min(result.made, YARD_KG - held)
         if made > 0:
             ledger.extract(account, YARD_ASSET, made, now,
@@ -770,7 +812,8 @@ class TownOps:
                    "needs_population": TRADE_POPULATION},
             yard=self._yard_view(player, row, summary),
             caretaker={"on": bool(row["caretaker"]), "fee": CARETAKER_FEE,
-                       "paid": row["caretaker_paid"]})
+                       "paid": row["caretaker_paid"]},
+            company=player.name, league=self.towns_view())
         return meta
 
     def _yard_view(self, player, row, summary: dict) -> dict:

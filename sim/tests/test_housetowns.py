@@ -197,6 +197,37 @@ def test_what_they_have_they_were_given_by_the_fund_or_paid_by_a_buyer(moon):
         assert kinds <= {"grant", "town_income", "sweep"}, (pid, kinds)
 
 
+def test_a_town_that_grows_is_news_and_so_is_its_first_sale(moon):
+    pid = HOUSE[0][0]
+    grew = [e for e in events(moon, "town_grew") if e["subject"] == pid]
+    assert grew and "base" in grew[0]["detail"]
+    assert any(e["subject"] == pid for e in events(moon, "town_first_sale"))
+    assert any(e["kind"] == "town_grew" for e in moon.feed(limit=200))
+
+
+def test_every_town_is_listed_most_people_first(moon):
+    league = moon.towns_view()
+    assert len(league) == len(house(moon))
+    assert all(t["house"] and not t["lost"] for t in league)
+    people = [t["population"] for t in league]
+    assert people == sorted(people, reverse=True)
+    assert league[0]["company"] == HOUSE[0][1] and league[0]["sold_t"] >= 1
+    assert moon.world_view()["house_companies"] == len(league)
+
+
+def test_a_person_sees_the_same_list_with_their_own_town_in_it(routes):
+    g = fresh(routes)
+    person, _ = g.signup("Tranquility Co")
+    meta = g.found_town(person)
+    assert [t["company"] for t in meta["league"]] == ["Tranquility Co"]
+    assert meta["league"][0]["house"] is False
+    to_next_day(g)
+    meta = g.town_meta(g.player(person.id))
+    assert {t["company"] for t in meta["league"]} == {"Tranquility Co",
+                                                      HOUSE[0][1]}
+    g.db.close()
+
+
 def test_the_same_world_founds_the_same_towns(routes):
     """Seeded and replayable: two worlds left alone are the same world."""
     states = []
@@ -234,6 +265,8 @@ def test_a_lost_house_town_gets_a_new_crew_only_after_the_wait(routes):
     assert row["owed"] < 5000, "what the lost town owed was written off"
     assert g.world.ledger.credits_in_existence() == made
     assert any("new crew" in e["detail"] for e in events(g, "town_founded"))
+    listed = {t["company"]: t for t in g.towns_view()}[HOUSE[0][1]]
+    assert listed["crews"] == 2 and not listed["lost"]
     g.db.close()
 
 
@@ -258,6 +291,9 @@ def test_a_house_company_recalls_a_crew_from_a_town_past_saving(routes):
     assert lost == [pid]
     assert any("recalled" in e["detail"] and e["subject"] == pid
                for e in events(g, "town_lost"))
+    listed = {t["company"]: t for t in g.towns_view()}
+    assert listed[HOUSE[0][1]]["lost"] and listed[HOUSE[0][1]]["population"] == 0
+    assert not listed["Tranquility Co"]["lost"]
     g.db.close()
 
 
