@@ -38,14 +38,20 @@ whatever the company earns next.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import math
 
+from market.book import ASK
 from market.db import transaction
+from market.errors import MarketError
 from market.money import CREDIT
 
+from . import TICKS_PER_GAME_DAY
 from .earth import ACCOUNT as EARTH
 from .errors import GameError
+from .seed_world import TONNE, TRANQUILLITATIS
+from .ships import KESTREL
 from .shocks import Event
 from .town import Engine, TownError
 
@@ -62,6 +68,19 @@ TOWN_GRANT = 40_000
 #: A town may use the market once it has a working landing pad and this
 #: many people: the city builder's "Base" tier. D71.
 TRADE_POPULATION = 8
+
+
+#: Every town stands on the equatorial flats, so its goods come to market at
+#: that port. When towns can be founded elsewhere this becomes a column.
+TOWN_NODE = TRANQUILLITATIS
+#: What a town's foundries make: sintered parts, fittings, structural
+#: sections. The market's "manufactured goods". D75.
+YARD_ASSET = "GOODS"
+#: What the yard beside the landing pad holds. When it is full the
+#: foundries stop and their shifts are sent home. *Invented*, D75: about two
+#: game days of what Earth will take, so a town that stops selling has days,
+#: not hours, before its industry stands idle.
+YARD_KG = 20 * TONNE
 
 
 def town_seed(player_id: str, attempt: int = 0) -> int:
@@ -140,6 +159,186 @@ class TownOps:
                             memo="town debt settled")
                 owed -= clear
         return owed, carry
+
+    # -- the yard ------------------------------------------------------------
+
+    def _yard_account(self, player) -> str:
+        """The ledger account that holds a town's unsold goods. Made once.
+
+        Separate from the company's own account, which is its ship: goods
+        in the yard are not in the hold until they are loaded.
+        """
+        account = f"town:{player.id}"
+        exists = self.db.execute("SELECT 1 FROM account WHERE id = ?",
+                                 (account,)).fetchone()
+        if not exists:
+            self.world.ledger.open_account(
+                account, "player", self.world.game_time(),
+                label=f"{player.name} town yard")
+        return account
+
+    def _yard_book(self, row) -> dict:
+        """The standing instruction and the running totals. Defaults filled."""
+        book = json.loads(row["yard"] or "{}")
+        anchor = self.world.ledger.asset(YARD_ASSET).base_value
+        book.setdefault("sell", True)
+        book.setdefault("min_price", anchor)
+        for key in ("made_kg", "sold_kg", "sales", "day", "made_today",
+                    "sold_today", "sales_today", "made_yesterday",
+                    "sold_yesterday", "sales_yesterday"):
+            book.setdefault(key, 0)
+        book.setdefault("first_sale", False)
+        return book
+
+    def _yard_roll(self, book: dict) -> None:
+        """Start a new game day's totals when the day has turned."""
+        day = self.world.tick // TICKS_PER_GAME_DAY
+        if book["day"] != day:
+            fresh = book["day"] == day - 1
+            for key in ("made", "sold", "sales"):
+                book[f"{key}_yesterday"] = book[f"{key}_today"] if fresh else 0
+                book[f"{key}_today"] = 0
+            book["day"] = day
+
+    def _trade_open(self, summary: dict) -> bool:
+        return bool(summary["pad"]
+                    and summary["population"] >= TRADE_POPULATION)
+
+    def _yard_sell(self, player, account: str, book: dict, qty_kg: int,
+                   limit: int, now: str):
+        """Sell from the yard into the port's order book, now or not at all.
+
+        Whole trading lots only, to whoever is bidding most, at their
+        price and never below ``limit``. The takings go straight to the
+        company. Nothing rests on the book afterwards: an order a player
+        forgot about is not left standing in their name.
+        """
+        ledger = self.world.ledger
+        lot = ledger.asset(YARD_ASSET).lot_mass_kg
+        lots = min(qty_kg, ledger.balance(account, YARD_ASSET)) // lot
+        if lots < 1:
+            return None
+        try:
+            result = self._ioc(TOWN_NODE, YARD_ASSET, ASK, limit, lots * lot,
+                               account, now)
+        finally:
+            takings = ledger.balance(account, CREDIT)
+            if takings > 0:
+                ledger.transfer(account, player.account, CREDIT, takings,
+                                kind="sweep", game_time=now, ref=player.id,
+                                memo="yard takings to the company")
+        if result.filled_kg:
+            value = sum(f.value for f in result.fills)
+            book["sold_kg"] += result.filled_kg
+            book["sold_today"] += result.filled_kg
+            book["sales"] += value
+            book["sales_today"] += value
+        return result
+
+    def _save_yard(self, pid: str, book: dict) -> None:
+        self.db.execute("UPDATE town SET yard = ? WHERE player_id = ?",
+                        (json.dumps(book, separators=(",", ":")), pid))
+
+    def _town_trading(self, player):
+        """The town's row, for a request that needs the market open."""
+        row = self._town(player)
+        summary = self.town_engine.summary(row["state"])
+        if summary["phase"] == "lost":
+            raise GameError("Your town has fallen silent.")
+        if not self._trade_open(summary):
+            raise GameError(
+                "Nothing leaves the yard until the town has a working "
+                f"landing pad and {TRADE_POPULATION} people.")
+        return row
+
+    def town_sell(self, player, qty_t: int, limit: int) -> dict:
+        """Sell goods from the yard at the port, by hand."""
+        row = self._town_trading(player)
+        qty, limit = self._tonnes(qty_t), self._price(limit)
+        account = self._yard_account(player)
+        held = self.world.ledger.balance(account, YARD_ASSET)
+        if qty > held:
+            raise GameError(f"The yard holds {held // TONNE} t.")
+        now = self.world.game_time()
+        book = self._yard_book(row)
+        with self._mutation():
+            self._yard_roll(book)
+            try:
+                result = self._yard_sell(player, account, book, qty, limit,
+                                         now)
+            except MarketError as exc:
+                raise GameError(str(exc)) from exc
+            events = self._first_sale(player, book, result)
+            self._save_yard(player.id, book)
+            self._log(events)
+        report = self._fill_report(result, "sold", YARD_ASSET)
+        return {**self.town_meta(player), "report": report}
+
+    def town_policy(self, player, sell: bool, min_price: int) -> dict:
+        """Set the standing instruction: sell what is made, or hold it."""
+        row = self._town(player)
+        if not isinstance(sell, bool):
+            raise GameError("Say whether to sell or to hold.")
+        book = self._yard_book(row)
+        book["sell"], book["min_price"] = sell, self._price(min_price)
+        with self._mutation():
+            self._save_yard(player.id, book)
+        return self.town_meta(player)
+
+    def _first_sale(self, player, book: dict, result) -> list[Event]:
+        if book["first_sale"] or result is None or not result.filled_kg:
+            return []
+        book["first_sale"] = True
+        return [Event(
+            tick=self.world.tick, kind="town_first_sale", subject=player.id,
+            detail=f"{player.name}'s town sold its first goods at the Flats",
+            data={"player": player.id, "company": player.name,
+                  "kg": result.filled_kg})]
+
+    def _town_ship(self, player):
+        ship = self._docked(player)
+        if ship.location != TOWN_NODE:
+            raise GameError("Your ship is not at Tranquillitatis Flats.")
+        return ship
+
+    def town_load(self, player, qty_t: int) -> dict:
+        """Move goods from the yard into the company's ship at the port."""
+        self._town_trading(player)
+        ship = self._town_ship(player)
+        qty = self._tonnes(qty_t)
+        ledger, account = self.world.ledger, self._yard_account(player)
+        held = ledger.balance(account, YARD_ASSET)
+        if qty > held:
+            raise GameError(f"The yard holds {held // TONNE} t.")
+        room = KESTREL.cargo_capacity_kg - self.hold_used(player)
+        if qty > room:
+            raise GameError(f"Only {room // TONNE} t of space aboard.")
+        with self._mutation():
+            ledger.transfer(account, player.account, YARD_ASSET, qty,
+                            kind="stow", game_time=self.world.game_time(),
+                            ref=player.id, memo=f"{ship.id} loads from town")
+            ship.loaded[YARD_ASSET] = ship.loaded.get(YARD_ASSET, 0) + qty
+        return self.town_meta(player)
+
+    def town_unload(self, player, qty_t: int) -> dict:
+        """Put goods from the ship back in the yard."""
+        self._town(player)
+        ship = self._town_ship(player)
+        qty = self._tonnes(qty_t)
+        ledger, account = self.world.ledger, self._yard_account(player)
+        aboard = ledger.balance(player.account, YARD_ASSET)
+        if qty > aboard:
+            raise GameError(f"You have {aboard // TONNE} t aboard.")
+        room = YARD_KG - ledger.balance(account, YARD_ASSET)
+        if qty > room:
+            raise GameError(f"Only {room // TONNE} t of room in the yard.")
+        with self._mutation():
+            ledger.transfer(player.account, account, YARD_ASSET, qty,
+                            kind="stow", game_time=self.world.game_time(),
+                            ref=player.id, memo=f"{ship.id} unloads to town")
+            if YARD_ASSET in ship.loaded:
+                ship.loaded[YARD_ASSET] = max(0, ship.loaded[YARD_ASSET] - qty)
+        return self.town_meta(player)
 
     # -- founding ----------------------------------------------------------
 
@@ -226,7 +425,10 @@ class TownOps:
         rows = self.db.execute(
             "SELECT * FROM town WHERE lost_tick IS NULL "
             "ORDER BY founded_tick, player_id").fetchall()
-        for row in rows:
+        # Whoever sells first gets the best bid, so the first place moves
+        # round by one each hour: no town is always at the front.
+        turn = self.world.tick % len(rows) if rows else 0
+        for row in rows[turn:] + rows[:turn]:
             try:
                 with transaction(self.db):
                     events += self._tick_town(row, now)
@@ -239,8 +441,11 @@ class TownOps:
 
     def _tick_town(self, row, now: str) -> list[Event]:
         player = self.player(row["player_id"])
+        ledger, account = self.world.ledger, self._yard_account(player)
+        held = ledger.balance(account, YARD_ASSET)
         before = self._town_wallet(player, row["owed"])
-        result = self.town_engine.tick(row["state"], 1.0, before)
+        result = self.town_engine.tick(row["state"], 1.0, before,
+                                       {"cap": YARD_KG, "held": held})
         owed, carry = self._town_settle(
             player, before, result.credits, row["owed"], row["carry"], now,
             building=False)
@@ -250,15 +455,41 @@ class TownOps:
             "WHERE player_id = ?",
             (result.state, owed, carry, self.world.tick if lost else None,
              player.id))
+
+        # What the foundries made this hour is cargo, at the port, on the
+        # ledger. No credits are created here: it is worth what somebody
+        # with money of their own will pay for it, and nothing until then.
+        events: list[Event] = []
+        book = self._yard_book(row)
+        self._yard_roll(book)
+        made = min(result.made, YARD_KG - held)
+        if made > 0:
+            ledger.extract(account, YARD_ASSET, made, now,
+                           memo=f"{player.name} town foundries")
+            book["made_kg"] += made
+            book["made_today"] += made
+        if (not lost and book["sell"] and self._trade_open(result.summary)):
+            bid = self.world.books[TOWN_NODE].best_bid(YARD_ASSET)
+            if bid and bid >= book["min_price"]:
+                try:
+                    with transaction(self.db):
+                        sold = self._yard_sell(
+                            player, account, book,
+                            ledger.balance(account, YARD_ASSET),
+                            book["min_price"], now)
+                    events += self._first_sale(player, book, sold)
+                except MarketError:
+                    pass    # the book refused it this hour; try the next
+        self._save_yard(player.id, book)
         if not lost:
-            return []
+            return events
         self._message(player.id, "ark_development_office", "town_lost",
                       {"company": player.name,
                        "hours": int(result.summary["t"])})
-        return [Event(tick=self.world.tick, kind="town_lost",
-                      subject=player.id,
-                      detail=f"{player.name}'s town has fallen silent",
-                      data={"player": player.id, "company": player.name})]
+        return events + [Event(
+            tick=self.world.tick, kind="town_lost", subject=player.id,
+            detail=f"{player.name}'s town has fallen silent",
+            data={"player": player.id, "company": player.name})]
 
     # -- views ---------------------------------------------------------------
 
@@ -284,12 +515,49 @@ class TownOps:
             faults=row["faults"], attempt=row["attempt"],
             wallet=self._town_wallet(player, row["owed"]),
             summary=summary,
-            trade={"open": bool(summary["pad"]
-                               and summary["population"] >= TRADE_POPULATION),
+            trade={"open": self._trade_open(summary),
                    "pad": bool(summary["pad"]),
                    "population": summary["population"],
-                   "needs_population": TRADE_POPULATION})
+                   "needs_population": TRADE_POPULATION},
+            yard=self._yard_view(player, row, summary))
         return meta
+
+    def _yard_view(self, player, row, summary: dict) -> dict:
+        """The yard as the screen shows it. Reads only."""
+        ledger = self.world.ledger
+        spec = ledger.asset(YARD_ASSET)
+        market = self.world.books[TOWN_NODE]
+        account = f"town:{player.id}"
+        book = self._yard_book(row)
+        day = self.world.tick // TICKS_PER_GAME_DAY
+        today = book["day"] == day
+        ship = self.ship_of(player)
+        docked = (ship.state.value == "docked" and ship.location == TOWN_NODE)
+        return {
+            "asset": YARD_ASSET, "name": spec.name, "node": TOWN_NODE,
+            "held_kg": ledger.balance(account, YARD_ASSET),
+            "cap_kg": YARD_KG, "lot_kg": spec.lot_mass_kg,
+            "anchor": spec.base_value,
+            "make_kg_per_hour": summary.get("make", 0),
+            "foundries": summary.get("foundries", 0),
+            "full": bool(summary.get("yardFull")),
+            "bid": market.best_bid(YARD_ASSET),
+            "last": market.last_price(YARD_ASSET),
+            "sell": book["sell"], "min_price": book["min_price"],
+            "made_kg": book["made_kg"], "sold_kg": book["sold_kg"],
+            "sales": book["sales"],
+            "made_today": book["made_today"] if today else 0,
+            "sold_today": book["sold_today"] if today else 0,
+            "sales_today": book["sales_today"] if today else 0,
+            "sold_yesterday": (book["sold_today"] if book["day"] == day - 1
+                               else book["sold_yesterday"] if today else 0),
+            "sales_yesterday": (book["sales_today"] if book["day"] == day - 1
+                                else book["sales_yesterday"] if today else 0),
+            "ship": {"here": docked,
+                     "aboard_kg": ledger.balance(player.account, YARD_ASSET),
+                     "room_kg": max(0, KESTREL.cargo_capacity_kg
+                                    - self.hold_used(player))},
+        }
 
     def town_state(self, player) -> str | None:
         """The town itself, as the JSON text the rules produced."""

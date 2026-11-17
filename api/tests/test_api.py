@@ -268,3 +268,31 @@ def test_found_a_town_and_build_in_it(client, game):
     assert client.post("/api/town/refound", headers=who).status_code == 400
     kinds = [m["kind"] for m in client.get("/api/inbox", headers=who).json()]
     assert "town_charter" in kinds
+
+
+def test_the_yard_is_shown_and_its_door_is_shut_until_trade_opens(client, game):
+    who = _join(client)
+    client.post("/api/town/found", headers=who)
+    yard = client.get("/api/town", headers=who).json()["meta"]["yard"]
+    assert yard["asset"] == "GOODS" and yard["held_kg"] == 0
+    assert yard["cap_kg"] == 20_000 and yard["anchor"] == 45_000
+    assert yard["sell"] is True and yard["min_price"] == 45_000
+
+    # The owner's instruction is theirs to set at any time.
+    r = client.post("/api/town/policy", headers=who,
+                    json={"sell": False, "min_price": 50_000})
+    assert r.status_code == 200
+    assert r.json()["meta"]["yard"]["sell"] is False
+    assert r.json()["meta"]["yard"]["min_price"] == 50_000
+    assert client.post("/api/town/policy", headers=who,
+                       json={"sell": "maybe", "min_price": 1}).status_code == 422
+
+    # Selling and loading wait for a landing pad and eight people.
+    for path, body in (("/api/town/sell", {"tonnes": 1, "price": 45_000}),
+                       ("/api/town/load", {"tonnes": 1})):
+        r = client.post(path, headers=who, json=body)
+        assert r.status_code == 400 and "landing pad" in r.json()["detail"]
+    assert client.post("/api/town/sell", headers=who,
+                       json={"tonnes": 0, "price": 1}).status_code == 422
+    assert client.post("/api/town/sell",
+                       json={"tonnes": 1, "price": 1}).status_code == 401

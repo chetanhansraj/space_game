@@ -12,6 +12,7 @@
 // Built by `npm run build:engine` into sim/src/sim/town_engine.js, which is committed.
 
 import { BUILDINGS } from './sim/buildings';
+import { steward } from './steward';
 import { State, Intent, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
 
 const summary = (s: State) => {
@@ -21,6 +22,8 @@ const summary = (s: State) => {
     pad: s.buildings.some(b => b.type === 'pad' && working(b)),
     mission: s.mission, buildings: s.buildings.length, residents: s.residents, tourists: s.tourists,
     crew: s.crew.filter(c => c.alive).length,
+    make: s.flows.make, yardFull: s.flows.yardFull,
+    foundries: s.buildings.reduce((n, b) => n + (b.type === 'printer' && working(b) ? b.level : 0), 0),
   };
 };
 const reply = (s: State, extra: object = {}) =>
@@ -65,13 +68,45 @@ function malformed(s: State, it: any): string | null {
     return reply(s, { ok: true });
   },
 
-  /** Advance the town by whole or part hours, in the simulation's own steps. */
-  tick(state: string, hours: number, credits: number): string {
+  /**
+   * Advance the town by whole or part hours, in the simulation's own steps.
+   *
+   * `yard` is the other thing the server owns: `{cap, held}` in kilograms, the size of the town's
+   * yard and what is in it. Given a yard, foundries make goods into it instead of being paid, and
+   * the reply says how many whole kilograms were made. The part of a kilogram left over stays in
+   * the state for the next hour, so nothing is rounded away.
+   */
+  tick(state: string, hours: number, credits: number, yard?: string): string {
     const s = JSON.parse(state) as State;
     s.materials = credits;
+    if (yard) {
+      const y = JSON.parse(yard), part = s.cargo ? s.cargo.made : 0;
+      s.cargo = { cap: y.cap, room: Math.max(0, y.cap - y.held - part), made: part };
+    }
     const steps = Math.round(hours / TICK);
     for (let i = 0; i < steps && s.phase === 'playing'; i++) tick(s);
-    return reply(s);
+    let made = 0;
+    if (s.cargo) { made = Math.floor(s.cargo.made + 1e-9); s.cargo.made = Math.max(0, s.cargo.made - made); }
+    return reply(s, { made });
+  },
+
+  /**
+   * What a careful player would do this hour: the requests, in order, that the steward would send.
+   * Nothing is changed here. The server sends each one through `apply` like any player's, so the
+   * rules judge a steward's move exactly as they judge a person's.
+   */
+  steward(state: string, credits: number): string {
+    const s = JSON.parse(state) as State;
+    s.materials = credits;
+    const intents: Intent[] = [];
+    const hour = steward((st, it) => {
+      if (malformed(st, it)) return { ok: false };
+      const r = apply(st, it);
+      if (r.ok) intents.push(it);
+      return r;
+    });
+    if (s.phase === 'playing') hour(s);
+    return JSON.stringify({ intents });
   },
 
   /** What the rest of the world needs to know about a town, without reading its whole state. */

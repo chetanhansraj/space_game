@@ -40,6 +40,7 @@ class Result:
     state: str          # the town, as JSON text; never parsed on this side
     credits: float      # the wallet as the rules left it, in town credits
     summary: dict
+    made: int = 0       # whole kilograms of goods the foundries made
 
 
 class Engine:
@@ -72,7 +73,7 @@ class Engine:
     @staticmethod
     def _result(reply: dict) -> Result:
         return Result(reply["state"], float(reply["credits"]),
-                      reply["summary"])
+                      reply["summary"], int(reply.get("made") or 0))
 
     def create(self, seed: int, credits: float) -> Result:
         return self._result(self._call("create", int(seed), float(credits)))
@@ -85,9 +86,21 @@ class Engine:
             return None, reply.get("reason") or "That cannot be done"
         return self._result(reply), ""
 
-    def tick(self, state: str, hours: float, credits: float) -> Result:
-        return self._result(self._call("tick", state, float(hours),
-                                       float(credits)))
+    def tick(self, state: str, hours: float, credits: float,
+             yard: dict | None = None) -> Result:
+        """Advance a town. ``yard`` is ``{"cap": kg, "held": kg}``.
+
+        Given a yard, the foundries make goods into it instead of being
+        paid, and ``Result.made`` is the whole kilograms they made.
+        """
+        args = [state, float(hours), float(credits)]
+        if yard is not None:
+            args.append(json.dumps(yard))
+        return self._result(self._call("tick", *args))
+
+    def steward(self, state: str, credits: float) -> list[dict]:
+        """The requests a careful player would send this hour. Changes nothing."""
+        return self._call("steward", state, float(credits))["intents"]
 
     def summary(self, state: str) -> dict:
         return self._call("summary", state)
