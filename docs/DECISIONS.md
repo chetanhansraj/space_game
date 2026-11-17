@@ -1667,6 +1667,91 @@ the Ark's fund each time. The fund is finite and pays only while it can.
 If that is ever abused, the remedy is a waiting time before a relief crew
 is sent, not a return to the dead account.
 
+### D81 — The world runs five towns of its own
+
+*Delegated: "take it forward, realise my vision", 17 November 2026. D68
+gave the direction and its two fixed rules.* F9 found the Moon with no
+producers left, and D37 rules out firms the Ark pays to replace them. So
+the world founds companies and plays their towns, by the rules a person
+plays by.
+
+**What a house company is.** An ordinary company. `_charter_company` is
+the one charter there is: 120,000 cr and a full tank from the Ark's fund, a
+leased Kestrel, 400 cr a day. Its town is founded with the ordinary grant.
+Five of them, with fixed ids so that a world replayed from its seed founds
+the same towns: Mare Cooperative, Serenitatis Foundry Co, Tycho Settlement
+Trust, Imbrium Works, Fecunditatis Union. One is chartered every two game
+days. A name a person already holds is left to them. Its key is the hash
+of no key, so nobody can sign in as one. It is marked `house` in the
+player table and "agent" wherever it is shown, and the world view counts
+house companies apart from companies, so agents are never passed off as
+people.
+
+**Who plays it.** The steward (D77), every hour, with the full brief
+rather than the caretaker's. It decides inside the tick, deterministically,
+with no model (invariant 2), and each thing it asks for goes through
+`_apply_intent`, the door a person's requests come through. It pays no
+caretaker's wage: nobody is hired, the company is doing its own work.
+D68's other rule stands for later: an agent that decides with a language
+model will act through the public API from outside the tick.
+
+**Where its money comes from** (invariant 3). The fund's grants, what
+Earth pays a town under the town's own rules (D70), and what a buyer pays
+for its goods on the book. A test reads every credit a house company has
+ever received and allows only those three kinds. Nothing is created:
+credits in existence are the same after 120 game days as before.
+
+**Where it goes** (invariant 7). The sinks a person's town has: building,
+upkeep and compensation are burned, and the ship's fee is paid. No new
+faucet is added, so no new sink is owed.
+
+**Two things a house company does that a person cannot yet.**
+- *It recalls its crew* when its town owes more than founding a new one
+  costs (160,000 cr). The rules stop a town in debt from building. A
+  person can fly cargo to pay the debt down; a house company has no other
+  business, so past that line the town would only sit there owing more.
+  Measured: towns that recovered never owed more than 62,000 cr.
+- *It waits seven game days* before sending a new crew. D80 named a
+  waiting time as the remedy if relief crews drained the fund.
+
+**The port is a milestone** (amends D71 and D76). Found while measuring
+this: a town that fell below eight people could no longer sell, so it
+could never earn its way back. The eight people are now passed once. A
+town keeps its place at the port while it has a working pad, and a new
+crew earns it again.
+
+**The Moon is listed.** `GET /api/towns` is public: every town by people,
+with its standing, age, crews sent and goods sold. The town page has a
+Towns drawer with the same list. A town that reaches a new standing writes
+a line in the world's record.
+
+**Measured.** A fresh world left alone for 120 game days (two real days),
+`python scripts/demo_towns.py 120`: all five towns reach 48 to 90 people
+and sell 40 to 67 t of goods each, 274 t in all. Populations rise and fall
+with the lunar night: a town of 92 is back to 56 a fortnight later. Mare
+Cooperative draws a hard map, loses 16 visitors at the end of its first
+night at 15 credits each, is recalled on day 28 and with its second crew
+is the largest town on the Moon by day 110. No faults. The five hold 24
+million credits between them at the end, and Earth has paid out 36 million
+as town income.
+
+**What this does not do, plainly.**
+- House towns only sell. They bid for nothing, so they are suppliers of
+  goods and not yet customers of anything, and what they earn piles up in
+  their accounts. A market where towns need each other is the next build,
+  and it is the one that makes this an economy and not five shops.
+- Nobody makes propellant still. That was true before and is not fixed by
+  this.
+- The steward is one way of playing. Five towns run by it are five towns
+  played the same way on different ground. Different temperaments are a
+  later step, and so are agents that think (D68).
+- On a hard map the steward loses its first town. That is the rules being
+  hard on that ground as much as the steward being simple, and a person
+  on that ground would meet the same night.
+
+*Invented, and yours to change:* five companies, two days apart, seven
+days before a new crew, recall at 160,000 cr.
+
 ---
 
 ## Still open — needs you
@@ -1705,21 +1790,37 @@ Deliberately not decided, because these are yours.
     a game hour and urgent work only. Say if it should cost more, or do
     more, or need the town to reach some size before one can be hired.
 14. **Eight people to trade** — D71.
-15. **The Moon's firms are all dead** — F9. This is the big one. Towns
-    run by agents (D68) are the repair you have pointed at, and they are
-    not built. Until they are, the market a town sells into is Earth's
-    order and little else, and there is no propellant being made anywhere
-    for anyone's ship. Say whether agent towns are the next build.
-16. **Earth's purse is finite** — D40, D75. Earth has 1,765 million credits
-    left on the live world and no income. At the full twelve tonnes a day
-    of goods that is about eight real weeks. Then nothing enters the world
-    at all. Should Earth be an outside economy that never runs dry and is
-    limited only by its appetite, or is a world that ends by design what
-    you want?
+15. **The Moon's firms are all dead** — F9. Agent towns are now built
+    (D81): five house companies sell goods at the Flats. What is still
+    missing is anyone to buy from, and propellant from anyone at all.
+16. **Earth's purse is finite** — D40, D75, D81. Earth has 1,765 million
+    credits left on the live world and no income. Five house towns at
+    their measured size take about 0.4 million a game day from it between
+    town income and goods, which is roughly ten million a real day, and
+    more as they grow and as people join. That is some months, not years.
+    Then nothing enters the world at all. Should Earth be an outside
+    economy that never runs dry and is limited only by its appetite, or is
+    a world that ends by design what you want?
 17. **Thirteen kilograms, twenty tonnes, twelve tonnes a day** — D75, D76.
     Play it and say what feels too slow or too easy.
 18. **What a foundry on ilmenite should make** — D76. Iron and volatiles
     are in the commodity table and nobody on the Moon buys them.
+19. **The way out of deep debt** — D81. A town that owes more than it
+    can earn cannot build, so it cannot recover from inside. A person can
+    trade their way out with the ship. Should a person also be able to
+    recall their own crew and start again, as a house company does, and
+    if so with what wait? Without a wait it is a way to draw on the Ark's
+    fund again and again.
+20. **How rich a town gets** — D70, D81. Left alone for two real days a
+    house company holds four to six million credits, against the 120,000
+    a new company starts with and the few thousand a cargo run earns.
+    Town money is a thousand trade credits to one. Either towns should
+    cost that much to run once they need goods and parts, or the rate is
+    too generous. This is the number that decides whether flying a ship
+    is worth anyone's time.
+21. **Do house towns step back when people arrive?** — D81. Five agents
+    are company on an empty Moon and competition on a full one. They
+    could be capped at a share of all towns, or stay for good.
 10. **Helium-3 for players** — D53. A player separator adds to the only
     faucet in the economy (D40), so it needs a licence and a royalty before
     the flats open. The size of that royalty is the decision.

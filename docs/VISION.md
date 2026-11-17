@@ -302,19 +302,29 @@ the last ones did. D74 to D78.
 A caretaker can be hired for a wage to deal with what is urgent while the
 owner is away (D79). It keeps a town alive. It does not play it.
 
-### The Moon's firms are dead (F9)
+### The Moon's firms are dead (F9), and towns have begun to replace them
 
 Found on day 49: every bot firm on the live Moon went bankrupt weeks ago.
-The trading world has not been going on by itself. Towns are meant to be
-what replaces them.
+The trading world had not been going on by itself.
+
+So the world now runs five towns of its own (D81). Each is an ordinary
+company with the ordinary charter and the ordinary rules, played every
+hour by the steward. They grow, they have bad nights, they sell goods at
+the Flats, and one of them may lose its town and send a second crew. A
+person who founds a town finds neighbours, and a list that says where
+they stand among them.
+
+They are sellers only. Nothing on the Moon yet needs what another town
+makes, and that is the next thing.
 
 ### Next
 
-- **Towns run by agents** (D68), now the most urgent thing: the Moon has
-  no producers but players. The steward (D77) is the hands; what is missing
-  is the companies, their founding, and letting them trade with each other.
-- **Towns that need each other**: a town's supplies bought from other
-  towns and from the polar works, not from Earth by formula.
+- **Towns that need each other**, now the most urgent thing: a town's
+  upkeep paid in goods and parts bought on the book from other towns and
+  from the polar works, not from Earth by formula. This is what gives the
+  house towns' money somewhere to go and a ship something to carry.
+- **Agents with temperaments, then agents that think** (D68): today all
+  five house towns are played the same way.
 - **Land first at signup**, with the ship earned (D53).
 - **The plot's real longitude**, so that dawn in the town is dawn on the
   Moon map.
