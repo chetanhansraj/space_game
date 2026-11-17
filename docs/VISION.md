@@ -290,18 +290,35 @@ opens when the town has a landing pad and eight people. A town left alone
 can be lost and founded again. D69 to D73. The trading world goes on whether
 a town trades or not, and a town goes on whether it trades or not.
 
+### Done: what a town makes is sold
+
+A town's foundries make manufactured goods into a yard at the port, on the
+ledger, and the town sells them by the tonne to whoever is bidding: the
+settlements' households out of their savings, and Earth's standing order
+for lunar parts. Trade opens with a landing pad and eight people. Working
+foundries are jobs, jobs bring people, and people cost more to keep than
+the last ones did. D74 to D78.
+
+### The Moon's firms are dead (F9)
+
+Found on day 49: every bot firm on the live Moon went bankrupt weeks ago.
+The trading world has not been going on by itself. Towns are meant to be
+what replaces them.
+
 ### Next
 
-- **Real cargo**: what the town's industry makes goes into the market's
-  order books and onto ships, instead of being bought by Earth inside the
-  town's own rules (D70). This is what makes it one economy.
-- **A hard gate and land first at signup**: a new company starts with land,
-  not a ship, and earns the ship (D53, D71).
-- **A caretaker for hire** while the owner is away (D73).
-- **Towns run by agents** (D68), so the Moon has an economy to join.
+- **Towns run by agents** (D68), now the most urgent thing: the Moon has
+  no producers but players. The steward (D77) is the hands; what is missing
+  is the companies, their founding, and letting them trade with each other.
+- **Towns that need each other**: a town's supplies bought from other
+  towns and from the polar works, not from Earth by formula.
+- **A caretaker for hire** while the owner is away (D73), from the same
+  steward.
+- **Land first at signup**, with the ship earned (D53).
 - **The plot's real longitude**, so that dawn in the town is dawn on the
   Moon map.
-- **Helium-3**, with a licence and a royalty (D53).
+- **Helium-3**, with a licence and a royalty (D53), and something for
+  ilmenite and glass to become.
 
 - **Standing orders**, so a company trades while its owner sleeps — the
   check-in loop the vision is built on.

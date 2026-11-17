@@ -127,6 +127,14 @@ earns the right to trade when it has a landing pad and eight people. It is
 drawn by the same client, built live, at `/town/`. `docs/DECISIONS.md` D69 to
 D73. The Shackleton works below is still there, as WORKS on the Moon page.
 
+**What a town makes is real cargo.** Its foundries make manufactured goods
+into a yard at Tranquillitatis Flats, on the ledger. The town sells them by
+the tonne into the port's order book, to settlement households spending
+their savings and to Earth's standing order for lunar parts, or loads them
+into its ship. `sim/tests/test_townyard.py` and `test_goods_demand.py`;
+`docs/DECISIONS.md` D74 to D78. Read F9 there first: the Moon's bot firms
+did not survive, and towns are what must replace them.
+
 **The works is a town too.** Six people found it, more arrive on a daily shuttle
 when there are berths, air, water and food for them, and they are the
 workforce its industry needs. It runs on the one universal clock, on the
