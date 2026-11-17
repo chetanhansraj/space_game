@@ -1917,6 +1917,110 @@ so it is a cost to choose, not a requirement.
 *Invented, and yours to change:* the five temperaments themselves, the
 500 cr step, two lots at a time.
 
+### D84 — Every town stands on its own ground
+
+*Direction from Chetan, 18 November 2026:* every user is given a plot
+somewhere on the Moon. Plots differ by where they are, and even plots
+side by side differ: some rich in minerals and poor for a resort, some
+with ice, some with little in the ground and a great deal to see. "This
+is what the game should excel on, variety, and giving people equal
+possibilities. What a user does with it is different." He corrected an
+earlier suggestion of mine, that every plot have one thing nobody else
+has: that works for ten plots and not for thousands.
+
+**A plot** is a latitude, a longitude and six readings from 0 to 1.
+
+| Reading | What it is | What it multiplies in the rules |
+|---|---|---|
+| sun | how much of the time the arrays are lit | what a solar array makes |
+| ice | water ice within reach | what has to come from Earth for each person |
+| metal | iron and titanium in the soil | what a foundry makes |
+| glass | aluminium and silicon | spare parts the buildings need (D82) |
+| he3 | helium-3 held in the soil | how rich a survey find is |
+| view | Earth in the sky, or radio silence | how many visitors come |
+
+**Three rules** (`sim/src/sim/plots.py`):
+1. *Where it is sets the pattern.* Ice at the poles. Iron, titanium and
+   helium-3 in the dark plains. Aluminium in the bright highlands. Earth
+   over the middle of the near side; on the far side, the silence an
+   observatory comes for; at the edge between them, neither.
+2. *Neighbours differ.* Each reading is moved by up to 0.15 by a number
+   that belongs to that plot's own position.
+3. *Every plot adds up to the same*, 3.0. Ice and outlook are facts of
+   place and are never handed out to balance the books: there is no ice
+   at the equator whatever the budget would like. Soil and sunlight take
+   up the difference.
+
+**Assigned, not chosen**, as he said it. A person's place is drawn from
+their company's id: a quarter each on the plains, the near highlands,
+the polar rims and the far side. Left to chance four in five would land
+in highlands. The same company always has the same ground and keeps it
+through every crew.
+
+**How much a reading counts.** Up to 2.5 times either way, on purpose:
+D83 showed that small differences are flattened by the rest of the rules
+and every town comes out the same. Ice is the exception. Nearly all the
+Moon has none and the game was tuned without it, so lacking it costs
+nothing and having it is worth up to 1.6 times. At the full swing polar
+towns ended twice as rich as any other.
+
+**Seven house companies now**, standing where they are named for, so the
+seed of the world has every kind of ground: Mare Cooperative
+(Tranquillitatis, by Apollo 11), Serenitatis Foundry Co, Imbrium Works,
+Fecunditatis Union, Tycho Settlement Trust (highlands), and two new
+ones, Shackleton Ice Company (south polar rim) and Korolev Quiet Trust
+(far side).
+
+**Measured.** `python scripts/demo_towns.py 120`, each on its own ground:
+
+| Town | Ground | People | Made | Fitted | Sold | Bought | Holds |
+|---|---|---|---|---|---|---|---|
+| Korolev Quiet Trust | Far-side highlands | 68 | 25 t | 16 t | 8 t | 2 t | 0.5 M |
+| Mare Cooperative (2nd crew) | Mare Tranquillitatis | 65 | 61 t | 48 t | 27 t | 18 t | 0.2 M |
+| Imbrium Works | Mare Imbrium | 46 | 88 t | 46 t | 52 t | 13 t | 6.0 M |
+| Fecunditatis Union (2nd crew) | Mare Fecunditatis | 44 | 33 t | 40 t | 6 t | 17 t | 0.6 M |
+| Tycho Settlement Trust | Near-side highlands | 44 | 4 t | 13 t | 2 t | 13 t | 7.6 M |
+| Shackleton Ice Company | South polar rim | 40 | 21 t | 7 t | 14 t | 1 t | 6.4 M |
+| Serenitatis Foundry Co | Mare Serenitatis | 36 | 119 t | 35 t | 89 t | 7 t | 6.7 M |
+
+All seven stand. 71 t of goods and 4.5 million credits passed between
+towns. The towns are now plainly different from each other: the foundry
+on Serenitatis makes thirty times what the highland resort does, and the
+polar town fits a seventh of the parts a plains town does. No credit
+created, no failed town hours.
+
+**Equal on paper is not yet equal in play, and this is the thing to
+watch.** The steward on 120 sampled plots in the practice game, three
+lunar days: 3 lost, against 1 on plain ground. Median credits at the
+end ran from 2,900 on the far side to 5,500 on the south polar rim. In
+the table above holdings run from 0.2 to 7.6 million, though two of the
+poorest are on second crews and temperament is mixed in with ground.
+The budget makes the readings equal. It does not make what the rules do
+with them equal, and only measuring and tuning will.
+
+**What this does not do, plainly.**
+- *Night is the same length everywhere.* Sunlight changes what arrays
+  make, not how long the dark lasts. A polar town with near-constant sun
+  needs the rules' clock to know about latitude, and that touches 34
+  places in the rules. It is the most important missing piece of this.
+- *Every town still trades at the Flats.* A plot has a place on the Moon
+  but its goods appear at one port. Plots tied to their nearest port is
+  what gives ships cargo, and is the next step.
+- *The map is a sketch.* Real basin centres and diameters, each drawn as
+  a disc, and the rest from latitude and longitude. Orbiters have mapped
+  the real titanium, iron, hydrogen and sunlight. Those maps replace
+  `pattern` and nothing that calls it.
+- *One product still.* Ground changes how much a town makes and needs,
+  not what. Ice does not yet become water to sell, nor highland soil
+  glass. That needs new goods and is where "own minerals" really pays.
+- *No surveying to discover it.* A company sees its readings at once.
+- *Earth is still drawn in the sky of a far-side town.*
+
+*Invented, and yours to change:* the six readings and what each
+multiplies, a swing of 2.5 (1.6 for ice), the budget of 3.0, neighbour
+noise of 0.15, the four kinds of ground in equal shares, the two new
+companies and where all seven stand.
+
 ---
 
 ## Still open — needs you
@@ -1984,6 +2088,13 @@ Deliberately not decided, because these are yours.
     cost that much to run once they need goods and parts, or the rate is
     too generous. This is the number that decides whether flying a ship
     is worth anyone's time.
+25. **Assigned or chosen** — D84. A company is given its ground, as you
+    said. The alternative is to offer three and let the person pick. Say
+    if a person should also be able to see their readings before they
+    found, or move.
+26. **How much the ground should matter** — D84. Up to 2.5 times either
+    way. Play a plot and say whether it feels like your own ground or
+    like a handicap.
 23. **Prices are not a trade-off** — D83. Charging High made a town about
     twice as rich and cost it nothing that could be measured. Either High
     should empty beds and Low fill them more strongly than they do, or

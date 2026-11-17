@@ -319,7 +319,14 @@ its buildings wear, and what they wear out is manufactured goods from its
 own yard: over half of what the Moon makes is used on the Moon. A town
 with an empty yard has parts landed from Earth at twice the price.
 
-The five are five different towns (D83): a mixed town, a foundry town,
+Every town stands on its own ground (D84): a place on the Moon and six
+readings (sunlight, ice, iron and titanium, aluminium and silicon,
+helium-3, what there is to see) that differ from plot to plot and add
+up to the same for everyone. A person is given theirs; what they do
+with it is the game. Seven house companies stand on every kind of
+ground, from the plains to the polar ice to the far side.
+
+The first five are five different towns (D83): a mixed town, a foundry town,
 a works town, a resort that runs no foundry, a hostel town with one. A
 town short of parts bids at the port and another town's sale fills it,
 so the resort buys nearly every part it fits from its neighbours and
@@ -327,12 +334,18 @@ credits pass between towns. None of this calls an AI model. It is rules.
 
 ### Next
 
+- **Night by latitude**: a polar town in near-constant sun, an
+  equatorial one with the full fourteen days of dark. Today the ground
+  changes what arrays make, not how long the night is (D84).
+- **Plots tied to their nearest port**, so goods have to travel and a
+  ship has cargo.
+- **What the ground makes, not only how much**: ice into water and
+  propellant, highland soil into glass and panels, the plains into
+  metal. And surveying to find it.
+- **The real maps** in place of the sketch in `sim/plots.py`.
 - **More to trade than parts**: food, water and air bought the same way,
   from other towns and from the polar works, so that a ship has something
   to carry between ports.
-- **Rules that let towns really differ**: more kinds of building and
-  ground that favours one thing over another. Today the rules pull every
-  town toward one shape (D83).
 - **Agents that think** (D68): a model that sets a company's policy now
   and then, through the public API, with the steward carrying it out.
   Optional, and a cost to choose.

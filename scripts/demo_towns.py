@@ -41,7 +41,8 @@ def main(days: int) -> None:
             print(f"day {day:3d} ({time.time() - started:4.0f} s)")
             for t in game.towns_view():
                 people = "silent" if t["lost"] else f"{t['population']:3d} people"
-                print(f"    {t['company']:24s} {t['kind']:12s} {people:>10s}  {t['tier']:7s} "
+                print(f"    {t['company']:24s} {t['kind']:16s} "
+                      f"{t['plot'].get('name', ''):22s} {people:>10s}  {t['tier']:7s} "
                       f"{t['buildings']:3d} buildings  {t['sold_t']:3d} t sold  "
                       f"crew {t['crews']}")
     assert ledger.credits_in_existence() == made, "credits were created"

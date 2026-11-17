@@ -152,6 +152,11 @@ plays differently (foundry town, resort, and three between), by rules and
 with no AI model. A town short of parts leaves a bid at the port that
 another town's sale fills. `sim/tests/test_townyard.py`; D83.
 
+**Every town stands on its own ground.** A plot is a place on the Moon
+and six readings that differ by location and from neighbour to
+neighbour, and add up to the same for everyone. `sim/src/sim/plots.py`,
+`sim/tests/test_plots.py`; D84.
+
 **The works is a town too.** Six people found it, more arrive on a daily shuttle
 when there are berths, air, water and food for them, and they are the
 workforce its industry needs. It runs on the one universal clock, on the
