@@ -120,6 +120,13 @@ class Firm:
     consumes: str | None = None
     consumption_kg_per_day: int = 0
 
+    #: Consumers: a second good, bought only out of savings. A household
+    #: buys propellant because it must, and manufactured goods when it has
+    #: money left over: it never bids for this good with credits it would
+    #: need to stay above its opening capital. docs/DECISIONS.md D74.
+    also_consumes: str | None = None
+    also_kg_per_day: int = 0
+
     #: Traders: the book they make.
     trades: str | None = None
 

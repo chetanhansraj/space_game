@@ -44,7 +44,7 @@ from .towngame import TownOps
 from .errors import GameError
 from .contracts import ContractBoard, ContractError, encode
 from .routes import DOCKING_FEE, NODE_ANCHOR
-from .seed_world import NODES, SHACKLETON, TONNE, build
+from .seed_world import NODES, SHACKLETON, TONNE, add_goods_demand, build
 from .ships import KESTREL, Ship, ShipState
 from .shocks import Event
 
@@ -93,7 +93,8 @@ _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,'&-]{1,30}[A-Za-z0-9.]$")
 FEED_KINDS = ("solar_flare", "equipment_failure", "insolvency", "spinoff",
               "contract_posted", "contract_fulfilled", "player_joined",
               "player_departure", "player_arrival", "base_chartered",
-              "base_milestone", "town_founded", "town_lost")
+              "base_milestone", "town_founded", "town_lost",
+              "town_first_sale")
 
 
 @dataclass(frozen=True)
@@ -158,6 +159,10 @@ class Game(BaseOps, TownOps):
             "SELECT state FROM world_snapshot WHERE id = 1").fetchone()
         if row is not None:
             world = persist.loads(db, row["state"], routes)
+            # A world from before goods were made on the Moon gains the
+            # demand for them here. In memory only: the next tick saves it,
+            # and doing it again on a restart before then changes nothing.
+            add_goods_demand(world.firms)
             launch = _dt.datetime.fromisoformat(cls._meta(db, "launch_real"))
             return cls(db, world, launch)
 
