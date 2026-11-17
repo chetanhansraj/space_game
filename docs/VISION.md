@@ -279,15 +279,29 @@ other ports are taken and kept from the town's own stock. D64 to D66.
 **One universal time** (D64): the town runs on the world's clock, with no
 speed-up and no pause, and lives on the server.
 
+### Done: the town is the game
+
+The city builder Chetan designed is the settlement game, and it now runs on
+the server: its own rules, every building, the four crew and their missions,
+zones that grow on their own, visitors, contracts from nations and
+companies, storms and breaches, and a real lunar night on the equatorial
+flats. One clock, no pause, one wallet shared with the company's ship. Trade
+opens when the town has a landing pad and eight people. A town left alone
+can be lost and founded again. D69 to D73. The trading world goes on whether
+a town trades or not, and a town goes on whether it trades or not.
+
 ### Next
 
-- **Zones and tenant firms**: companies that set up on the town's land and
-  pay rent out of what they earn.
-- **Places to visit and stay**, and the visitors who use them.
+- **Real cargo**: what the town's industry makes goes into the market's
+  order books and onto ships, instead of being bought by Earth inside the
+  town's own rules (D70). This is what makes it one economy.
+- **A hard gate and land first at signup**: a new company starts with land,
+  not a ship, and earns the ship (D53, D71).
+- **A caretaker for hire** while the owner is away (D73).
 - **Towns run by agents** (D68), so the Moon has an economy to join.
-- **Land first at signup**, with the Kestrel chartered out of what the base
-  earns (D53, step 3).
-- **The flats**, with the lunar night and a helium-3 licence.
+- **The plot's real longitude**, so that dawn in the town is dawn on the
+  Moon map.
+- **Helium-3**, with a licence and a royalty (D53).
 
 - **Standing orders**, so a company trades while its owner sleeps — the
   check-in loop the vision is built on.

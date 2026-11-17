@@ -73,9 +73,10 @@ button{cursor:pointer}
   padding:5px 11px;background:rgba(3,0,20,.35)}
 .chip b{font-family:var(--mono);font-size:14px}
 .chip .lbl{font-size:8.5px}
-#baseBtn{background:rgba(6,182,212,.14);border:1px solid rgba(6,182,212,.5);
+#baseBtn,#townBtn{background:rgba(6,182,212,.14);border:1px solid rgba(6,182,212,.5);
   border-radius:10px;padding:7px 12px;font-family:var(--disp);font-size:10px;letter-spacing:.2em}
-#baseBtn:hover{background:rgba(6,182,212,.3)}
+#baseBtn:hover,#townBtn:hover{background:rgba(6,182,212,.3)}
+#baseBtn{background:none;border-color:var(--border-hi);color:var(--dim)}
 #inboxBtn{position:relative;background:rgba(139,92,246,.16);border:1px solid rgba(139,92,246,.45);
   border-radius:10px;padding:7px 12px;font-family:var(--disp);font-size:10px;letter-spacing:.2em}
 #inboxBtn .badge{position:absolute;top:-6px;right:-6px;background:var(--pink);color:#fff;
@@ -283,7 +284,8 @@ table.mkt tr.open td{background:rgba(6,182,212,.05)}
   <div class="clock"><b id="date">—</b><small id="tickline">connecting…</small>
     <div class="hourbar"><i id="hour"></i></div></div>
   <div class="chip hidden" id="cashChip"><span class="lbl">Credits</span><b id="cash">—</b></div>
-  <button id="baseBtn" class="hidden" title="Go down to your base on the surface">BASE</button>
+  <button id="townBtn" class="hidden" title="Go down to your town on the equator">TOWN</button>
+  <button id="baseBtn" class="hidden" title="Go down to your propellant works on the Shackleton rim">WORKS</button>
   <button id="inboxBtn" class="hidden">INBOX <span class="badge hidden" id="unread">0</span></button>
 </header>
 

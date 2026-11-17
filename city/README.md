@@ -11,22 +11,22 @@ breaches, late shuttles, dust. Every night has to be survived on stored power.
 
 ## Where this sits
 
-This folder is the city builder, a separate game from the trade economy in the rest of this
-repository. Today it is a single-player prototype that runs entirely in the browser and keeps its
-save in the player's own storage. It does not touch the trade game's ledger, clock or server, so
-the invariants in the root `CLAUDE.md` (server authority, integer credits, one shared clock) do
-not yet apply to it. They will apply to anything that links the two. The simulation is already
-written for that day: it is pure, holds only tile coordinates, and changes state only through
-`apply(state, intent)`.
+This folder is the city builder, and since `docs/DECISIONS.md` D69 it is the game. One source
+makes two builds.
 
-Live at https://sim.lunarark.com. See `docs/DEPLOY.md`.
+**The live town**, `npm run build:live`, served at `play.lunarark.com/town/`. The rules in
+`src/sim/` are bundled by `npm run build:engine` into `sim/src/sim/town_engine.js` and run on the
+server inside the world tick, on the shared clock and the company's ledger balance. The page sends
+intent and draws what the server returns. It has no pause, no speed control and no save: the
+invariants in the root `CLAUDE.md` apply to it in full. Rebuild the engine whenever `src/sim/`
+changes, and commit the bundle with the change.
 
-**The live base is not this folder.** Since `docs/DECISIONS.md` D53 a company in the trade game
-can run a real base at `play.lunarark.com/base/`, on the shared ledger and clock, built in
-`sim/base.py`, `sim/basegame.py` and `web/base/`. This game cannot be that base: it can be paused
-and runs about 47 times faster than the shared clock, and it runs in the browser. It stays as the
-Simulator, where ideas for the base are tried at speed, and its crew are the voices on the live
-one (D63).
+**The practice game**, `npm run build`, live at https://sim.lunarark.com. Single player, in the
+browser, with its own fast clock, pause and local save. It touches nothing of value. It is where
+rules are tried at speed before the live town gets them. See `docs/DEPLOY.md`.
+
+`npm test` plays three lunar days against the rules directly. With `TOWN_URL` and `TOWN_KEY` set
+the same player plays through a running server instead.
 
 ## Look
 

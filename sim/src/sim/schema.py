@@ -130,6 +130,32 @@ MIGRATIONS: list[tuple[int, str]] = [
         );
         """,
     ),
+    (
+        3,
+        """
+        -- A company's town: the city builder, running on the world's clock.
+        -- docs/DECISIONS.md D69.
+        --
+        -- `state` is the town exactly as its rules left it (sim/town.py),
+        -- stored as the JSON text they produced and never edited here. It
+        -- holds no money: the company's wallet is the ledger's, as always.
+        --
+        -- `owed` is what the town could not pay; `carry` is the fraction of
+        -- a credit not yet posted. `lost_tick` is set when the last of the
+        -- crew dies, and such a town no longer runs until it is refounded.
+        CREATE TABLE town (
+            player_id    TEXT PRIMARY KEY,
+            founded_tick INTEGER NOT NULL,
+            seed         INTEGER NOT NULL,
+            attempt      INTEGER NOT NULL DEFAULT 0,
+            owed         INTEGER NOT NULL DEFAULT 0 CHECK (owed >= 0),
+            carry        REAL NOT NULL DEFAULT 0,
+            faults       INTEGER NOT NULL DEFAULT 0,
+            lost_tick    INTEGER,
+            state        TEXT NOT NULL
+        );
+        """,
+    ),
 ]
 
 

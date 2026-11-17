@@ -608,11 +608,13 @@ def test_a_world_from_before_bases_gains_the_table(routes, tmp_path):
     g = Game.open(path, now=T0, routes=routes)
     player, _ = g.signup("Old Hand")
     g.db.execute("DROP TABLE base")
-    g.db.execute("DELETE FROM sim_schema_version WHERE version = 2")
+    g.db.execute("DROP TABLE town")
+    g.db.execute("DELETE FROM sim_schema_version WHERE version >= 2")
     g.db.commit()
     g.db.close()
     g = Game.open(path, routes=routes)
     assert g.base_view(g.player(player.id))["base"] is None
+    assert g.town_meta(g.player(player.id))["founded"] is False
     run(g, 2)
     g.db.close()
 
