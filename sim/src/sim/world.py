@@ -29,7 +29,7 @@ from market.money import CREDIT
 
 from . import TICKS_PER_GAME_DAY
 from .deposits import Deposit
-from .earth import EarthMarket
+from .earth import GOODS, GOODS_LOTS_PER_REFRESH, EarthMarket
 from .estate import Receiver
 from .firms import (ELASTICITY, REVERSION, Firm, FirmBehaviour, Role,
                     reservation_price)
@@ -391,6 +391,8 @@ class World:
                     pass
         for node, asset in self.earth_assets.items():
             self.earth.refresh(node, asset, now)
+            # Where Earth takes delivery of helium-3 it also takes parts.
+            self.earth.refresh(node, GOODS, now, lots=GOODS_LOTS_PER_REFRESH)
 
     # -- ships -------------------------------------------------------------
 

@@ -1,8 +1,13 @@
 """Who buys what a town makes.
 
+Two buyers, both spending money that already exists.
+
 Settlement households buy manufactured goods out of savings: only with
 credits above their opening capital, so the propellant they cannot do
-without is never crowded out. They create no credit by it.
+without is never crowded out. Earth takes a small standing order of parts
+at the anchor, from the same finite account that buys helium-3.
+
+Neither creates a credit, which is the point of having them at all.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from market.book import ASK
 from market.money import CREDIT
 
 from sim import TICKS_PER_GAME_DAY
-GOODS = "GOODS"
+from sim.earth import ACCOUNT as EARTH, GOODS, GOODS_LOTS_PER_REFRESH
 from sim.firms import Role
 from sim.game import DEV_FUND, Game
 from sim.persist import default_routes
@@ -128,6 +133,21 @@ def test_a_seller_is_paid_by_the_household_and_no_credit_is_made(game):
     assert cash(game, seller.account) > before
     assert ledger.balance(home.account, GOODS) == TONNE
     assert ledger.credits_in_existence() == made
+
+
+def test_earth_orders_three_lots_of_parts_at_the_anchor(game):
+    while game.world.tick % 6:
+        game.step()
+    game.step()
+    while game.world.tick % 6:
+        game.step()
+    bids = goods_bids(game, TRANQUILLITATIS, EARTH)
+    assert len(bids) == 1
+    assert bids[0]["price"] == ANCHOR
+    assert bids[0]["remaining_kg"] == GOODS_LOTS_PER_REFRESH * TONNE
+    # helium-3 is still on order beside it
+    assert any(r["asset"] == "HE3" for r in
+               game.world.books[TRANQUILLITATIS].open_orders(EARTH))
 
 
 def test_a_world_from_before_goods_gains_the_demand_when_opened(routes,
