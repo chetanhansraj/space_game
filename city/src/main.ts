@@ -106,9 +106,10 @@ async function boot(hot: any) {
     setSpeed: n => { if (!LIVE) ui.speed = n; },
     yard: act => {
       const y = ui.yard; if (!LIVE || !y) return;
-      const whole = Math.floor(y.held_kg / y.lot_kg);
-      const call = act === 'sell' || act === 'hold' ? api('/town/policy', { sell: act === 'sell', min_price: y.min_price })
-        : act === 'now' ? api('/town/sell', { tonnes: whole, price: y.min_price })
+      const whole = Math.floor(y.held_kg / y.lot_kg), kept = y.parts?.wear ? y.parts.keep_kg : 0, keep_t = y.parts?.keep_t ?? null;
+      const call = act === 'sell' || act === 'hold' ? api('/town/policy', { sell: act === 'sell', min_price: y.min_price, keep_t })
+        : act === 'keep' || act === 'keepnone' ? api('/town/policy', { sell: y.sell, min_price: y.min_price, keep_t: act === 'keep' ? null : 0 })
+        : act === 'now' ? api('/town/sell', { tonnes: Math.floor(Math.max(0, y.held_kg - kept) / y.lot_kg), price: y.min_price })
         : api('/town/load', { tonnes: Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg)) });
       call.then(r => {
         if (!pending) adopt(r);

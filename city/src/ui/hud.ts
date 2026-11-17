@@ -31,7 +31,7 @@ export interface Handlers {
   offer(accept: boolean): void;
   deselect(): void;
   /** The yard, in a town on the shared world: change the standing instruction, sell now, or load the ship. */
-  yard?(act: 'sell' | 'hold' | 'now' | 'load'): void;
+  yard?(act: 'sell' | 'hold' | 'now' | 'load' | 'keep' | 'keepnone'): void;
   /** Hire a caretaker for a town on the shared world, or let one go. */
   caretaker?(on: boolean): void;
 }
@@ -44,6 +44,8 @@ export interface Yard {
   bid: number | null; last: number | null; sell: boolean; min_price: number;
   sold_kg: number; sales: number; sold_today: number; sales_today: number; sold_yesterday: number; sales_yesterday: number;
   open: boolean; pad: boolean; needs: number;
+  /** Spare parts: what the buildings take from the yard, what a standing sale keeps back for them, and Earth's price when it is empty. */
+  parts?: { wear: boolean; kg_per_hour: number; keep_kg: number; keep_t: number | null; auto_kg: number; used_kg: number; landed_kg: number; import: number };
   ship: { here: boolean; aboard_kg: number; room_kg: number };
 }
 /** One town on the Moon, as the server lists them all: most people first. */
@@ -185,7 +187,7 @@ export class Hud {
       const pr = el.closest('button[data-price]') as HTMLButtonElement | null;
       if (pr) { h.price(Number(pr.dataset.price)); this.drawerKey = '?'; }
       const yd = el.closest('button[data-yard]') as HTMLButtonElement | null;
-      if (yd && h.yard) { h.yard(yd.dataset.yard as 'sell' | 'hold' | 'now' | 'load'); this.drawerKey = '?'; }
+      if (yd && h.yard) { h.yard(yd.dataset.yard as 'sell' | 'hold' | 'now' | 'load' | 'keep' | 'keepnone'); this.drawerKey = '?'; }
       const ck = el.closest('button[data-care]') as HTMLButtonElement | null;
       if (ck && h.caretaker) { h.caretaker(ck.dataset.care === '1'); this.drawerKey = '?'; }
       if (el.closest('[data-act="close"]')) this.openDrawer(null);
@@ -435,17 +437,32 @@ export class Hud {
   private yardHtml(y: Yard): string {
     const t = (kg: number, dp = 1) => `${num(kg / 1000, dp)} t`;
     const per = (cr: number | null) => (cr === null ? 'no buyer' : `${num(cr / y.kcr, 1)} a tonne`);
-    const whole = Math.floor(y.held_kg / y.lot_kg), tone = y.full ? '#ff6b6b' : y.held_kg > y.cap_kg / 2 ? '#f0a04e' : 'var(--cyan)';
+    const p = y.parts, wear = !!p?.wear && p.kg_per_hour > 0, kept = p?.wear ? p.keep_kg : 0;
+    const whole = Math.floor(y.held_kg / y.lot_kg), spare = Math.floor(Math.max(0, y.held_kg - kept) / y.lot_kg), tone = y.full ? '#ff6b6b' : y.held_kg > y.cap_kg / 2 ? '#f0a04e' : 'var(--cyan)';
     const making = y.full ? 'Yard full: the foundries have stopped' : y.foundries === 0 ? 'No foundry yet. Zone land for Industry'
       : y.make_kg_per_hour > 0 ? `Making ${num(y.make_kg_per_hour)} kg an hour` : 'Foundries resting';
     const sold = (kg: number, cr: number) => (kg ? `${t(kg, 0)} · +${num(cr / y.kcr)}` : 'nothing');
     const gate = !y.open ? `<p class="txt">Nothing leaves the yard until the town has ${y.pad ? '' : 'a working landing pad and '}${y.needs} people. What is made waits here.</p>` : '';
     const acts = y.open ? `<div class="prices"><span>As made</span><button type="button" data-yard="sell" aria-pressed="${y.sell}">Sell</button><button type="button" data-yard="hold" aria-pressed="${!y.sell}">Hold</button></div>
-      <div class="acts" style="margin-bottom:8px">${whole >= 1 && y.bid !== null && y.bid >= y.min_price ? `<button type="button" class="primary" data-yard="now">Sell ${whole} t now</button>` : ''}${y.ship.here && whole >= 1 && y.ship.room_kg >= y.lot_kg ? `<button type="button" data-yard="load">Load ${Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg))} t into your ship</button>` : ''}</div>` : '';
+      <div class="acts" style="margin-bottom:8px">${spare >= 1 && y.bid !== null && y.bid >= y.min_price ? `<button type="button" class="primary" data-yard="now">Sell ${spare} t now</button>` : ''}${y.ship.here && whole >= 1 && y.ship.room_kg >= y.lot_kg ? `<button type="button" data-yard="load">Load ${Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg))} t into your ship</button>` : ''}</div>` : '';
     return `<h3>Yard · manufactured goods</h3><p class="sub">${t(y.held_kg)} of ${t(y.cap_kg, 0)} · ${esc(making)}</p>
       <span class="dbar yard"><i style="left:0;width:${Math.min(100, Math.round((y.held_kg / y.cap_kg) * 100))}%;background:${tone}"></i></span>
       <dl class="budget one"><div><dt>Best bid at the Flats</dt><dd>${per(y.bid)}</dd></div><div><dt>Earth pays</dt><dd>${per(y.anchor)}</dd></div><div><dt>Sold today</dt><dd>${sold(y.sold_today, y.sales_today)}</dd></div><div><dt>Sold in all</dt><dd>${sold(y.sold_kg, y.sales)}</dd></div></dl>
-      ${acts}${gate}<p class="txt">Goods sell by the tonne to whoever at the port bids most${y.sell && y.open ? ', and never below Earth\'s price' : ''}.${y.ship.aboard_kg ? ` ${t(y.ship.aboard_kg, 0)} aboard your ship.` : ''}</p><h3>The town</h3>`;
+      ${acts}${gate}${this.partsHtml(y)}<p class="txt">Goods sell by the tonne to whoever at the port bids most${y.sell && y.open ? ', and never below Earth\'s price' : ''}.${y.ship.aboard_kg ? ` ${t(y.ship.aboard_kg, 0)} aboard your ship.` : ''}</p><h3>The town</h3>`;
+  }
+
+  /** Spare parts: the same goods, used up by the town's own buildings once it is big enough to trade. */
+  private partsHtml(y: Yard): string {
+    const p = y.parts;
+    if (!p) return '';
+    const t = (kg: number, dp = 1) => `${num(kg / 1000, dp)} t`;
+    if (!p.wear) return y.open ? '' : '<p class="txt">Once the town trades, its buildings will wear and take spare parts from this yard.</p>';
+    const need = p.kg_per_hour, lasts = need > 0 ? y.held_kg / need : Infinity, dry = need > 0 && y.held_kg < 1;
+    const cost = (need * p.import) / 1000 / y.kcr;
+    return `<h3>Spare parts</h3>
+      <dl class="budget one"><div><dt>Buildings use</dt><dd>${num(need, 1)} kg an hour</dd></div><div${dry ? ' class="bad"' : ''}><dt>Yard lasts</dt><dd>${dry ? 'empty' : hrs(lasts)}</dd></div><div><dt>Fitted so far</dt><dd>${t(p.used_kg)}</dd></div>${p.landed_kg >= 1 ? `<div><dt>Landed from Earth</dt><dd>${t(p.landed_kg)}</dd></div>` : ''}</dl>
+      <div class="prices"><span>Keep back</span><button type="button" data-yard="keep" aria-pressed="${p.keep_t === null}">${t(p.auto_kg)}</button><button type="button" data-yard="keepnone" aria-pressed="${p.keep_t === 0}">Nothing</button></div>
+      <p class="txt">${dry ? `The yard is empty, so Earth is landing parts at ${num(p.import / y.kcr)} a tonne: ${num(cost, 2)} credits an hour.` : `Buildings wear out parts, and parts are these goods. What is kept back is a lunar night's worth and is never sold for you. If the yard runs dry Earth lands them at ${num(p.import / y.kcr)} a tonne, twice what the port pays.`}</p>`;
   }
 
   /** Whatever drawer is open. Only one at a time, and none by default. */
@@ -529,7 +546,7 @@ export class Hud {
     const u2 = urgent(s), m2 = MISSIONS[s.mission], ci = id.startsWith('crew') ? Number(id.slice(4)) : -1;
     const struct = ci >= 0 ? `${u2 && u2.who === ci ? u2.title : ''}|${m2 && m2.who === ci ? `${s.mission}:${m2.tool ? s.materials >= BUILDINGS[m2.tool].cost : ''}` : ''}|${s.alerts.filter(a => a.who === ci).length}`
       : id === 'towns' ? (ui.league ?? []).map(t => t.company).join()
-      : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full].join() : ''}|${ui.caretaker ? `${ui.caretaker.on}${Math.floor(ui.caretaker.paid / 1000)}` : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
+      : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full, ui.yard.parts?.wear, ui.yard.parts?.keep_t, Math.round(ui.yard.parts?.kg_per_hour ?? 0)].join() : ''}|${ui.caretaker ? `${ui.caretaker.on}${Math.floor(ui.caretaker.paid / 1000)}` : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
     if (this.drawerKey !== '?' && (this.pressing || (struct === this.drawerStruct && now - this.drawerAt < 3000))) return;
     this.drawerKey = html; this.drawerAt = now; this.drawerStruct = struct;
     const top = box.scrollTop;
