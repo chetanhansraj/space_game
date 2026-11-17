@@ -667,11 +667,12 @@ class TownOps:
         day = TICKS_PER_GAME_DAY
         for row in self.db.execute(
                 "SELECT t.player_id, t.founded_tick, t.lost_tick, t.attempt, "
-                "t.yard, t.state, p.name, p.house FROM town t "
+                "t.yard, p.name, p.house FROM town t "
                 "JOIN player p ON p.id = t.player_id").fetchall():
             book = json.loads(row["yard"] or "{}")
             if "pop" not in book:           # not yet through an hour
-                seen = self.town_engine.summary(row["state"])
+                seen = self.town_engine.summary(
+                    self._town_row(row["player_id"])["state"])
                 book.update(pop=seen["population"], tier=seen["tier"],
                             buildings=seen["buildings"])
             lost = row["lost_tick"] is not None
