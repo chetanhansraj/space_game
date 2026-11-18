@@ -34,7 +34,9 @@ function offerPlots(): void {
   box.innerHTML = '<h3>Choose your ground</h3><p>Three plots, each worth the same in all. What differs is what each is good for. The ground is yours for good.</p><div class="row">' + offers.map((p, i) =>
     `<button type="button" class="plot" data-i="${i}" aria-pressed="${i === plotChoice}"><b>${p.name}</b><small>${Math.abs(p.lat).toFixed(1)}° ${p.lat >= 0 ? 'N' : 'S'}, ${Math.abs(p.lon).toFixed(1)}° ${p.lon >= 0 ? 'E' : 'W'} · night ${p.dark} h</small>`
     + keys.map(([k, n]) => `<span><i>${n}</i><u><s style="width:${Math.round(p[k] * 100)}%"></s></u></span>`).join('') + '</button>').join('') + '</div>';
-  acts.parentElement!.insertBefore(box, acts);
+  // The choice comes first: above the briefing's list if there is one, so it is seen without scrolling.
+  const list = document.querySelector('#modal.show ol');
+  (list ?? acts).parentElement!.insertBefore(box, list ?? acts);
   box.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest('.plot') as HTMLElement | null;
     if (!b) return;
