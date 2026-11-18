@@ -100,10 +100,10 @@ export interface Cargo {
  *   metal  iron and titanium in the soil: what a foundry makes
  *   glass  aluminium and silicon: frames and panes made on the spot, so buildings need fewer parts
  *   he3    how rich a survey find is when a foundry stands on it
- *   view   Earth in the sky and things worth seeing: what brings visitors
+ *   view   Earth in the sky, or the far side's silence: what a visitor will pay to be there
  * The server assigns it from where the plot is on the Moon (root docs/DECISIONS.md D84).
  */
-export interface Plot { sun: number; ice: number; metal: number; glass: number; he3: number; view: number; lat?: number; lon?: number; name?: string; }
+export interface Plot { sun: number; ice: number; metal: number; glass: number; he3: number; view: number; lat?: number; lon?: number; name?: string; /** Hours of dark in a lunar day here. */ dark?: number; }
 export type PlotKey = 'sun' | 'ice' | 'metal' | 'glass' | 'he3' | 'view';
 /**
  * How much a reading counts. At 1 the ground gives this many times the usual, at 0 the same
@@ -114,12 +114,13 @@ export const PLOT_SWING = 2.5;
 /**
  * What a reading multiplies: 1 on the reference ground, PLOT_SWING on the best, 1 / PLOT_SWING on the worst.
  * Ice is the exception. Almost none of the Moon has any, and the game was tuned on ground without it, so
- * having no ice costs nothing and having it is all gain: at most the square root of PLOT_SWING, about 1.6
- * times less to bring from Earth. Measured at the full swing, polar towns ended twice as rich as any other.
+ * having no ice costs nothing and having it is all gain: at most about 1.6 times less to bring from Earth.
  */
 export const gain = (s: State, k: PlotKey) => {
   if (!s.plot) return 1;
-  return k === 'ice' ? Math.pow(PLOT_SWING, Math.max(0, s.plot.ice - 0.05) / 1.8) : Math.pow(PLOT_SWING, 2 * (s.plot[k] - 0.5));
+  if (k === 'ice') return Math.pow(PLOT_SWING, Math.max(0, s.plot.ice - 0.05) / 1.8);
+  // What visitors pay swings half as far: at the full swing a point of outlook was worth three points of anything else.
+  return Math.pow(PLOT_SWING, (k === 'view' ? 1 : 2) * (s.plot[k] - 0.5));
 };
 
 export interface Flows {
@@ -191,9 +192,25 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 // ---------- clock ----------
 export const phaseOf = (t: number) => t % LUNAR_DAY;
-export const isNight = (t: number) => phaseOf(t) >= HALF;
-export const sunFactor = (t: number) => (isNight(t) ? 0 : Math.sin((Math.PI * phaseOf(t)) / HALF));
-export const hoursToSunset = (t: number) => HALF - phaseOf(t);
+/**
+ * How long the Sun is up where this town stands. Across nearly all the Moon it is half the lunar
+ * day. On a polar rim the Sun circles the horizon and the dark is short. The plot says how many
+ * hours of dark there are (root docs/DECISIONS.md D85); without a plot it is the half.
+ *
+ * These two are set from the state by `ground` at the top of every way into the rules, so the
+ * clock helpers below can go on taking only a time. One town is worked on at a time.
+ */
+let LIGHT = HALF, CARRY = DARK;
+export function ground(s: State): void {
+  const dark = Math.max(24, Math.min(HALF, s.plot?.dark ?? HALF));
+  LIGHT = LUNAR_DAY - dark;
+  CARRY = dark + (DARK - HALF);
+}
+/** Hours of light and of dark in a lunar day here, and the hours the batteries must carry. */
+export const lightHours = () => LIGHT, darkHours = () => LUNAR_DAY - LIGHT, carryHours = () => CARRY;
+export const isNight = (t: number) => phaseOf(t) >= LIGHT;
+export const sunFactor = (t: number) => (isNight(t) ? 0 : Math.sin((Math.PI * phaseOf(t)) / LIGHT));
+export const hoursToSunset = (t: number) => LIGHT - phaseOf(t);
 export const hoursToSunrise = (t: number) => LUNAR_DAY - phaseOf(t);
 export const dayNumber = (t: number) => Math.floor(t / LUNAR_DAY) + 1;
 
@@ -368,6 +385,7 @@ export function zoneProblem(s: State, z: number, x: number, y: number): string |
 }
 
 export function apply(s: State, it: Intent): { ok: boolean; reason?: string } {
+  ground(s);
   if (s.phase !== 'playing') return { ok: false, reason: 'The mission is over' };
   if (it.k === 'place') {
     const why = placeProblem(s, it.type, it.x, it.y);
@@ -483,7 +501,7 @@ export const habAt = (s: State, x: number, y: number, w = 2, hgt = 2) => {
 
 // ---------- capacity ----------
 /** kWh of storage needed to carry life support through a whole night. */
-export const nightNeed = (s: State) => Math.max(0, s.flows.essentialDeficit) * DARK;
+export const nightNeed = (s: State) => Math.max(0, s.flows.essentialDeficit) * CARRY;
 
 /** Hours of night the batteries cover. Infinity when no deficit. */
 export function nightCover(s: State): number {
@@ -499,7 +517,7 @@ export function nightCover(s: State): number {
 export function support(s: State): { limit: number; why: string; air: number; food: number; power: boolean } {
   const f = s.flows;
   const n = (t: BuildingType) => s.buildings.filter(b => b.type === t && working(b)).length;
-  const tank = Math.floor(f.o2Cap / (O2_USE * (HALF + 90)));          // a night of breathing has to fit in the tanks
+  const tank = Math.floor(f.o2Cap / (O2_USE * (LUNAR_DAY - LIGHT + 90)));          // a night of breathing has to fit in the tanks
   const plants = Math.floor((n('o2plant') * O2_PLANT) / (O2_USE * 2.1)); // plants only run by day, so they must make double
   const air = Math.min(tank, plants);
   const food = Math.floor((0.8 * (n('greenhouse') * GREENHOUSE_FOOD * 0.5 + SHUTTLE_FOOD / SHUTTLE_EVERY)) / FOOD_USE);
@@ -524,8 +542,8 @@ export function sunsetCharge(s: State, extraDay = 0): number {
     if (b.on) { if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen; }
   }
   if (isNight(s.t)) return s.charge;
-  const ph = phaseOf(s.t), sunset = HALF - ph;
-  const sunE = peak * (HALF / Math.PI) * (1 + Math.cos((Math.PI * ph) / HALF));
+  const ph = phaseOf(s.t), sunset = LIGHT - ph;
+  const sunE = peak * (LIGHT / Math.PI) * (1 + Math.cos((Math.PI * ph) / LIGHT));
   return Math.min(cap, s.charge + 0.85 * Math.max(0, sunE + (steady - essDay - extraDay) * sunset));
 }
 
@@ -540,14 +558,14 @@ function powerFor(s: State, extraNight: number, extraDay: number): string {
     cap += d.battery;
     if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen;
   }
-  const nightKwh = Math.max(0, essential + extraNight - steady) * DARK;
+  const nightKwh = Math.max(0, essential + extraNight - steady) * CARRY;
   if (extraNight > 0 && cap < nightKwh * POWER_MARGIN) return 'night power';
   // There has to be enough daylight left today to fill the batteries for it.
   if (extraNight > 0 && !isNight(s.t) && sunsetCharge(s, extraDay) < nightKwh * 1.08) return 'night power';
   // After dark, only what the remaining charge can carry to sunrise.
   if (extraNight > 0 && isNight(s.t) && s.charge < Math.max(0, essential + extraNight - steady) * (hoursToSunrise(s.t) + 40) * 1.1) return 'night power';
   // Over a whole day the arrays must run the base and still fill the batteries for the night.
-  const dayGain = (peak * 0.6366 + steady - day - extraDay) * HALF;
+  const dayGain = (peak * 0.6366 + steady - day - extraDay) * LIGHT;
   if (dayGain < nightKwh * 1.1) return 'daytime power';
   return '';
 }
@@ -580,10 +598,10 @@ function computeFlows(s: State, dt = 0) {
 
   // Optional machines rest at night, and late in the day while the batteries still need filling.
   // Oxygen plants keep going until the tanks hold enough to reach the next morning.
-  const need = Math.max(0, planned - steady) * DARK;
+  const need = Math.max(0, planned - steady) * CARRY;
   // By day they also rest whenever running them would leave the batteries short at sunset.
   f.saving = night || sunsetCharge(s) < Math.min(need * (s.flows.saving ? 1.12 : 1.06), f.battCap * 0.995);
-  const o2Short = night ? s.o2 < O2_USE * pop * toDawn + 6 : s.o2 < Math.min(f.o2Cap * 0.97, O2_USE * pop * (sunset + HALF + 30));
+  const o2Short = night ? s.o2 < O2_USE * pop * toDawn + 6 : s.o2 < Math.min(f.o2Cap * 0.97, O2_USE * pop * (sunset + LUNAR_DAY - LIGHT + 30));
 
   const storm = stormActive(s);
   const loads: { b: Building; draw: number; pr: number }[] = [];
@@ -633,7 +651,7 @@ function computeFlows(s: State, dt = 0) {
   // Money. Rent and room rates follow habitability and the price you set. Earth's founding grant fades as the base grows.
   const employed = f.jobs > 0 ? Math.min(1, f.jobs / Math.max(1, f.workers)) : 0;
   f.earn.rent = s.residents * RENT * s.price * (0.5 + f.habHomes / 100) * (0.6 + 0.4 * employed);
-  f.earn.visitors = s.tourists * VISITOR_RATE * s.price * (0.5 + f.habLodges / 100) * (s.mood / 100) * (0.5 + 0.5 * f.staff);
+  f.earn.visitors = s.tourists * VISITOR_RATE * gain(s, 'view') * s.price * (0.5 + f.habLodges / 100) * (s.mood / 100) * (0.5 + 0.5 * f.staff);
   f.earn.shops = Math.min(aliveCount(s) + s.residents, shops * 16) * 0.035 * s.price * f.staff;   // people spend their wages
   f.earn.grant = Math.max(0, 0.8 - 0.04 * (pop - 4));
   f.upkeep += (suppliesRate(pop) / gain(s, 'ice')) * Math.max(0, pop - 4);
@@ -671,7 +689,7 @@ function computeDemand(s: State) {
   // Commercial: lodges come when there is something to see and a way to get here.
   // Concourses come when enough people live here to keep one busy.
   const pad = count('pad') > 0;
-  const draw = pad ? (6 + count('garage') * 6 + count('garden') * 4) * gain(s, 'view') * (s.mood / 100) / s.price : 0;
+  const draw = pad ? (6 + count('garage') * 6 + count('garden') * 4) * (s.mood / 100) / s.price : 0;
   const film = s.deals.find(d => d.kind === 'broadcast');   // a signed broadcast makes lodge keepers want to build
   const tourism = pad ? clamp((Math.max(draw, film ? (film.amount ?? 6) + 2 : 0) - f.lodging) / 6, -1, 1) : 0;
   const shops = s.buildings.filter(b => b.type === 'market').reduce((a, b) => a + b.level, 0);
@@ -815,6 +833,7 @@ function tickRovers(s: State, dt: number) {
 }
 
 export function tick(s: State) {
+  ground(s);
   if (s.phase !== 'playing') return;
   const dt = TICK;
   const before = phaseOf(s.t);
@@ -946,13 +965,13 @@ export function tick(s: State) {
   if (f.offline > 0) alertOnce(s, 'short', 'warn', `Power shortfall. ${f.offline} building${f.offline > 1 ? 's' : ''} shut down.`, 60);
   if (s.materials < 0) alertOnce(s, 'debt', 'warn', 'The base is in debt. Nothing new will be built until it is back in credit.', 120);
 
-  if (before < HALF - 60 && after >= HALF - 60) {
+  if (before < LIGHT - 60 && after >= LIGHT - 60) {
     const need = nightNeed(s), have = f.battCap;
     pushAlert(s, have >= need ? 'info' : 'warn', have >= need
       ? 'Sunset in 60 hours. Battery capacity is enough for life support.'
       : `Sunset in 60 hours. Life support needs ${Math.round(need)} kWh for the night and you can store ${Math.round(have)}.`);
   }
-  if (before < HALF && after >= HALF) pushAlert(s, 'info', 'Sunset. The night lasts 354 hours. Foundries, farms and rovers rest until sunrise.');
+  if (before < LIGHT && after >= LIGHT) pushAlert(s, 'info', `Sunset. The night lasts ${Math.round(LUNAR_DAY - LIGHT)} hours. Foundries, farms and rovers rest until sunrise.`);
   if (after < before) {
     pushAlert(s, 'good', `Sunrise. Day ${dayNumber(s.t)} on the Moon.`);
     s.strikes.push(s.t + 190 + rnd(s) * 110, s.t + 420 + rnd(s) * 180);
@@ -963,6 +982,7 @@ export function tick(s: State) {
 
 /** Refresh derived values after loading a save or applying an intent while paused. */
 export function refresh(s: State) {
+  ground(s);
   if (s.netDirty) recomputeNetwork(s);
   if (s.habRev !== s.rev) computeHab(s);
   const keep = { exposed: s.flows.exposed, atRisk: s.flows.atRisk, lackO2: s.flows.lackO2, lackWater: s.flows.lackWater, lackFood: s.flows.lackFood };

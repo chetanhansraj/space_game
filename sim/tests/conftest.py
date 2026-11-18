@@ -31,7 +31,7 @@ def reference_ground():
     patch = pytest.MonkeyPatch()
     patch.setattr(towngame, "_plot_for_real", towngame.plot_for,
                   raising=False)
-    patch.setattr(towngame, "plot_for", lambda player_id: {})
+    patch.setattr(towngame, "plot_for", lambda player_id, choice=0: {})
     yield
     patch.undo()
 

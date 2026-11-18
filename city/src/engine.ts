@@ -13,7 +13,7 @@
 
 import { BUILDINGS } from './sim/buildings';
 import { steward, Style } from './steward';
-import { State, Intent, Plot, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
+import { State, Intent, Plot, ground, lightHours, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
 
 const summary = (s: State) => {
   const pop = population(s);
@@ -50,7 +50,12 @@ function malformed(s: State, it: any): string | null {
   /** A new town on untouched ground. `plot` is the ground's six readings as JSON (Plot in sim.ts). */
   create(seed: number, credits: number, plot?: string): string {
     const s = createState(seed | 0);
-    if (plot) s.plot = JSON.parse(plot) as Plot;   // the ground it stands on; without one, the reference ground
+    if (plot) {   // the ground it stands on; without one, the reference ground
+      s.plot = JSON.parse(plot) as Plot;
+      ground(s);
+      const first = s.alerts[0];   // the landing is announced before the ground is known
+      if (first) first.msg = `Touchdown${s.plot.name ? `: ${s.plot.name}` : ''}. Sunset in ${Math.round(lightHours())} hours.`;
+    }
     s.materials = credits;
     refresh(s);
     return reply(s);
@@ -125,6 +130,8 @@ function malformed(s: State, it: any): string | null {
 
   /** What the rest of the world needs to know about a town, without reading its whole state. */
   summary(state: string): string {
-    return JSON.stringify(summary(JSON.parse(state) as State));
+    const s = JSON.parse(state) as State;
+    ground(s);
+    return JSON.stringify(summary(s));
   },
 };

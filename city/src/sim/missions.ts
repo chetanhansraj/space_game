@@ -32,7 +32,7 @@ export const MISSIONS: Mission[] = [
     say: 'There is not a drop of water in this mare. Every litre came from Earth. A recycler makes it last six times longer.',
     done: s => count(s, 'recycler') >= 1 },
   { who: 0, tool: 'battery', reward: 60, goal: 'Store enough power for the night',
-    say: 'The Sun sets soon and stays down for 354 hours. The habitat must stay warm the whole time. Build batteries until Storage covers the night.',
+    say: 'The Sun sets soon and stays down for a long time (the clock at the bottom right says how long). The habitat must stay warm the whole time. Build batteries until Storage covers the night.',
     done: s => count(s, 'habitat') >= 1 && s.flows.battCap >= nightNeed(s) },
   { who: 0, tool: 'pad', reward: 40, goal: 'Build a Landing Pad',
     say: 'Earth will send a shuttle every 60 hours if we give it somewhere to land. Put it well away from the homes. Nothing on this base is dustier or louder.',

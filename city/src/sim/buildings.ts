@@ -66,7 +66,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     id: 'battery', name: 'Battery Bank', short: 'BT', cluster: 'Power Systems', codex: 'L1-ESS',
     upkeep: 0.005,
     cost: 22, buildHours: 6, battery: 500,
-    desc: 'Stores daytime surplus. The night is 354 hours long, so count carefully.',
+    desc: 'Stores daytime surplus. The night is long, so count carefully.',
     effect: 'Stores 500 kWh',
   }),
   reactor: def({

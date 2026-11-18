@@ -322,9 +322,12 @@ with an empty yard has parts landed from Earth at twice the price.
 Every town stands on its own ground (D84): a place on the Moon and six
 readings (sunlight, ice, iron and titanium, aluminium and silicon,
 helium-3, what there is to see) that differ from plot to plot and add
-up to the same for everyone. A person is given theirs; what they do
+up to the same for everyone. A person chooses theirs from three; what they do
 with it is the game. Seven house companies stand on every kind of
-ground, from the plains to the polar ice to the far side.
+ground, from the plains to the polar ice to the far side. A new company
+is shown three plots and chooses one. The night is as long as the
+latitude makes it: short on a polar rim, 354 hours everywhere else
+(D85).
 
 The first five are five different towns (D83): a mixed town, a foundry town,
 a works town, a resort that runs no foundry, a hostel town with one. A
@@ -334,11 +337,10 @@ credits pass between towns. None of this calls an AI model. It is rules.
 
 ### Next
 
-- **Night by latitude**: a polar town in near-constant sun, an
-  equatorial one with the full fourteen days of dark. Today the ground
-  changes what arrays make, not how long the night is (D84).
-- **Plots tied to their nearest port**, so goods have to travel and a
-  ship has cargo.
+- **Many ports**, now the most urgent thing: each plot at its nearest
+  port, more ports with routes between them, and house companies that
+  fly their own goods to where the price is best. Without the last, a
+  town away from the Flats is stranded (D85).
 - **What the ground makes, not only how much**: ice into water and
   propellant, highland soil into glass and panels, the plains into
   metal. And surveying to find it.

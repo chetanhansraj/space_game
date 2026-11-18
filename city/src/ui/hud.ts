@@ -109,7 +109,7 @@ const RES_NOTE: Record<string, string> = {
   people: 'Everyone on the base. The limit is how many your life support can carry through a night, and what holds it there.',
   mat: 'Credits pay for everything you build and zone. The rate leaves out rover fares, landing fees and contracts, which come on top.',
   power: 'What the base makes right now against what it uses. Solar follows the Sun and gives nothing at night.',
-  store: 'Battery charge. It has to carry heat, air and light through 354 hours of dark.',
+  store: 'Battery charge. It has to carry heat, air and light through the whole of the dark.',
   o2: 'Oxygen in the tanks. Plants make it from regolith, and people breathe it day and night.',
   water: 'Water in the tanks. A recycler returns most of what people use.',
   food: 'Food in store. The shuttle feeds about nine, and each greenhouse about nine more.',
@@ -457,7 +457,7 @@ export class Hud {
     if (!plot || plot.sun === undefined) return '';
     const rows: [PlotKey, string, string][] = [
       ['sun', 'Sunlight', 'what the arrays make'], ['ice', 'Water ice', 'less to bring from Earth'], ['metal', 'Iron and titanium', 'what a foundry makes'],
-      ['glass', 'Aluminium and silicon', 'fewer spare parts'], ['he3', 'Helium-3', 'richer survey finds'], ['view', 'What there is to see', 'visitors'],
+      ['glass', 'Aluminium and silicon', 'fewer spare parts'], ['he3', 'Helium-3', 'richer survey finds'], ['view', 'What there is to see', 'what visitors pay'],
     ];
     const where = `${Math.abs(plot.lat ?? 0).toFixed(1)}° ${(plot.lat ?? 0) >= 0 ? 'N' : 'S'}, ${Math.abs(plot.lon ?? 0).toFixed(1)}° ${(plot.lon ?? 0) >= 0 ? 'E' : 'W'}`;
     const bars = rows.map(([k, name, what]) => { const v = plot[k] ?? 0.5; return `<li><b>${name}</b><span class="dbar"><i style="left:0;width:${Math.round(v * 100)}%;background:${v >= 0.66 ? 'var(--cyan)' : v <= 0.25 ? '#55526a' : '#8b8aa8'}"></i></span><em>${what}</em></li>`; }).join('');
@@ -679,7 +679,7 @@ export class Hud {
         <li><b>Where you put things matters.</b> Dust, noise and reactors drive people away. Gardens, clinics and crater views draw them in. Press <kbd>H</kbd> for the habitability map. Your rovers find ore, and a foundry standing on it earns far more.</li>
         <li><b>A growing town asks for more.</b> Past ten people they expect a garden, then a concourse, then a clinic, and each person costs more to supply. Once ships land, nations and companies bring contracts. Your crew will argue both sides.</li>
         <li><b>Things go wrong.</b> After the first sunrise expect solar storms, breaches, late shuttles and dust. Spare beds, reserves and a little money in hand are what get you through.</li>
-        <li><b>The night is the limit.</b> Solar gives nothing for 354 hours. Nobody builds what cannot be kept warm, so storage decides how far the town can grow.</li>
+        <li><b>The night is the limit.</b> Solar gives nothing all night, and across most of the Moon the night is 354 hours. Nobody builds what cannot be kept warm, so storage decides how far the town can grow.</li>
       </ol>
       <p class="keys">A green badge on a crew face means a message, as in a chat app. Click the face to read it and for a report. Each request pays credits · click any number at the top for its detail · everything must touch the base, zoned land or a conduit · the clock starts with your first move · <kbd>Space</kbd> pauses · 4× and 8× speed up time · drag to move the map · scroll to zoom · <kbd>?</kbd> reopens this page</p>
       <div class="acts">${acts}</div>

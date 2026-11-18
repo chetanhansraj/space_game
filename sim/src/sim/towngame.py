@@ -198,16 +198,27 @@ HOUSE_RECALL_DEBT = TOWN_START
 TIER_RANK = {"Outpost": 0, "Base": 1, "Colony": 2, "Town": 3}
 
 
-def plot_for(player_id: str) -> dict:
-    """The ground a company's town stands on. The same company, the same ground.
+def plot_offers(player_id: str) -> list[dict]:
+    """The ground a company may found its town on.
 
-    A house company stands where it is named for. Anyone else is given a
-    place drawn from their company's id, spread over the four kinds of
-    ground. A company keeps its plot through every crew it sends: the
-    ground is theirs.
+    A house company stands where it is named for, so it has one. Anyone
+    else is shown three plots of three different kinds, drawn from their
+    company's id, and chooses one (D85). The same company is always shown
+    the same three.
     """
-    place = HOUSE_PLACE.get(player_id) or plots.place_for(player_id)
-    return plots.plot_at(*place)
+    if player_id in HOUSE_PLACE:
+        return [plots.plot_at(*HOUSE_PLACE[player_id])]
+    return plots.offers_for(player_id)
+
+
+def plot_for(player_id: str, choice: int = 0) -> dict:
+    """The plot a company chose. Once founded it keeps it through every
+    crew it sends: the ground is theirs."""
+    offers = plot_offers(player_id)
+    if isinstance(choice, bool) or not isinstance(choice, int) \
+            or not 0 <= choice < len(offers):
+        raise GameError("Choose one of the plots you were offered.")
+    return offers[choice]
 
 
 def town_seed(player_id: str, attempt: int = 0) -> int:
@@ -585,16 +596,18 @@ class TownOps:
 
     # -- founding ----------------------------------------------------------
 
-    def found_town(self, player) -> dict:
-        """Land four people on an equatorial plot at sunrise. One per company."""
+    def found_town(self, player, choice: int = 0) -> dict:
+        """Land four people at sunrise on the plot the company chose, of the
+        three it was offered. One town per company."""
         if self._town_row(player.id) is not None:
             raise GameError("Your company already has a town.")
+        plot = plot_for(player.id, choice)    # refuses a choice not offered
         with self._mutation():
-            self._log([self._found_town(player, self.world.game_time())])
+            self._log([self._found_town(player, self.world.game_time(), plot)])
         return self.town_meta(player)
 
-    def _found_town(self, player, now: str) -> Event:
-        """Found a company's town. Call inside a transaction."""
+    def _found_town(self, player, now: str, plot: dict | None = None) -> Event:
+        """Found a company's town on the plot it chose. Call inside a transaction."""
         ledger, tick = self.world.ledger, self.world.tick
         arrears = min(player.upkeep_owed, self.arrears_cap)
         grant = max(TOWN_GRANT, TOWN_START + arrears
@@ -603,7 +616,8 @@ class TownOps:
             ledger.transfer(self.dev_fund_account, player.account, CREDIT,
                             grant, kind="grant", game_time=now,
                             ref=player.id, memo="town founding grant")
-        seed, plot = town_seed(player.id), plot_for(player.id)
+        seed = town_seed(player.id)
+        plot = plot_for(player.id) if plot is None else plot
         made = self._engine_call("create", seed, self._town_wallet(player, 0),
                                  plot)
         self.db.execute(
@@ -620,7 +634,7 @@ class TownOps:
             detail=f"{player.name} founded a town on the lunar equator",
             data={"player": player.id, "company": player.name})
 
-    def refound_town(self, player) -> dict:
+    def refound_town(self, player, choice: int = 0) -> dict:
         """Send a new crew to a town that has fallen silent.
 
         The new crew lands with stores: a company that has less than the
@@ -636,11 +650,14 @@ class TownOps:
         row = self._town(player)
         if self.town_engine.summary(row["state"])["phase"] != "lost":
             raise GameError("Your town is still alive.")
+        # A town from before plots chooses its ground now, once.
+        plot = json.loads(row["plot"] or "{}") or plot_for(player.id, choice)
         with self._mutation():
-            self._refound_town(player, row, self.world.game_time())
+            self._refound_town(player, row, self.world.game_time(), plot)
         return self.town_meta(player)
 
-    def _refound_town(self, player, row, now: str) -> None:
+    def _refound_town(self, player, row, now: str, plot: dict | None = None
+                      ) -> None:
         """Land a new crew. Call inside a transaction."""
         attempt = row["attempt"] + 1
         seed = town_seed(player.id, attempt)
@@ -662,7 +679,8 @@ class TownOps:
             relief = 0
         # The ground is the company's own and does not change with the crew.
         # A town from before plots is given its ground now.
-        plot = json.loads(row["plot"] or "{}") or plot_for(player.id)
+        if plot is None:
+            plot = json.loads(row["plot"] or "{}") or plot_for(player.id)
         made = self._engine_call("create", seed, self._town_wallet(player, 0),
                                  plot)
         self.db.execute(
@@ -1027,6 +1045,11 @@ class TownOps:
                              - self.tick_starts_at(0)).total_seconds(),
             "founded": row is not None,
         }
+        if row is None or (row["lost_tick"] is not None
+                           and not json.loads(row["plot"] or "{}")):
+            # nothing founded yet, or a lost town from before plots: the
+            # company is shown its three plots and chooses one
+            meta["offers"] = plot_offers(player.id)
         if row is None:
             return meta
         summary = self.town_engine.summary(row["state"])

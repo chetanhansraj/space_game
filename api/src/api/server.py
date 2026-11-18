@@ -118,6 +118,11 @@ class YardSellIn(BaseModel):
     price: int = Field(ge=1, le=100_000_000)
 
 
+class PlotChoice(BaseModel):
+    """Which of the plots it was offered a company founds its town on."""
+    choice: int = Field(default=0, ge=0, le=9)
+
+
 class YardPolicyIn(BaseModel):
     sell: bool
     min_price: int = Field(ge=1, le=100_000_000)
@@ -569,14 +574,18 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
             return town_reply(player, the_game().town_meta(player))
 
     @app.post("/api/town/found")
-    def town_found(player: Player = Depends(player_for)):
+    def town_found(body: PlotChoice | None = None,
+                   player: Player = Depends(player_for)):
         with lock:
-            return town_reply(player, the_game().found_town(player))
+            return town_reply(player, the_game().found_town(
+                player, body.choice if body else 0))
 
     @app.post("/api/town/refound")
-    def town_refound(player: Player = Depends(player_for)):
+    def town_refound(body: PlotChoice | None = None,
+                     player: Player = Depends(player_for)):
         with lock:
-            return town_reply(player, the_game().refound_town(player))
+            return town_reply(player, the_game().refound_town(
+                player, body.choice if body else 0))
 
     @app.post("/api/town/intent")
     def town_intent(body: TownIntent, player: Player = Depends(player_for)):
