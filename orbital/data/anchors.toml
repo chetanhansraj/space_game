@@ -33,6 +33,82 @@ dv_escape = 2570.0
 dv_capture = 2570.0
 note = "Tranquillitatis Flats. Lunar equatorial regolith site."
 
+# Further ports on the lunar surface (root docs/DECISIONS.md D86). A port is a
+# place to land and an order book; the hop between any two is the same
+# ballistic problem as between the first three.
+
+[anchors.luna_imbrium]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = 32.8
+lon_deg = -15.6
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Imbrium Landing. Mare Imbrium."
+
+[anchors.luna_procellarum]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = 18.4
+lon_deg = -57.4
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Procellarum Roads. Oceanus Procellarum."
+
+[anchors.luna_crisium]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = 17.0
+lon_deg = 59.1
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Crisium Anchorage. Mare Crisium, the near side's eastern edge."
+
+[anchors.luna_tycho]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = -43.3
+lon_deg = -11.4
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Tycho Station. The southern highlands of the near side."
+
+[anchors.luna_korolev]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = -4.0
+lon_deg = -157.4
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Korolev Field. The far side, near its middle."
+
+[anchors.luna_aitken]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = -53.0
+lon_deg = -169.0
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Aitken Deep. The floor of the South Pole-Aitken basin."
+
+[anchors.luna_mendeleev]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = 5.7
+lon_deg = 140.9
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Mendeleev Port. The far side's eastern highlands."
+
+[anchors.luna_moscoviense]
+kind = "lunar_surface"
+body = "earth_moon_barycentre"
+lat_deg = 27.3
+lon_deg = 148.1
+dv_escape = 2570.0
+dv_capture = 2570.0
+note = "Moscoviense Landing. Mare Moscoviense, the far side's one plain of any size."
+
 [anchors.luna_orbit]
 kind = "lunar_orbit"
 body = "earth_moon_barycentre"

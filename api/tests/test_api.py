@@ -51,8 +51,8 @@ def test_the_world_is_public(client):
     r = client.get("/api/world")
     assert r.status_code == 200
     body = r.json()
-    assert {n["id"] for n in body["nodes"]} == {
-        "shackleton_depot", "peary_ridge", "tranquillitatis_flats"}
+    from sim.seed_world import PORTS
+    assert {n["id"] for n in body["nodes"]} == set(PORTS) and len(PORTS) == 11
     assert body["tick_seconds"] > 0
     assert client.get("/api/sky").json()["bodies"]
     assert client.get("/api/market/shackleton_depot").json()["assets"]
@@ -240,7 +240,8 @@ def test_the_list_of_towns_is_public(client, game, monkeypatch):
     towns = client.get("/api/towns").json()["towns"]
     assert [(t["company"], t["house"], t["lost"]) for t in towns] == [
         ("Tranquility Co", False, False)]
-    assert set(towns[0]) == {"company", "house", "kind", "plot", "lost", "crews", "age_days",
+    assert set(towns[0]) == {"company", "house", "kind", "plot", "port", "lost", "crews",
+                             "age_days",
                              "population", "tier", "buildings", "sold_t"}
     mine = client.get("/api/town", headers=who).json()["meta"]
     assert mine["league"] == towns and mine["company"] == "Tranquility Co"

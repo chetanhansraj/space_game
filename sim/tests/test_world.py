@@ -34,7 +34,10 @@ def test_the_roster_is_fifty_bulk_agents_plus_the_freight(world):
     haulers = [f for f in world.firms if f.role is Role.HAULER]
     assert len(bulk) == 50
     assert len(haulers) == len(world.ships) == 6
-    assert set(world.books) == {SHACKLETON, PEARY, TRANQUILLITATIS}
+    # the three seeded settlements, and the further ports that are only a
+    # place to land and an order book (D86)
+    from sim.seed_world import PORTS
+    assert set(world.books) == set(PORTS) > {SHACKLETON, PEARY, TRANQUILLITATIS}
 
 
 def test_conservation_holds_every_single_tick(world):
