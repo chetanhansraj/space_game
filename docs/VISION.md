@@ -329,6 +329,10 @@ is shown three plots and chooses one. The night is as long as the
 latitude makes it: short on a polar rim, 354 hours everywhere else
 (D85).
 
+The Moon has eleven ports (D86). A town trades at the one nearest its
+ground, and the Ark's freight line carries goods between ports for a
+charge that is burned. Nobody flies a ship yet.
+
 The first five are five different towns (D83): a mixed town, a foundry town,
 a works town, a resort that runs no foundry, a hostel town with one. A
 town short of parts bids at the port and another town's sale fills it,
@@ -337,10 +341,10 @@ credits pass between towns. None of this calls an AI model. It is rules.
 
 ### Next
 
-- **Many ports**, now the most urgent thing: each plot at its nearest
-  port, more ports with routes between them, and house companies that
-  fly their own goods to where the price is best. Without the last, a
-  town away from the Flats is stranded (D85).
+- **Propellant, and ships that fly**, now the most urgent thing: ice
+  into propellant on polar ground, sold at the polar ports, so that a
+  company can carry its own goods for less than the freight line
+  charges. Then house companies that do (D86).
 - **What the ground makes, not only how much**: ice into water and
   propellant, highland soil into glass and panels, the plains into
   metal. And surveying to find it.
