@@ -44,13 +44,15 @@ export interface Yard {
   bid: number | null; last: number | null; sell: boolean; min_price: number;
   sold_kg: number; sales: number; sold_today: number; sales_today: number; sold_yesterday: number; sales_yesterday: number;
   open: boolean; pad: boolean; needs: number;
+  /** The town's own port, where the best bid after freight is, and what a tonne costs to carry there. */
+  port?: string; bid_port?: string | null; freight?: number; freight_paid?: number;
   /** Spare parts: what the buildings take from the yard, what a standing sale keeps back for them, and Earth's price when it is empty. */
   parts?: { wear: boolean; kg_per_hour: number; keep_kg: number; keep_t: number | null; auto_kg: number; used_kg: number; landed_kg: number; import: number; buy: boolean; max_price: number; bought_kg: number; spent: number; on_order_kg: number };
   ship: { here: boolean; aboard_kg: number; room_kg: number };
 }
 export type YardAct = 'sell' | 'hold' | 'now' | 'load' | 'keep' | 'keepnone' | 'buy' | 'nobuy';
 /** One town on the Moon, as the server lists them all: most people first. */
-export interface TownRow { company: string; house: boolean; kind?: string; plot?: Partial<Plot>; lost: boolean; crews: number; age_days: number; population: number; tier: string; buildings: number; sold_t: number; }
+export interface TownRow { company: string; house: boolean; kind?: string; plot?: Partial<Plot>; port?: string; lost: boolean; crews: number; age_days: number; population: number; tier: string; buildings: number; sold_t: number; }
 export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; caretaker?: Caretaker | null; league?: TownRow[] | null; company?: string; plot?: Partial<Plot> | null; }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -448,7 +450,7 @@ export class Hud {
       <div class="acts" style="margin-bottom:8px">${spare >= 1 && y.bid !== null && y.bid >= y.min_price ? `<button type="button" class="primary" data-yard="now">Sell ${spare} t now</button>` : ''}${y.ship.here && whole >= 1 && y.ship.room_kg >= y.lot_kg ? `<button type="button" data-yard="load">Load ${Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg))} t into your ship</button>` : ''}</div>` : '';
     return `<h3>Yard · manufactured goods</h3><p class="sub">${t(y.held_kg)} of ${t(y.cap_kg, 0)} · ${esc(making)}</p>
       <span class="dbar yard"><i style="left:0;width:${Math.min(100, Math.round((y.held_kg / y.cap_kg) * 100))}%;background:${tone}"></i></span>
-      <dl class="budget one"><div><dt>Best bid at the Flats</dt><dd>${per(y.bid)}</dd></div><div><dt>Earth pays</dt><dd>${per(y.anchor)}</dd></div><div><dt>Sold today</dt><dd>${sold(y.sold_today, y.sales_today)}</dd></div><div><dt>Sold in all</dt><dd>${sold(y.sold_kg, y.sales)}</dd></div></dl>
+      <dl class="budget one"><div><dt>Best bid${y.bid_port ? ` · ${esc(y.bid_port)}` : ''}</dt><dd>${per(y.bid)}${y.freight ? ` <small>after ${num(y.freight / y.kcr)} freight</small>` : ''}</dd></div><div><dt>Earth pays</dt><dd>${per(y.anchor)}</dd></div><div><dt>Sold today</dt><dd>${sold(y.sold_today, y.sales_today)}</dd></div><div><dt>Sold in all</dt><dd>${sold(y.sold_kg, y.sales)}</dd></div></dl>
       ${acts}${gate}${this.partsHtml(y)}<p class="txt">Goods sell by the tonne to whoever at the port bids most${y.sell && y.open ? ', and never below Earth\'s price' : ''}.${y.ship.aboard_kg ? ` ${t(y.ship.aboard_kg, 0)} aboard your ship.` : ''}</p><h3>The town</h3>`;
   }
 
@@ -509,9 +511,9 @@ export class Hud {
         <p class="txt">${y ? 'Goods sold, rover' : 'Rover'} fares, landing fees, contracts and mission rewards come on top of this.</p>${care}`;
     } else if (id === 'towns') {
       const all = ui.league ?? [];
-      const rows = all.map((t, i) => `<li${t.company === ui.company ? ' class="me"' : ''}${t.lost ? ' data-lost="1"' : ''}><b>${i + 1}</b><span>${esc(t.company)}${t.house ? ' <i title="Run by the world, by the same rules as yours">agent</i>' : ''}<small>${t.lost ? 'silent' : `${esc(t.kind || t.tier)}${t.plot?.name ? ` · ${esc(t.plot.name)}` : ''} · day ${t.age_days + 1}`}${t.crews > 1 ? ` · crew ${t.crews}` : ''} · ${num(t.sold_t)} t sold</small></span><em>${t.lost ? '·' : num(t.population)}</em></li>`).join('');
+      const rows = all.map((t, i) => `<li${t.company === ui.company ? ' class="me"' : ''}${t.lost ? ' data-lost="1"' : ''}><b>${i + 1}</b><span>${esc(t.company)}${t.house ? ' <i title="Run by the world, by the same rules as yours">agent</i>' : ''}<small>${t.lost ? 'silent' : `${esc(t.kind || t.tier)}${t.plot?.name ? ` · ${esc(t.plot.name)}` : ''}${t.port ? ` · port ${esc(t.port)}` : ''} · day ${t.age_days + 1}`}${t.crews > 1 ? ` · crew ${t.crews}` : ''} · ${num(t.sold_t)} t sold</small></span><em>${t.lost ? '·' : num(t.population)}</em></li>`).join('');
       html = `${head('Towns')}${this.groundHtml(ui.plot)}<h3>Every town</h3><p class="sub">${all.length} on the Moon · by people</p><ol class="league">${rows}</ol>
-        <p class="txt">Every town here plays by the same rules and sells into the same market at the Flats. The ones marked agent are run by the world, hour by hour, and never rest.</p>`;
+        <p class="txt">Every town here plays by the same rules. Each trades at the port nearest its ground, and the freight line carries goods between ports for a charge. The ones marked agent are run by the world, hour by hour, and never rest.</p>`;
     } else if (id === 'people') {
       const nextTier = TIERS.find(t => t[0] > pop), sh = s.shuttle;
       const pad = s.buildings.find(b => b.type === 'pad' && b.progress >= 1);
