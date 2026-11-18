@@ -4,7 +4,7 @@
 
 import { BUILDINGS, BUILD_MENU, BuildingType, ZONES, ZONE_COST } from '../sim/buildings';
 import { MISSIONS } from '../sim/missions';
-import { FOUNDRY_KG,
+import { FOUNDRY_KG, Plot, PlotKey,
   State, Building, LUNAR_DAY, SHUTTLE_EVERY, TIERS, aliveCount, dayNumber, hoursToSunrise, hoursToSunset,
   PRICES, needs, bedsOf, habAt, jobsOf, drawOf, isNight, nightCover, nightNeed, phaseOf, population, support, tierOf,
 } from '../sim/sim';
@@ -31,7 +31,7 @@ export interface Handlers {
   offer(accept: boolean): void;
   deselect(): void;
   /** The yard, in a town on the shared world: change the standing instruction, sell now, or load the ship. */
-  yard?(act: 'sell' | 'hold' | 'now' | 'load'): void;
+  yard?(act: YardAct): void;
   /** Hire a caretaker for a town on the shared world, or let one go. */
   caretaker?(on: boolean): void;
 }
@@ -44,9 +44,14 @@ export interface Yard {
   bid: number | null; last: number | null; sell: boolean; min_price: number;
   sold_kg: number; sales: number; sold_today: number; sales_today: number; sold_yesterday: number; sales_yesterday: number;
   open: boolean; pad: boolean; needs: number;
+  /** Spare parts: what the buildings take from the yard, what a standing sale keeps back for them, and Earth's price when it is empty. */
+  parts?: { wear: boolean; kg_per_hour: number; keep_kg: number; keep_t: number | null; auto_kg: number; used_kg: number; landed_kg: number; import: number; buy: boolean; max_price: number; bought_kg: number; spent: number; on_order_kg: number };
   ship: { here: boolean; aboard_kg: number; room_kg: number };
 }
-export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; caretaker?: Caretaker | null; }
+export type YardAct = 'sell' | 'hold' | 'now' | 'load' | 'keep' | 'keepnone' | 'buy' | 'nobuy';
+/** One town on the Moon, as the server lists them all: most people first. */
+export interface TownRow { company: string; house: boolean; kind?: string; plot?: Partial<Plot>; lost: boolean; crews: number; age_days: number; population: number; tier: string; buildings: number; sold_t: number; }
+export interface UiState { tool: Tool | null; selected: number | null; speed: number; hint: string; overlay: boolean; yard?: Yard | null; caretaker?: Caretaker | null; league?: TownRow[] | null; company?: string; plot?: Partial<Plot> | null; }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const num = (n: number, dp = 0) => n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -83,6 +88,7 @@ const ICON = {
   people: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
   deals: '<path d="M7 3h7l4 4v14H7zM14 3v4h4M10 12h5M10 16h5"/>',
   log: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/>',
+  towns: '<path d="M3 20h18M5 20v-7l4-3 4 3v7M13 20V8l3-3 3 3v12M8 20v-3M16 12v.01M16 16v.01"/>',
   zones: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',
   power: '<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>',
   life: '<path d="M4 18a8 8 0 0 1 16 0zM2 18h20M12 10v8"/>',
@@ -98,7 +104,7 @@ const CATS: { id: string; name: string; icon: string; tools: Tool[] }[] = [
   { id: 'community', name: 'Community', icon: ICON.community, tools: ['garden', 'clinic'] },
 ];
 const catOf = (t: Tool) => CATS.find(c => c.tools.includes(t))!.id;
-type DrawerId = 'demand' | 'money' | 'people' | 'deals' | 'log' | 'crew0' | 'crew1' | 'crew2' | 'crew3';
+type DrawerId = 'demand' | 'money' | 'people' | 'deals' | 'towns' | 'log' | 'crew0' | 'crew1' | 'crew2' | 'crew3';
 const RES_NOTE: Record<string, string> = {
   people: 'Everyone on the base. The limit is how many your life support can carry through a night, and what holds it there.',
   mat: 'Credits pay for everything you build and zone. The rate leaves out rover fares, landing fees and contracts, which come on top.',
@@ -165,6 +171,8 @@ export class Hud {
     railBtn('money', ic(ICON.money), 'Money', 'Income, upkeep and prices');
     railBtn('people', ic(ICON.people), 'People', 'Crew, residents, visitors, shuttle and rovers');
     railBtn('deals', ic(ICON.deals), 'Deals', 'Contracts with nations and companies');
+    railBtn('towns', ic(ICON.towns), 'Towns', 'Every town on the Moon, and where yours stands');
+    $('rb-towns').hidden = true;   // only a town on the shared world has neighbours
     railBtn('log', ic(ICON.log), 'Log', 'Everything that has happened');
 
     document.querySelectorAll<HTMLButtonElement>('.speed button').forEach(b =>
@@ -180,7 +188,7 @@ export class Hud {
       const pr = el.closest('button[data-price]') as HTMLButtonElement | null;
       if (pr) { h.price(Number(pr.dataset.price)); this.drawerKey = '?'; }
       const yd = el.closest('button[data-yard]') as HTMLButtonElement | null;
-      if (yd && h.yard) { h.yard(yd.dataset.yard as 'sell' | 'hold' | 'now' | 'load'); this.drawerKey = '?'; }
+      if (yd && h.yard) { h.yard(yd.dataset.yard as YardAct); this.drawerKey = '?'; }
       const ck = el.closest('button[data-care]') as HTMLButtonElement | null;
       if (ck && h.caretaker) { h.caretaker(ck.dataset.care === '1'); this.drawerKey = '?'; }
       if (el.closest('[data-act="close"]')) this.openDrawer(null);
@@ -233,7 +241,7 @@ export class Hud {
   private openDrawer(id: DrawerId | null) {
     this.drawer = id; this.drawerKey = '?'; this.railKey = '?';
     if (id === 'log') this.seenAlert = this.lastAlert;
-    if (id && id.startsWith('crew') && this.bubbleFor !== 'offer') this.hideBubble();
+    if (id && (id.startsWith('crew') ? this.bubbleFor !== 'offer' : this.bubbleFor === 'mis')) this.hideBubble();   // a drawer opened on purpose is not talked over
     if (id === 'deals' && this.bubbleFor === 'offer') this.hideBubble();
   }
   private showTray() {
@@ -388,7 +396,8 @@ export class Hud {
     const crewTone = s.crew.map(c => (!c.alive ? 'dead' : c.health < 35 ? 'bad' : c.health < 70 ? 'warn' : 'ok'));
     const fresh = s.crew.map((_, i) => (m && m.who === i && s.mission > this.seenMis ? 1 : 0) + s.alerts.filter(a => a.who === i && a.id > this.seenBy[i] && !a.msg.includes(': done.')).length);
     const want = ZONES.map(z => Math.round(s.want[z.key] * 10));
-    const key = [u?.who, m?.who, blocked, unmet, soon, !!s.offer, s.materials < 0, !!ui.yard?.full, unread, this.drawer, crewTone.join(), fresh.join(), want.join()].join('|');
+    const rank = ui.league ? ui.league.findIndex(t => t.company === ui.company) + 1 : 0;
+    const key = [u?.who, m?.who, blocked, unmet, soon, !!s.offer, s.materials < 0, !!ui.yard?.full, unread, this.drawer, crewTone.join(), fresh.join(), want.join(), rank, ui.league?.length].join('|');
     if (key === this.railKey) return;
     this.railKey = key;
     const badge = (id: DrawerId, tone: string | null, text = '') => {
@@ -402,6 +411,8 @@ export class Hud {
     });
     badge('demand', blocked ? 'warn' : unmet ? 'warn' : null);
     badge('money', s.materials < 0 ? 'bad' : ui.yard?.full ? 'warn' : null);
+    $('rb-towns').hidden = !ui.league;
+    badge('towns', rank && ui.league!.length > 1 ? 'new' : null, `${rank}`);
     badge('people', s.flows.exposed + s.flows.atRisk > 0 ? 'bad' : null);
     badge('deals', s.offer ? 'sun' : soon ? 'warn' : null);
     badge('log', unread ? 'dim' : null, unread > 9 ? '9+' : String(unread || ''));
@@ -427,17 +438,46 @@ export class Hud {
   private yardHtml(y: Yard): string {
     const t = (kg: number, dp = 1) => `${num(kg / 1000, dp)} t`;
     const per = (cr: number | null) => (cr === null ? 'no buyer' : `${num(cr / y.kcr, 1)} a tonne`);
-    const whole = Math.floor(y.held_kg / y.lot_kg), tone = y.full ? '#ff6b6b' : y.held_kg > y.cap_kg / 2 ? '#f0a04e' : 'var(--cyan)';
+    const p = y.parts, wear = !!p?.wear && p.kg_per_hour > 0, kept = p?.wear ? p.keep_kg : 0;
+    const whole = Math.floor(y.held_kg / y.lot_kg), spare = Math.floor(Math.max(0, y.held_kg - kept) / y.lot_kg), tone = y.full ? '#ff6b6b' : y.held_kg > y.cap_kg / 2 ? '#f0a04e' : 'var(--cyan)';
     const making = y.full ? 'Yard full: the foundries have stopped' : y.foundries === 0 ? 'No foundry yet. Zone land for Industry'
       : y.make_kg_per_hour > 0 ? `Making ${num(y.make_kg_per_hour)} kg an hour` : 'Foundries resting';
     const sold = (kg: number, cr: number) => (kg ? `${t(kg, 0)} · +${num(cr / y.kcr)}` : 'nothing');
     const gate = !y.open ? `<p class="txt">Nothing leaves the yard until the town has ${y.pad ? '' : 'a working landing pad and '}${y.needs} people. What is made waits here.</p>` : '';
     const acts = y.open ? `<div class="prices"><span>As made</span><button type="button" data-yard="sell" aria-pressed="${y.sell}">Sell</button><button type="button" data-yard="hold" aria-pressed="${!y.sell}">Hold</button></div>
-      <div class="acts" style="margin-bottom:8px">${whole >= 1 && y.bid !== null && y.bid >= y.min_price ? `<button type="button" class="primary" data-yard="now">Sell ${whole} t now</button>` : ''}${y.ship.here && whole >= 1 && y.ship.room_kg >= y.lot_kg ? `<button type="button" data-yard="load">Load ${Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg))} t into your ship</button>` : ''}</div>` : '';
+      <div class="acts" style="margin-bottom:8px">${spare >= 1 && y.bid !== null && y.bid >= y.min_price ? `<button type="button" class="primary" data-yard="now">Sell ${spare} t now</button>` : ''}${y.ship.here && whole >= 1 && y.ship.room_kg >= y.lot_kg ? `<button type="button" data-yard="load">Load ${Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg))} t into your ship</button>` : ''}</div>` : '';
     return `<h3>Yard · manufactured goods</h3><p class="sub">${t(y.held_kg)} of ${t(y.cap_kg, 0)} · ${esc(making)}</p>
       <span class="dbar yard"><i style="left:0;width:${Math.min(100, Math.round((y.held_kg / y.cap_kg) * 100))}%;background:${tone}"></i></span>
       <dl class="budget one"><div><dt>Best bid at the Flats</dt><dd>${per(y.bid)}</dd></div><div><dt>Earth pays</dt><dd>${per(y.anchor)}</dd></div><div><dt>Sold today</dt><dd>${sold(y.sold_today, y.sales_today)}</dd></div><div><dt>Sold in all</dt><dd>${sold(y.sold_kg, y.sales)}</dd></div></dl>
-      ${acts}${gate}<p class="txt">Goods sell by the tonne to whoever at the port bids most${y.sell && y.open ? ', and never below Earth\'s price' : ''}.${y.ship.aboard_kg ? ` ${t(y.ship.aboard_kg, 0)} aboard your ship.` : ''}</p><h3>The town</h3>`;
+      ${acts}${gate}${this.partsHtml(y)}<p class="txt">Goods sell by the tonne to whoever at the port bids most${y.sell && y.open ? ', and never below Earth\'s price' : ''}.${y.ship.aboard_kg ? ` ${t(y.ship.aboard_kg, 0)} aboard your ship.` : ''}</p><h3>The town</h3>`;
+  }
+
+  /** The ground this town stands on: where it is and its six readings, which add up to the same for everyone. */
+  private groundHtml(plot?: Partial<Plot> | null): string {
+    if (!plot || plot.sun === undefined) return '';
+    const rows: [PlotKey, string, string][] = [
+      ['sun', 'Sunlight', 'what the arrays make'], ['ice', 'Water ice', 'less to bring from Earth'], ['metal', 'Iron and titanium', 'what a foundry makes'],
+      ['glass', 'Aluminium and silicon', 'fewer spare parts'], ['he3', 'Helium-3', 'richer survey finds'], ['view', 'What there is to see', 'visitors'],
+    ];
+    const where = `${Math.abs(plot.lat ?? 0).toFixed(1)}° ${(plot.lat ?? 0) >= 0 ? 'N' : 'S'}, ${Math.abs(plot.lon ?? 0).toFixed(1)}° ${(plot.lon ?? 0) >= 0 ? 'E' : 'W'}`;
+    const bars = rows.map(([k, name, what]) => { const v = plot[k] ?? 0.5; return `<li><b>${name}</b><span class="dbar"><i style="left:0;width:${Math.round(v * 100)}%;background:${v >= 0.66 ? 'var(--cyan)' : v <= 0.25 ? '#55526a' : '#8b8aa8'}"></i></span><em>${what}</em></li>`; }).join('');
+    return `<h3>Your ground</h3><p class="sub">${esc(plot.name ?? 'The Moon')} · ${where}</p><ul class="ground">${bars}</ul>
+      <p class="txt">Every plot on the Moon adds up to the same. Yours is strong where the bars are long, and what it lacks another town has.</p>`;
+  }
+
+  /** Spare parts: the same goods, used up by the town's own buildings once it is big enough to trade. */
+  private partsHtml(y: Yard): string {
+    const p = y.parts;
+    if (!p) return '';
+    const t = (kg: number, dp = 1) => `${num(kg / 1000, dp)} t`;
+    if (!p.wear) return y.open ? '' : '<p class="txt">Once the town trades, its buildings will wear and take spare parts from this yard.</p>';
+    const need = p.kg_per_hour, lasts = need > 0 ? y.held_kg / need : Infinity, dry = need > 0 && y.held_kg < 1;
+    const cost = (need * p.import) / 1000 / y.kcr;
+    return `<h3>Spare parts</h3>
+      <dl class="budget one"><div><dt>Buildings use</dt><dd>${num(need, 1)} kg an hour</dd></div><div${dry ? ' class="bad"' : ''}><dt>Yard lasts</dt><dd>${dry ? 'empty' : hrs(lasts)}</dd></div><div><dt>Fitted so far</dt><dd>${t(p.used_kg)}</dd></div>${p.bought_kg ? `<div><dt>Bought at the port</dt><dd>${t(p.bought_kg, 0)} · −${num(p.spent / y.kcr)}</dd></div>` : ''}${p.landed_kg >= 1 ? `<div><dt>Landed from Earth</dt><dd>${t(p.landed_kg)}</dd></div>` : ''}</dl>
+      <div class="prices"><span>Keep back</span><button type="button" data-yard="keep" aria-pressed="${p.keep_t === null}">${t(p.auto_kg)}</button><button type="button" data-yard="keepnone" aria-pressed="${p.keep_t === 0}">Nothing</button></div>
+      <div class="prices"><span>When short</span><button type="button" data-yard="buy" aria-pressed="${p.buy}">Buy at the port</button><button type="button" data-yard="nobuy" aria-pressed="${!p.buy}">Earth only</button></div>
+      <p class="txt">${dry ? `The yard is empty, so Earth is landing parts at ${num(p.import / y.kcr)} a tonne: ${num(cost, 2)} credits an hour.` : `Buildings wear out parts, and parts are these goods. What is kept back is a lunar night's worth and is never sold for you. ${p.buy ? `When the yard falls below that the town bids at the port for other towns' goods${p.on_order_kg ? ` (${t(p.on_order_kg, 0)} on order now)` : ''}, a little above the next bidder and never above Earth's price.` : ''} If the yard runs dry Earth lands them at ${num(p.import / y.kcr)} a tonne, twice what the port pays.`}</p>`;
   }
 
   /** Whatever drawer is open. Only one at a time, and none by default. */
@@ -467,6 +507,11 @@ export class Hud {
         <dl class="budget">${y ? '' : `<div><dt>Foundries</dt><dd>${money(e.foundry)}</dd></div>`}<div><dt>Rent</dt><dd>${money(e.rent)}</dd></div><div><dt>Visitors</dt><dd>${money(e.visitors)}</dd></div><div><dt>Concourses</dt><dd>${money(e.shops)}</dd></div><div><dt>Earth grant</dt><dd>${money(e.grant)}</dd></div><div><dt>Upkeep</dt><dd>${money(-f.upkeep)}</dd></div><div class="net"><dt>Net an hour</dt><dd>${money(f.income)}</dd></div></dl>
         <div class="prices"><span>Prices</span>${['Low', 'Fair', 'High'].map((n, i) => `<button type="button" data-price="${i}" aria-pressed="${i === pi}">${n}</button>`).join('')}</div>
         <p class="txt">${y ? 'Goods sold, rover' : 'Rover'} fares, landing fees, contracts and mission rewards come on top of this.</p>${care}`;
+    } else if (id === 'towns') {
+      const all = ui.league ?? [];
+      const rows = all.map((t, i) => `<li${t.company === ui.company ? ' class="me"' : ''}${t.lost ? ' data-lost="1"' : ''}><b>${i + 1}</b><span>${esc(t.company)}${t.house ? ' <i title="Run by the world, by the same rules as yours">agent</i>' : ''}<small>${t.lost ? 'silent' : `${esc(t.kind || t.tier)}${t.plot?.name ? ` · ${esc(t.plot.name)}` : ''} · day ${t.age_days + 1}`}${t.crews > 1 ? ` · crew ${t.crews}` : ''} · ${num(t.sold_t)} t sold</small></span><em>${t.lost ? '·' : num(t.population)}</em></li>`).join('');
+      html = `${head('Towns')}${this.groundHtml(ui.plot)}<h3>Every town</h3><p class="sub">${all.length} on the Moon · by people</p><ol class="league">${rows}</ol>
+        <p class="txt">Every town here plays by the same rules and sells into the same market at the Flats. The ones marked agent are run by the world, hour by hour, and never rest.</p>`;
     } else if (id === 'people') {
       const nextTier = TIERS.find(t => t[0] > pop), sh = s.shuttle;
       const pad = s.buildings.find(b => b.type === 'pad' && b.progress >= 1);
@@ -515,7 +560,8 @@ export class Hud {
     // so a button is never swapped out from under the pointer.
     const u2 = urgent(s), m2 = MISSIONS[s.mission], ci = id.startsWith('crew') ? Number(id.slice(4)) : -1;
     const struct = ci >= 0 ? `${u2 && u2.who === ci ? u2.title : ''}|${m2 && m2.who === ci ? `${s.mission}:${m2.tool ? s.materials >= BUILDINGS[m2.tool].cost : ''}` : ''}|${s.alerts.filter(a => a.who === ci).length}`
-      : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full].join() : ''}|${ui.caretaker ? `${ui.caretaker.on}${Math.floor(ui.caretaker.paid / 1000)}` : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
+      : id === 'towns' ? `${(ui.league ?? []).map(t => t.company).join()}|${ui.plot?.name}`
+      : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full, ui.yard.parts?.wear, ui.yard.parts?.keep_t, ui.yard.parts?.buy, ui.yard.parts?.bought_kg, ui.yard.parts?.on_order_kg, Math.round(ui.yard.parts?.kg_per_hour ?? 0)].join() : ''}|${ui.caretaker ? `${ui.caretaker.on}${Math.floor(ui.caretaker.paid / 1000)}` : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
     if (this.drawerKey !== '?' && (this.pressing || (struct === this.drawerStruct && now - this.drawerAt < 3000))) return;
     this.drawerKey = html; this.drawerAt = now; this.drawerStruct = struct;
     const top = box.scrollTop;

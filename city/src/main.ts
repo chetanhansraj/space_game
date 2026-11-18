@@ -62,6 +62,8 @@ async function boot(hot: any) {
     ui.yard = y ? { ...y, kcr: (meta as any).kcr || 1000, open: !!tr?.open, pad: !!tr?.pad, needs: tr?.needs_population ?? 8 } : null;
     const ck = (meta as any).caretaker;
     ui.caretaker = ck ? { ...ck, kcr: (meta as any).kcr || 1000 } : null;
+    ui.league = (meta as any).league ?? null; ui.company = (meta as any).company; ui.plot = (meta as any).plot ?? null;
+    const place = document.getElementById('place'); if (place && ui.plot?.name) place.textContent = ui.plot.name;   // the town's own ground, not the first one this game was set on
     // A sale made while nobody was pressing anything: say so, once, in the town's own money.
     if (was && ui.yard && ui.yard.sold_kg > was.sold_kg) {
       const kg = ui.yard.sold_kg - was.sold_kg, cr = ui.yard.sales - was.sales;
@@ -105,9 +107,11 @@ async function boot(hot: any) {
     setSpeed: n => { if (!LIVE) ui.speed = n; },
     yard: act => {
       const y = ui.yard; if (!LIVE || !y) return;
-      const whole = Math.floor(y.held_kg / y.lot_kg);
-      const call = act === 'sell' || act === 'hold' ? api('/town/policy', { sell: act === 'sell', min_price: y.min_price })
-        : act === 'now' ? api('/town/sell', { tonnes: whole, price: y.min_price })
+      const whole = Math.floor(y.held_kg / y.lot_kg), kept = y.parts?.wear ? y.parts.keep_kg : 0, keep_t = y.parts?.keep_t ?? null;
+      const call = act === 'sell' || act === 'hold' ? api('/town/policy', { sell: act === 'sell', min_price: y.min_price, keep_t })
+        : act === 'keep' || act === 'keepnone' ? api('/town/policy', { sell: y.sell, min_price: y.min_price, keep_t: act === 'keep' ? null : 0 })
+        : act === 'buy' || act === 'nobuy' ? api('/town/policy', { sell: y.sell, min_price: y.min_price, keep_t, buy: act === 'buy' })
+        : act === 'now' ? api('/town/sell', { tonnes: Math.floor(Math.max(0, y.held_kg - kept) / y.lot_kg), price: y.min_price })
         : api('/town/load', { tonnes: Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg)) });
       call.then(r => {
         if (!pending) adopt(r);

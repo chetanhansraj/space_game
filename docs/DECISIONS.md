@@ -1639,6 +1639,388 @@ night was already provided for, it lived either way and the caretaker was
 270 credits spent for nothing. So it is insurance, and it is priced so that
 the choice is a real one.
 
+### D80 — A new crew lands with stores
+
+*Found on the live world on 17 November 2026.* The first town founded
+there was founded by the September company, an hour after the town went
+live and before D78 was deployed. It had no credits and a million in
+arrears. Nobody was at the controls that afternoon. It fell silent 197 game
+hours later, in the first lunar day, with nothing built.
+
+D72 said a lost town may be founded again with whatever the company has
+left and no second grant. For that company "whatever is left" is nothing,
+so the new crew would land unable to buy a solar panel and die the same
+way. A lost town with an empty account was a dead account.
+
+So a new crew lands with stores. When a company sends one, it is brought
+up to the same floor a town is founded with (D78: 160,000 cr, with its
+capped arrears covered) from the Ark's fund, and what the lost town still
+owed is written off. A caretaker's contract ends with the town it was for.
+
+What D72 meant is kept: nothing above the floor is given, so a company
+with money pays for its own second start, and everything that was built
+and lost stays lost. What changes is that losing a town can no longer end
+a company.
+
+*Invented, and it has a cost:* a company that keeps losing towns draws on
+the Ark's fund each time. The fund is finite and pays only while it can.
+If that is ever abused, the remedy is a waiting time before a relief crew
+is sent, not a return to the dead account.
+
+### D81 — The world runs five towns of its own
+
+*Delegated: "take it forward, realise my vision", 17 November 2026. D68
+gave the direction and its two fixed rules.* F9 found the Moon with no
+producers left, and D37 rules out firms the Ark pays to replace them. So
+the world founds companies and plays their towns, by the rules a person
+plays by.
+
+**What a house company is.** An ordinary company. `_charter_company` is
+the one charter there is: 120,000 cr and a full tank from the Ark's fund, a
+leased Kestrel, 400 cr a day. Its town is founded with the ordinary grant.
+Five of them, with fixed ids so that a world replayed from its seed founds
+the same towns: Mare Cooperative, Serenitatis Foundry Co, Tycho Settlement
+Trust, Imbrium Works, Fecunditatis Union. One is chartered every two game
+days. A name a person already holds is left to them. Its key is the hash
+of no key, so nobody can sign in as one. It is marked `house` in the
+player table and "agent" wherever it is shown, and the world view counts
+house companies apart from companies, so agents are never passed off as
+people.
+
+**Who plays it.** The steward (D77), every hour, with the full brief
+rather than the caretaker's. It decides inside the tick, deterministically,
+with no model (invariant 2), and each thing it asks for goes through
+`_apply_intent`, the door a person's requests come through. It pays no
+caretaker's wage: nobody is hired, the company is doing its own work.
+D68's other rule stands for later: an agent that decides with a language
+model will act through the public API from outside the tick.
+
+**Where its money comes from** (invariant 3). The fund's grants, what
+Earth pays a town under the town's own rules (D70), and what a buyer pays
+for its goods on the book. A test reads every credit a house company has
+ever received and allows only those three kinds. Nothing is created:
+credits in existence are the same after 120 game days as before.
+
+**Where it goes** (invariant 7). The sinks a person's town has: building,
+upkeep and compensation are burned, and the ship's fee is paid. No new
+faucet is added, so no new sink is owed.
+
+**Two things a house company does that a person cannot yet.**
+- *It recalls its crew* when its town owes more than founding a new one
+  costs (160,000 cr). The rules stop a town in debt from building. A
+  person can fly cargo to pay the debt down; a house company has no other
+  business, so past that line the town would only sit there owing more.
+  Measured: towns that recovered never owed more than 62,000 cr.
+- *It waits seven game days* before sending a new crew. D80 named a
+  waiting time as the remedy if relief crews drained the fund.
+
+**The port is a milestone** (amends D71 and D76). Found while measuring
+this: a town that fell below eight people could no longer sell, so it
+could never earn its way back. The eight people are now passed once. A
+town keeps its place at the port while it has a working pad, and a new
+crew earns it again.
+
+**The Moon is listed.** `GET /api/towns` is public: every town by people,
+with its standing, age, crews sent and goods sold. The town page has a
+Towns drawer with the same list. A town that reaches a new standing writes
+a line in the world's record.
+
+**Measured.** A fresh world left alone for 120 game days (two real days),
+`python scripts/demo_towns.py 120`: all five towns reach 48 to 90 people
+and sell 40 to 67 t of goods each, 274 t in all. Populations rise and fall
+with the lunar night: a town of 92 is back to 56 a fortnight later. Mare
+Cooperative draws a hard map, loses 16 visitors at the end of its first
+night at 15 credits each, is recalled on day 28 and with its second crew
+is the largest town on the Moon by day 110. No faults. The five hold 24
+million credits between them at the end, and Earth has paid out 36 million
+as town income.
+
+**What this does not do, plainly.**
+- House towns only sell. They bid for nothing, so they are suppliers of
+  goods and not yet customers of anything, and what they earn piles up in
+  their accounts. A market where towns need each other is the next build,
+  and it is the one that makes this an economy and not five shops.
+- Nobody makes propellant still. That was true before and is not fixed by
+  this.
+- The steward is one way of playing. Five towns run by it are five towns
+  played the same way on different ground. Different temperaments are a
+  later step, and so are agents that think (D68).
+- On a hard map the steward loses its first town. That is the rules being
+  hard on that ground as much as the steward being simple, and a person
+  on that ground would meet the same night.
+
+*Invented, and yours to change:* five companies, two days apart, seven
+days before a new crew, recall at 160,000 cr.
+
+### D82 — Goods are spare parts
+
+*Delegated: Chetan's "go" on 17 November 2026 to the step proposed after
+D81.* House towns only sold, and what they earned piled up. A town now
+needs what towns make.
+
+**The rule.** Once a town has passed the port milestone its buildings
+wear. They use 5 kg of manufactured goods an hour for each credit an hour
+of building upkeep, taken from the town's own yard. A town of ninety
+buildings uses about 13 kg an hour, which is two thirds of what its
+foundries make across a lunar day and night. Credit upkeep is unchanged:
+parts are a new need, not a new price for an old one. The seed table has
+always said what goods are for: "outposts, upgrades, modules".
+
+**Before the milestone** a town wears nothing. It is living on the spares
+it landed with, so the first days of a new crew are exactly as hard as
+they were.
+
+**An empty yard.** Earth lands the parts, at twice the seed anchor for
+goods: 90,000 cr a tonne. Lifting things out of Earth's gravity is the
+reason anything is made on the Moon, so parts from Earth cost more than
+parts from next door. Twice is also now the ceiling of the goods market,
+as Earth's standing bid of 45,000 is its floor: no town would pay another
+more than Earth charges.
+
+**The reserve.** A standing sale leaves 360 hours of parts in the yard, a
+lunar night and a little, because no foundry runs at night. Never more
+than 8 t, so the reserve is not counted as goods piling up (D76). The
+owner can set it in whole tonnes or to nothing. Selling by hand and
+loading the ship are not limited: those are the owner's own acts.
+
+**A full yard** (amends D76). With parts leaving it a full yard is never
+exactly full. The shift goes home when the yard cannot take what was
+made, and comes back when 2% of the yard is free, which is less than the
+smallest sale.
+
+**Money.** Nothing is created (invariant 3) and there is no new faucet.
+Two sinks are added (invariant 7): goods consumed, which leave the world
+as mass on the ledger, and the premium on Earth's parts, which goes
+through the sink a town's other costs go through.
+
+**Who owns which number.** The rules own the physical need (`PARTS_KG`,
+`YARD_RESTART` in `city/src/sim/sim.ts`), so the engine stays the one
+place a town's physics lives. The server owns the price and the reserve
+(`PARTS_IMPORT_PREMIUM`, `PARTS_KEEP_HOURS`, `PARTS_KEEP_MAX` in
+`sim/src/sim/towngame.py`), because they come from the market.
+
+**Measured.** `python scripts/demo_towns.py 120`, five house towns left
+alone for 120 game days:
+
+| Town | People | Made | Fitted as parts | Sold | Earth landed | Holds |
+|---|---|---|---|---|---|---|
+| Mare Cooperative (2nd crew) | 81 | 47 t | 24 t | 21 t | 0.8 t | 2.4 M |
+| Serenitatis Foundry Co | 63 | 51 t | 36 t | 14 t | 0.9 t | 3.3 M |
+| Tycho Settlement Trust | 60 | 54 t | 35 t | 17 t | 0.4 t | 4.1 M |
+| Imbrium Works | 56 | 74 t | 34 t | 38 t | 0.2 t | 5.0 M |
+| Fecunditatis Union | 52 | 60 t | 30 t | 26 t | 0.2 t | 3.9 M |
+
+All five still reach town size. Over half of what the Moon makes is now
+used on the Moon. The five hold 18.8 million credits between them, against
+24.4 million before. Serenitatis came within 40,000 cr of being recalled
+in its first night, where before it was never close.
+
+**What this does not do, plainly.**
+- *Towns still do not buy from each other.* A town short of parts gets
+  them from Earth, not from the town next door. That needs a town to
+  leave a standing bid at the port for another town's sale to fill, and
+  it is not built. Measured, it would have had almost no customers: the
+  five agents play alike, keep a reserve, and ran short of less than a
+  tonne each. It starts to matter when towns differ, which means agents
+  with temperaments and people who build resorts without foundries.
+- *A ship has nothing new to carry.* Every town is at the Flats. Parts
+  will give ships work when the polar works needs them too, or when
+  towns stand on different ground.
+- *Towns are still rich.* Parts took about a quarter off what a house
+  company holds. Question 20 stands.
+
+*Invented, and yours to change:* 5 kg per credit of upkeep, twice the
+anchor for Earth's parts, 360 hours kept, 8 t at most, 2% to restart.
+
+### D83 — Five temperaments, and towns that buy from each other
+
+*Direction from Chetan, 17 November 2026: "they must have different
+temperaments, since this is the seed of the world of the game diversity
+will make it awesome."* He also asked whether AI agents will have to play
+this. They will not: see the end of this entry.
+
+**A temperament** is a small set of choices handed to the steward: the
+most lots of each zone it lays out unasked, the price level it charges,
+the contracts it turns down, and the most foundries it keeps running
+once the crew's own foundry missions are done. It changes what the
+steward chooses, never what it may do. What the crew asks for and what
+is urgent are done whatever the temperament. A caretaker has none.
+
+| Company | Kind | How it plays |
+|---|---|---|
+| Mare Cooperative | Mixed town | as before: the reference |
+| Serenitatis Foundry Co | Foundry town | low prices, one commercial lot, no film contracts |
+| Imbrium Works | Works town | two commercial lots, no film contracts |
+| Tycho Settlement Trust | Resort | high prices, runs no foundry, no works contracts |
+| Fecunditatis Union | Hostel town | one foundry, no works contracts |
+
+**Buying at the port.** A town whose yard is below its reserve leaves a
+bid at the Flats, a resting order that any town's hourly sale can fill.
+Whole lots, two at most at a time, paid in full when placed from the
+company's own credits, renewed every hour. It comes off the book at once
+when the town is lost, recalled or told to stop. The price is 500 cr a
+tonne above the best bid that is not another town's, and never above the
+owner's limit or Earth's price. So a town in need is served before the
+households and Earth, and two towns in need share what is sold and do
+not bid each other up. The owner can switch it off or set a limit.
+
+**Money.** Nothing is created. Credits pass from the town that needs
+parts to the town that made them, through the order book's escrow. The
+sinks are D82's.
+
+**Measured.** `python scripts/demo_towns.py 120`:
+
+| Town | People | Buildings | Made | Fitted | Sold | Bought at the port | Earth landed | Holds |
+|---|---|---|---|---|---|---|---|---|
+| Imbrium Works | 54 | 76 | 56 t | 24 t | 34 t | 4 t | 0.3 t | 7.7 M |
+| Fecunditatis Union | 50 | 152 | 29 t | 31 t | 4 t | 10 t | 0.3 t | 1.2 M |
+| Mare Cooperative (2nd crew) | 48 | 146 | 45 t | 23 t | 23 t | 4 t | 0.0 t | 2.6 M |
+| Tycho Settlement Trust | 47 | 122 | 5 t | 28 t | 1 t | 26 t | 2.9 t | 5.9 M |
+| Serenitatis Foundry Co | 44 | 80 | 59 t | 20 t | 39 t | 1 t | 0.6 t | 4.1 M |
+
+45 t of goods and 3.7 million credits passed between towns. The resort
+makes almost nothing and buys nearly every part it fits. The foundry
+town sells twice what it uses. Earth landed 4 t in all, where under D82
+alone the resort would have had over 24 t landed. No credit created, no
+failed town hours.
+
+**Found on the way, and recorded because they are about the rules, not
+the agents.**
+- *The rules pull towns toward one shape.* Capping a company's industrial
+  land barely changed what it made, because foundries grow in level where
+  they stand and industry follows workers. Only switching foundries off
+  made a town that does not supply itself. Real variety between towns
+  will need the rules to offer real choices: more kinds of building, and
+  ground that favours one thing over another.
+- *Price level is not a trade-off.* With high prices a resort and a works
+  town each ended near ten million credits, about twice the others. With
+  low prices a town living on visitors lost its first crew. As the rules
+  stand, High is simply better. So only the resort charges high, and
+  this is yours to look at (question 23).
+- *Goods are scarce and the households know it.* With over half the
+  Moon's goods now fitted as parts, the Flats' households bid 80,000 cr a
+  tonne and more, against Earth's 45,000. A fixed offer of 67,500 bought
+  a town almost nothing, which is why a town's bid follows the book. Good
+  news for anyone with a foundry. It also means Earth's order for lunar
+  parts is never filled: the Moon uses what it makes.
+
+**Will AI agents have to play this?** No. Everything above is rules in
+ordinary code: no model is called, it costs nothing to run, and it
+replays from the seed. A language model can be added later for what
+rules cannot do: change its mind, bargain, speak. The shape is already
+fixed by D68 and invariant 2: the model sets a company's policy now and
+then (its temperament, its limits, what it signs) through the public
+API, the steward carries it out hour by hour, and no model touches the
+ledger. One decision a game day is sixty calls a real day for each town,
+so it is a cost to choose, not a requirement.
+
+*Invented, and yours to change:* the five temperaments themselves, the
+500 cr step, two lots at a time.
+
+### D84 — Every town stands on its own ground
+
+*Direction from Chetan, 18 November 2026:* every user is given a plot
+somewhere on the Moon. Plots differ by where they are, and even plots
+side by side differ: some rich in minerals and poor for a resort, some
+with ice, some with little in the ground and a great deal to see. "This
+is what the game should excel on, variety, and giving people equal
+possibilities. What a user does with it is different." He corrected an
+earlier suggestion of mine, that every plot have one thing nobody else
+has: that works for ten plots and not for thousands.
+
+**A plot** is a latitude, a longitude and six readings from 0 to 1.
+
+| Reading | What it is | What it multiplies in the rules |
+|---|---|---|
+| sun | how much of the time the arrays are lit | what a solar array makes |
+| ice | water ice within reach | what has to come from Earth for each person |
+| metal | iron and titanium in the soil | what a foundry makes |
+| glass | aluminium and silicon | spare parts the buildings need (D82) |
+| he3 | helium-3 held in the soil | how rich a survey find is |
+| view | Earth in the sky, or radio silence | how many visitors come |
+
+**Three rules** (`sim/src/sim/plots.py`):
+1. *Where it is sets the pattern.* Ice at the poles. Iron, titanium and
+   helium-3 in the dark plains. Aluminium in the bright highlands. Earth
+   over the middle of the near side; on the far side, the silence an
+   observatory comes for; at the edge between them, neither.
+2. *Neighbours differ.* Each reading is moved by up to 0.15 by a number
+   that belongs to that plot's own position.
+3. *Every plot adds up to the same*, 3.0. Ice and outlook are facts of
+   place and are never handed out to balance the books: there is no ice
+   at the equator whatever the budget would like. Soil and sunlight take
+   up the difference.
+
+**Assigned, not chosen**, as he said it. A person's place is drawn from
+their company's id: a quarter each on the plains, the near highlands,
+the polar rims and the far side. Left to chance four in five would land
+in highlands. The same company always has the same ground and keeps it
+through every crew.
+
+**How much a reading counts.** Up to 2.5 times either way, on purpose:
+D83 showed that small differences are flattened by the rest of the rules
+and every town comes out the same. Ice is the exception. Nearly all the
+Moon has none and the game was tuned without it, so lacking it costs
+nothing and having it is worth up to 1.6 times. At the full swing polar
+towns ended twice as rich as any other.
+
+**Seven house companies now**, standing where they are named for, so the
+seed of the world has every kind of ground: Mare Cooperative
+(Tranquillitatis, by Apollo 11), Serenitatis Foundry Co, Imbrium Works,
+Fecunditatis Union, Tycho Settlement Trust (highlands), and two new
+ones, Shackleton Ice Company (south polar rim) and Korolev Quiet Trust
+(far side).
+
+**Measured.** `python scripts/demo_towns.py 120`, each on its own ground:
+
+| Town | Ground | People | Made | Fitted | Sold | Bought | Holds |
+|---|---|---|---|---|---|---|---|
+| Korolev Quiet Trust | Far-side highlands | 68 | 25 t | 16 t | 8 t | 2 t | 0.5 M |
+| Mare Cooperative (2nd crew) | Mare Tranquillitatis | 65 | 61 t | 48 t | 27 t | 18 t | 0.2 M |
+| Imbrium Works | Mare Imbrium | 46 | 88 t | 46 t | 52 t | 13 t | 6.0 M |
+| Fecunditatis Union (2nd crew) | Mare Fecunditatis | 44 | 33 t | 40 t | 6 t | 17 t | 0.6 M |
+| Tycho Settlement Trust | Near-side highlands | 44 | 4 t | 13 t | 2 t | 13 t | 7.6 M |
+| Shackleton Ice Company | South polar rim | 40 | 21 t | 7 t | 14 t | 1 t | 6.4 M |
+| Serenitatis Foundry Co | Mare Serenitatis | 36 | 119 t | 35 t | 89 t | 7 t | 6.7 M |
+
+All seven stand. 71 t of goods and 4.5 million credits passed between
+towns. The towns are now plainly different from each other: the foundry
+on Serenitatis makes thirty times what the highland resort does, and the
+polar town fits a seventh of the parts a plains town does. No credit
+created, no failed town hours.
+
+**Equal on paper is not yet equal in play, and this is the thing to
+watch.** The steward on 120 sampled plots in the practice game, three
+lunar days: 3 lost, against 1 on plain ground. Median credits at the
+end ran from 2,900 on the far side to 5,500 on the south polar rim. In
+the table above holdings run from 0.2 to 7.6 million, though two of the
+poorest are on second crews and temperament is mixed in with ground.
+The budget makes the readings equal. It does not make what the rules do
+with them equal, and only measuring and tuning will.
+
+**What this does not do, plainly.**
+- *Night is the same length everywhere.* Sunlight changes what arrays
+  make, not how long the dark lasts. A polar town with near-constant sun
+  needs the rules' clock to know about latitude, and that touches 34
+  places in the rules. It is the most important missing piece of this.
+- *Every town still trades at the Flats.* A plot has a place on the Moon
+  but its goods appear at one port. Plots tied to their nearest port is
+  what gives ships cargo, and is the next step.
+- *The map is a sketch.* Real basin centres and diameters, each drawn as
+  a disc, and the rest from latitude and longitude. Orbiters have mapped
+  the real titanium, iron, hydrogen and sunlight. Those maps replace
+  `pattern` and nothing that calls it.
+- *One product still.* Ground changes how much a town makes and needs,
+  not what. Ice does not yet become water to sell, nor highland soil
+  glass. That needs new goods and is where "own minerals" really pays.
+- *No surveying to discover it.* A company sees its readings at once.
+- *Earth is still drawn in the sky of a far-side town.*
+
+*Invented, and yours to change:* the six readings and what each
+multiplies, a swing of 2.5 (1.6 for ice), the budget of 3.0, neighbour
+noise of 0.15, the four kinds of ground in equal shares, the two new
+companies and where all seven stand.
+
 ---
 
 ## Still open — needs you
@@ -1677,21 +2059,55 @@ Deliberately not decided, because these are yours.
     a game hour and urgent work only. Say if it should cost more, or do
     more, or need the town to reach some size before one can be hired.
 14. **Eight people to trade** — D71.
-15. **The Moon's firms are all dead** — F9. This is the big one. Towns
-    run by agents (D68) are the repair you have pointed at, and they are
-    not built. Until they are, the market a town sells into is Earth's
-    order and little else, and there is no propellant being made anywhere
-    for anyone's ship. Say whether agent towns are the next build.
-16. **Earth's purse is finite** — D40, D75. Earth has 1,765 million credits
-    left on the live world and no income. At the full twelve tonnes a day
-    of goods that is about eight real weeks. Then nothing enters the world
-    at all. Should Earth be an outside economy that never runs dry and is
-    limited only by its appetite, or is a world that ends by design what
-    you want?
+15. **The Moon's firms are all dead** — F9. Agent towns are now built
+    (D81): five house companies sell goods at the Flats. What is still
+    missing is anyone to buy from, and propellant from anyone at all.
+16. **Earth's purse is finite** — D40, D75, D81. Earth has 1,765 million
+    credits left on the live world and no income. Five house towns at
+    their measured size take about 0.4 million a game day from it between
+    town income and goods, which is roughly ten million a real day, and
+    more as they grow and as people join. That is some months, not years.
+    Then nothing enters the world at all. Should Earth be an outside
+    economy that never runs dry and is limited only by its appetite, or is
+    a world that ends by design what you want?
 17. **Thirteen kilograms, twenty tonnes, twelve tonnes a day** — D75, D76.
     Play it and say what feels too slow or too easy.
 18. **What a foundry on ilmenite should make** — D76. Iron and volatiles
     are in the commodity table and nobody on the Moon buys them.
+19. **The way out of deep debt** — D81. A town that owes more than it
+    can earn cannot build, so it cannot recover from inside. A person can
+    trade their way out with the ship. Should a person also be able to
+    recall their own crew and start again, as a house company does, and
+    if so with what wait? Without a wait it is a way to draw on the Ark's
+    fund again and again.
+20. **How rich a town gets** — D70, D81, D82. Left alone for two real
+    days a house company holds two and a half to five million credits
+    (four to six before spare parts), against the 120,000
+    a new company starts with and the few thousand a cargo run earns.
+    Town money is a thousand trade credits to one. Either towns should
+    cost that much to run once they need goods and parts, or the rate is
+    too generous. This is the number that decides whether flying a ship
+    is worth anyone's time.
+25. **Assigned or chosen** — D84. A company is given its ground, as you
+    said. The alternative is to offer three and let the person pick. Say
+    if a person should also be able to see their readings before they
+    found, or move.
+26. **How much the ground should matter** — D84. Up to 2.5 times either
+    way. Play a plot and say whether it feels like your own ground or
+    like a handicap.
+23. **Prices are not a trade-off** — D83. Charging High made a town about
+    twice as rich and cost it nothing that could be measured. Either High
+    should empty beds and Low fill them more strongly than they do, or
+    there should be no price button. Your design, your call.
+24. **The temperaments** — D83. Five were chosen so the seed world has a
+    foundry town, a resort and three in between. Say if you want others:
+    a mining town, a research base, one that hoards, one that undercuts.
+22. **What parts cost** — D82. Five kilograms per credit of upkeep and
+    twice the anchor from Earth. Play a town past eight people and say
+    whether the yard panel's numbers feel like pressure or like noise.
+21. **Do house towns step back when people arrive?** — D81. Five agents
+    are company on an empty Moon and competition on a full one. They
+    could be capped at a share of all towns, or stay for good.
 10. **Helium-3 for players** — D53. A player separator adds to the only
     faucet in the economy (D40), so it needs a licence and a royalty before
     the flats open. The size of that royalty is the decision.

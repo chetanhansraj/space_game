@@ -302,19 +302,53 @@ the last ones did. D74 to D78.
 A caretaker can be hired for a wage to deal with what is urgent while the
 owner is away (D79). It keeps a town alive. It does not play it.
 
-### The Moon's firms are dead (F9)
+### The Moon's firms are dead (F9), and towns have begun to replace them
 
 Found on day 49: every bot firm on the live Moon went bankrupt weeks ago.
-The trading world has not been going on by itself. Towns are meant to be
-what replaces them.
+The trading world had not been going on by itself.
+
+So the world now runs five towns of its own (D81). Each is an ordinary
+company with the ordinary charter and the ordinary rules, played every
+hour by the steward. They grow, they have bad nights, they sell goods at
+the Flats, and one of them may lose its town and send a second crew. A
+person who founds a town finds neighbours, and a list that says where
+they stand among them.
+
+A town now needs what towns make (D82). Once it is big enough to trade
+its buildings wear, and what they wear out is manufactured goods from its
+own yard: over half of what the Moon makes is used on the Moon. A town
+with an empty yard has parts landed from Earth at twice the price.
+
+Every town stands on its own ground (D84): a place on the Moon and six
+readings (sunlight, ice, iron and titanium, aluminium and silicon,
+helium-3, what there is to see) that differ from plot to plot and add
+up to the same for everyone. A person is given theirs; what they do
+with it is the game. Seven house companies stand on every kind of
+ground, from the plains to the polar ice to the far side.
+
+The first five are five different towns (D83): a mixed town, a foundry town,
+a works town, a resort that runs no foundry, a hostel town with one. A
+town short of parts bids at the port and another town's sale fills it,
+so the resort buys nearly every part it fits from its neighbours and
+credits pass between towns. None of this calls an AI model. It is rules.
 
 ### Next
 
-- **Towns run by agents** (D68), now the most urgent thing: the Moon has
-  no producers but players. The steward (D77) is the hands; what is missing
-  is the companies, their founding, and letting them trade with each other.
-- **Towns that need each other**: a town's supplies bought from other
-  towns and from the polar works, not from Earth by formula.
+- **Night by latitude**: a polar town in near-constant sun, an
+  equatorial one with the full fourteen days of dark. Today the ground
+  changes what arrays make, not how long the night is (D84).
+- **Plots tied to their nearest port**, so goods have to travel and a
+  ship has cargo.
+- **What the ground makes, not only how much**: ice into water and
+  propellant, highland soil into glass and panels, the plains into
+  metal. And surveying to find it.
+- **The real maps** in place of the sketch in `sim/plots.py`.
+- **More to trade than parts**: food, water and air bought the same way,
+  from other towns and from the polar works, so that a ship has something
+  to carry between ports.
+- **Agents that think** (D68): a model that sets a company's policy now
+  and then, through the public API, with the steward carrying it out.
+  Optional, and a cost to choose.
 - **Land first at signup**, with the ship earned (D53).
 - **The plot's real longitude**, so that dawn in the town is dawn on the
   Moon map.

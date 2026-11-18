@@ -334,6 +334,21 @@ def _town_lost(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     ])
 
 
+def _town_relief(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    stores = (f"They carry {cr(d['relief'])} of stores on the Ark's account, "
+              "so that they start as a first crew would."
+              if d["relief"] else
+              "They are equipped from your own account.")
+    return ("A new crew has landed", [
+        f"{d['company']}: four people are down beside what is left of "
+        "your town. " + stores,
+        f"The lander's air is good for {d['hours']} hours and no more. Get a "
+        "habitat and an oxygen plant standing before you leave them, or "
+        "hire a caretaker.",
+        "Yusuf Brandt, Ark Development Office",
+    ])
+
+
 def _town_caretaker_left(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     return ("Your caretaker has left", [
         f"{d['company']}: the caretaker you hired for your town is paid "
@@ -347,6 +362,7 @@ def _town_caretaker_left(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
 _LETTERS = {
     "town_charter": _town_charter, "town_lost": _town_lost,
     "town_caretaker_left": _town_caretaker_left,
+    "town_relief": _town_relief,
     "base_departure": _base_departure,
     "welcome": _welcome, "charter": _charter, "offers": _offers,
     "arrival": _arrival, "contract_paid": _contract_paid,

@@ -227,6 +227,31 @@ def test_base_letters_are_written(client, game):
 
 # -- the town -------------------------------------------------------------------
 
+def test_the_list_of_towns_is_public(client, game, monkeypatch):
+    # the Moon as it is, even when the sim's own tests have run first and
+    # put every town on reference ground
+    from sim import towngame
+    monkeypatch.setattr(towngame, "plot_for",
+                        getattr(towngame, "_plot_for_real", towngame.plot_for))
+    r = client.get("/api/towns")
+    assert r.status_code == 200 and r.json()["towns"] == []
+    who = _join(client, "Tranquility Co")
+    client.post("/api/town/found", headers=who)
+    towns = client.get("/api/towns").json()["towns"]
+    assert [(t["company"], t["house"], t["lost"]) for t in towns] == [
+        ("Tranquility Co", False, False)]
+    assert set(towns[0]) == {"company", "house", "kind", "plot", "lost", "crews", "age_days",
+                             "population", "tier", "buildings", "sold_t"}
+    mine = client.get("/api/town", headers=who).json()["meta"]
+    assert mine["league"] == towns and mine["company"] == "Tranquility Co"
+    # Every town has its own ground: a place on the Moon and six readings
+    # that add up to the same for everyone (D84).
+    plot = mine["plot"]
+    assert plot == towns[0]["plot"] and -90 <= plot["lat"] <= 90
+    assert round(sum(plot[k] for k in ("sun", "ice", "metal", "glass", "he3",
+                                       "view")), 2) == 3.0
+
+
 def test_found_a_town_and_build_in_it(client, game):
     who = _join(client)
     assert client.get("/api/town").status_code == 401
@@ -286,6 +311,22 @@ def test_the_yard_is_shown_and_its_door_is_shut_until_trade_opens(client, game):
     assert r.json()["meta"]["yard"]["min_price"] == 50_000
     assert client.post("/api/town/policy", headers=who,
                        json={"sell": "maybe", "min_price": 1}).status_code == 422
+    # How much to keep back for the town's own buildings, or leave it out
+    # and the yard decides (D82).
+    parts = r.json()["meta"]["yard"]["parts"]
+    assert parts["wear"] is False and parts["keep_t"] is None
+    assert parts["import"] == 90_000
+    r = client.post("/api/town/policy", headers=who,
+                    json={"sell": False, "min_price": 50_000, "keep_t": 2})
+    assert r.json()["meta"]["yard"]["parts"]["keep_t"] == 2
+    assert client.post("/api/town/policy", headers=who, json={
+        "sell": False, "min_price": 50_000, "keep_t": 21}).status_code == 400
+    # Whether to bid at the port when short, and the most to offer (D83).
+    assert parts["buy"] is True and parts["max_price"] == 90_000
+    r = client.post("/api/town/policy", headers=who, json={
+        "sell": False, "min_price": 50_000, "buy": False, "max_price": 60_000})
+    assert r.json()["meta"]["yard"]["parts"]["buy"] is False
+    assert r.json()["meta"]["yard"]["parts"]["max_price"] == 60_000
 
     # Selling and loading wait for a landing pad and eight people.
     for path, body in (("/api/town/sell", {"tonnes": 1, "price": 45_000}),

@@ -12,8 +12,8 @@
 // Built by `npm run build:engine` into sim/src/sim/town_engine.js, which is committed.
 
 import { BUILDINGS } from './sim/buildings';
-import { steward } from './steward';
-import { State, Intent, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
+import { steward, Style } from './steward';
+import { State, Intent, Plot, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
 
 const summary = (s: State) => {
   const pop = population(s);
@@ -22,7 +22,7 @@ const summary = (s: State) => {
     pad: s.buildings.some(b => b.type === 'pad' && working(b)),
     mission: s.mission, buildings: s.buildings.length, residents: s.residents, tourists: s.tourists,
     crew: s.crew.filter(c => c.alive).length,
-    make: s.flows.make, yardFull: s.flows.yardFull,
+    make: s.flows.make, parts: s.flows.parts, yardFull: s.flows.yardFull,
     foundries: s.buildings.reduce((n, b) => n + (b.type === 'printer' && working(b) ? b.level : 0), 0),
   };
 };
@@ -47,9 +47,10 @@ function malformed(s: State, it: any): string | null {
 }
 
 (globalThis as any).Town = {
-  /** A new town on untouched ground. */
-  create(seed: number, credits: number): string {
+  /** A new town on untouched ground. `plot` is the ground's six readings as JSON (Plot in sim.ts). */
+  create(seed: number, credits: number, plot?: string): string {
     const s = createState(seed | 0);
+    if (plot) s.plot = JSON.parse(plot) as Plot;   // the ground it stands on; without one, the reference ground
     s.materials = credits;
     refresh(s);
     return reply(s);
@@ -75,28 +76,40 @@ function malformed(s: State, it: any): string | null {
    * yard and what is in it. Given a yard, foundries make goods into it instead of being paid, and
    * the reply says how many whole kilograms were made. The part of a kilogram left over stays in
    * the state for the next hour, so nothing is rounded away.
+   *
+   * With `wear` set, the buildings also use goods from the yard as spare parts: the reply says how
+   * many whole kilograms were `used`, counted the same way, and how many Earth `landed` because the
+   * yard had none, which the town has already paid for at `importAt` credits a kilogram.
    */
   tick(state: string, hours: number, credits: number, yard?: string): string {
     const s = JSON.parse(state) as State;
     s.materials = credits;
     if (yard) {
-      const y = JSON.parse(yard), part = s.cargo ? s.cargo.made : 0;
-      s.cargo = { cap: y.cap, room: Math.max(0, y.cap - y.held - part), made: part };
+      // What is really in the yard is what the ledger holds, plus the part of a kilogram made and
+      // not yet handed over, less the part of one used and not yet taken.
+      const y = JSON.parse(yard), part = s.cargo ? s.cargo.made : 0, worn = s.cargo ? s.cargo.used ?? 0 : 0;
+      const stock = Math.max(0, y.held + part - worn);
+      s.cargo = { cap: y.cap, room: Math.max(0, y.cap - stock), made: part, stock, wear: !!y.wear, importAt: y.importAt ?? 0, used: worn, landed: 0, full: !!s.cargo?.full };
     }
     const steps = Math.round(hours / TICK);
     for (let i = 0; i < steps && s.phase === 'playing'; i++) tick(s);
-    let made = 0;
-    if (s.cargo) { made = Math.floor(s.cargo.made + 1e-9); s.cargo.made = Math.max(0, s.cargo.made - made); }
-    return reply(s, { made });
+    let made = 0, used = 0, landed = 0;
+    if (s.cargo) {
+      made = Math.floor(s.cargo.made + 1e-9); s.cargo.made = Math.max(0, s.cargo.made - made);
+      used = Math.floor((s.cargo.used ?? 0) + 1e-9); s.cargo.used = Math.max(0, (s.cargo.used ?? 0) - used);
+      landed = s.cargo.landed ?? 0;
+    }
+    return reply(s, { made, used, landed });
   },
 
   /**
    * What a careful player would do this hour: the requests, in order, that the steward would send.
    * With `keep`, only what a caretaker would: what is urgent, and nothing that grows the town.
+   * `style` is a temperament as JSON (see Style in steward.ts): how this company likes to build.
    * Nothing is changed here. The server sends each one through `apply` like any player's, so the
    * rules judge a steward's move exactly as they judge a person's.
    */
-  steward(state: string, credits: number, keep?: boolean): string {
+  steward(state: string, credits: number, keep?: boolean, style?: string): string {
     const s = JSON.parse(state) as State;
     s.materials = credits;
     const intents: Intent[] = [];
@@ -105,7 +118,7 @@ function malformed(s: State, it: any): string | null {
       const r = apply(st, it);
       if (r.ok) intents.push(it);
       return r;
-    });
+    }, style ? JSON.parse(style) as Style : {});
     if (s.phase === 'playing') hour(s, !!keep);
     return JSON.stringify({ intents });
   },

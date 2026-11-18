@@ -609,6 +609,7 @@ def test_a_world_from_before_bases_gains_the_table(routes, tmp_path):
     player, _ = g.signup("Old Hand")
     g.db.execute("DROP TABLE base")
     g.db.execute("DROP TABLE town")
+    g.db.execute("ALTER TABLE player DROP COLUMN house")
     g.db.execute("DELETE FROM sim_schema_version WHERE version >= 2")
     g.db.commit()
     g.db.close()

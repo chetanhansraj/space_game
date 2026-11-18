@@ -9,12 +9,34 @@
 import { BUILDINGS, BuildingType, ZONES, ZONE_BUILDS, ZONE_COST } from './sim/buildings';
 import { MISSIONS } from './sim/missions';
 import { urgent } from './ui/advisor';
-import { State, Intent, siteProblem, zoneProblem, habAt, aliveCount, population, support, isNight } from './sim/sim';
+import { State, Intent, PRICES, siteProblem, zoneProblem, habAt, aliveCount, population, support, isNight } from './sim/sim';
+
+/** The last of the crew's missions that needs a working foundry. A temperament that shuts foundries waits until it is done. */
+const FOUNDRY_MISSIONS = MISSIONS.reduce((last, m, i) => (/foundry|Industry/.test(m.goal) ? i : last), -1);
 
 export type Apply = (s: State, it: Intent) => { ok: boolean; reason?: string };
 
+/**
+ * A temperament: how a company likes to build once its crew is safe. It changes what the steward
+ * chooses, never what it is allowed: every choice is still one of the game's seven requests.
+ * What the crew asks for (missions) and what is urgent are done whatever the temperament.
+ */
+export interface Style {
+  /** The most two-by-two lots of a zone it lays out of its own accord: r homes, i industry, v commercial. Missing means no limit. */
+  lots?: { r?: number; i?: number; v?: number };
+  /** The price level it charges: 0 low, 1 fair, 2 high. Missing leaves prices alone. */
+  price?: number;
+  /** Kinds of contract it turns down. */
+  refuse?: string[];
+  /**
+   * The most foundries it keeps running once the crew's own foundry missions are done; the rest it
+   * switches off. A resort that runs none makes no goods, and has to buy every part its buildings wear out.
+   */
+  foundries?: number;
+}
+
 /** A steward who acts through `apply`. Call the result once a game hour. */
-export function steward(apply: Apply): (s: State, keep?: boolean) => void {
+export function steward(apply: Apply, style: Style = {}): (s: State, keep?: boolean) => void {
   const DUSTY: BuildingType[] = ['pad', 'garage', 'o2plant', 'reactor', 'solar', 'battery'];
 
   /** A free spot touching the base. Dusty things go east of the lander, pleasant things west, as a sensible player would. */
@@ -116,8 +138,13 @@ export function steward(apply: Apply): (s: State, keep?: boolean) => void {
     return false;
   }
 
-  /** Zone one two-by-two lot touching linked ground. People zones take the most habitable spot, the others the least. */
-  function zoneLot(s: State, z: number): boolean {
+  /**
+   * Zone one two-by-two lot touching linked ground. People zones take the most habitable spot, the others the least.
+   * Unless it `must` (the crew asked, or it is urgent), a company stops at as many lots of a kind as its temperament wants.
+   */
+  function zoneLot(s: State, z: number, must = false): boolean {
+    const most = style.lots?.[ZONES[z - 1].key];
+    if (!must && most !== undefined && s.zone.reduce((n, k) => n + (k === z ? 1 : 0), 0) >= most * 4) return false;
     if (s.materials < 4 * ZONE_COST) return false;
     const n = s.size, c = n / 2, people = z === 1 || z === 3;
     let best: [number, number] | null = null, bestScore = -Infinity;
@@ -159,15 +186,20 @@ export function steward(apply: Apply): (s: State, keep?: boolean) => void {
     };
     if (u) {
       if (u.title.startsWith('Repair')) { for (const b of s.buildings) if (b.damaged && b.repair === 0) apply(s, { k: 'repair', uid: b.uid }); }
-      else if (u.zone) { if (!freeLot(s, u.zone)) zoneLot(s, u.zone); }
+      else if (u.zone) { if (!freeLot(s, u.zone)) zoneLot(s, u.zone, true); }
       else if (u.tool && u.tool !== 'conduit') put(s, u.tool);
     } else if (!keep && !isNight(s.t)) {
       let acted = false;
       if (m && m.goal.includes('survey find')) acted = !oreZoned(s) && zoneOre(s);
       else if (m && m.tool) acted = put(s, m.tool);
-      else if (m && m.zone && !freeLot(s, m.zone) && !s.buildings.some(b => b.type === ZONE_BUILDS[m.zone!] && b.progress < 1) && s.want[ZONES[m.zone - 1].key] > 0.15) acted = zoneLot(s, m.zone);
+      else if (m && m.zone && !freeLot(s, m.zone) && !s.buildings.some(b => b.type === ZONE_BUILDS[m.zone!] && b.progress < 1) && s.want[ZONES[m.zone - 1].key] > 0.15) acted = zoneLot(s, m.zone, true);
       // sign what is offered, then work to keep it
-      if (s.offer) apply(s, { k: 'offer', accept: true });
+      if (s.offer) apply(s, { k: 'offer', accept: !style.refuse?.includes(s.offer.kind) });
+      if (style.price !== undefined && s.price !== PRICES[style.price]) apply(s, { k: 'price', level: style.price });
+      if (style.foundries !== undefined && s.mission > FOUNDRY_MISSIONS) {
+        const running = s.buildings.filter(b => b.type === 'printer' && b.on && b.progress >= 1).sort((a, b) => b.level - a.level || a.uid - b.uid);
+        for (const b of running.slice(style.foundries)) apply(s, { k: 'toggle', uid: b.uid });
+      }
       if (!acted) for (const d of s.deals) {
         if (d.kind === 'team') { const cap = support(s); acted = cap.limit - population(s) < 4 ? answer(cap.why, 1) : s.flows.housing - aliveCount(s) - s.residents < 4 ? put(s, 'habitat') : false; }
         else if (d.kind === 'oxygen') acted = s.flows.o2Cap < (d.amount ?? 150) + 0.035 * population(s) * 400 + 40 ? put(s, 'o2tank') : s.flows.o2Rate < 1 ? put(s, 'o2plant') : false;

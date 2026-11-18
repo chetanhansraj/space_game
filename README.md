@@ -135,6 +135,28 @@ into its ship. `sim/tests/test_townyard.py` and `test_goods_demand.py`;
 `docs/DECISIONS.md` D74 to D78. Read F9 there first: the Moon's bot firms
 did not survive, and towns are what must replace them.
 
+**The world runs five towns itself.** House companies with the ordinary
+charter, played every hour by the steward through the same door a person's
+requests use, marked "agent" wherever they appear. `GET /api/towns` lists
+every town on the Moon; the town page shows it as a Towns drawer.
+`sim/tests/test_housetowns.py`; D81.
+
+**Goods are spare parts.** A town big enough to trade wears out 5 kg of
+goods an hour for each credit of building upkeep, from its own yard, and
+a standing sale keeps a lunar night's worth back. An empty yard is filled
+from Earth at twice the price. `python scripts/demo_towns.py 120` prints
+what five towns left alone make, fit, sell and hold. D82.
+
+**Five temperaments, and a market between towns.** Each house company
+plays differently (foundry town, resort, and three between), by rules and
+with no AI model. A town short of parts leaves a bid at the port that
+another town's sale fills. `sim/tests/test_townyard.py`; D83.
+
+**Every town stands on its own ground.** A plot is a place on the Moon
+and six readings that differ by location and from neighbour to
+neighbour, and add up to the same for everyone. `sim/src/sim/plots.py`,
+`sim/tests/test_plots.py`; D84.
+
 **The works is a town too.** Six people found it, more arrive on a daily shuttle
 when there are berths, air, water and food for them, and they are the
 workforce its industry needs. It runs on the one universal clock, on the

@@ -176,6 +176,25 @@ MIGRATIONS: list[tuple[int, str]] = [
         ALTER TABLE town ADD COLUMN caretaker_paid INTEGER NOT NULL DEFAULT 0;
         """,
     ),
+    (
+        6,
+        """
+        -- A company run by the world and not by a person: 1 for those. It
+        -- holds the same charter, pays the same fees and uses the same
+        -- requests as any other. It has no login. D81.
+        ALTER TABLE player ADD COLUMN house INTEGER NOT NULL DEFAULT 0;
+        """,
+    ),
+    (
+        7,
+        """
+        -- The ground a town stands on: where it is on the Moon and its six
+        -- readings, as JSON (sim.plots). Empty for a town founded before
+        -- plots, which plays on the ground the rules were tuned on until a
+        -- new crew is sent. D84.
+        ALTER TABLE town ADD COLUMN plot TEXT NOT NULL DEFAULT '{}';
+        """,
+    ),
 ]
 
 

@@ -41,6 +41,8 @@ class Result:
     credits: float      # the wallet as the rules left it, in town credits
     summary: dict
     made: int = 0       # whole kilograms of goods the foundries made
+    used: int = 0       # whole kilograms the buildings took from the yard as parts
+    landed: float = 0.0  # kilograms of parts Earth landed, already paid for
 
 
 class Engine:
@@ -73,10 +75,17 @@ class Engine:
     @staticmethod
     def _result(reply: dict) -> Result:
         return Result(reply["state"], float(reply["credits"]),
-                      reply["summary"], int(reply.get("made") or 0))
+                      reply["summary"], int(reply.get("made") or 0),
+                      int(reply.get("used") or 0),
+                      float(reply.get("landed") or 0))
 
-    def create(self, seed: int, credits: float) -> Result:
-        return self._result(self._call("create", int(seed), float(credits)))
+    def create(self, seed: int, credits: float, plot: dict | None = None
+               ) -> Result:
+        """A new town. ``plot`` is the ground it stands on (sim.plots)."""
+        args = [int(seed), float(credits)]
+        if plot:
+            args.append(json.dumps(plot, sort_keys=True))
+        return self._result(self._call("create", *args))
 
     def apply(self, state: str, intent: dict, credits: float
               ) -> tuple[Result | None, str]:
@@ -92,20 +101,29 @@ class Engine:
 
         Given a yard, the foundries make goods into it instead of being
         paid, and ``Result.made`` is the whole kilograms they made.
+
+        With ``"wear": True`` in the yard the buildings also use goods as
+        spare parts: ``Result.used`` is the whole kilograms they took from
+        it, and ``Result.landed`` what Earth landed because it was empty,
+        charged to the wallet at ``"importAt"`` town credits a kilogram.
         """
         args = [state, float(hours), float(credits)]
         if yard is not None:
             args.append(json.dumps(yard))
         return self._result(self._call("tick", *args))
 
-    def steward(self, state: str, credits: float, keep: bool = False
-                ) -> list[dict]:
+    def steward(self, state: str, credits: float, keep: bool = False,
+                style: dict | None = None) -> list[dict]:
         """The requests a careful player would send this hour. Changes nothing.
 
         With ``keep``, only what a caretaker would send: what is urgent.
+        ``style`` is a temperament: how this company likes to build once
+        its crew is safe (``Style`` in city/src/steward.ts).
         """
-        return self._call("steward", state, float(credits),
-                          bool(keep))["intents"]
+        args = [state, float(credits), bool(keep)]
+        if style:
+            args.append(json.dumps(style, sort_keys=True))
+        return self._call("steward", *args)["intents"]
 
     def summary(self, state: str) -> dict:
         return self._call("summary", state)

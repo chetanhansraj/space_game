@@ -121,6 +121,9 @@ class YardSellIn(BaseModel):
 class YardPolicyIn(BaseModel):
     sell: bool
     min_price: int = Field(ge=1, le=100_000_000)
+    keep_t: int | None = Field(default=None, ge=0, le=1000)
+    buy: bool | None = None
+    max_price: int | None = Field(default=None, ge=1, le=100_000_000)
 
 
 class YardStowIn(BaseModel):
@@ -549,6 +552,17 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
                     + (state or "null") + "}",
             media_type="application/json")
 
+    @app.get("/api/towns")
+    def towns():
+        """Every town on the Moon. Public, like the market."""
+        with lock:
+            game = the_game()
+            key = ("towns", game.world.tick, game.version)
+            if cache.get("towns_key") != key:
+                cache["towns"], cache["towns_key"] = game.towns_view(), key
+            return {"towns": cache["towns"], "tick": game.world.tick,
+                    "date": game.display_date()}
+
     @app.get("/api/town")
     def town_view(player: Player = Depends(player_for)):
         with lock:
@@ -586,7 +600,8 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
     def town_policy(body: YardPolicyIn, player: Player = Depends(player_for)):
         with lock:
             return town_reply(player, the_game().town_policy(
-                player, body.sell, body.min_price))
+                player, body.sell, body.min_price, body.keep_t, body.buy,
+                body.max_price))
 
     @app.post("/api/town/load")
     def town_load(body: YardStowIn, player: Player = Depends(player_for)):

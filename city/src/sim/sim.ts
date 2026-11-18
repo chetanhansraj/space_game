@@ -35,6 +35,20 @@ export const O2_PLANT = 1, GREENHOUSE_FOOD = 0.6, SHUTTLE_FOOD = 20, SHUTTLE_WAT
  * the root docs/DECISIONS.md D75) thirteen kilograms is worth what FOUNDRY pays in the practice game.
  */
 export const FOUNDRY_KG = 13;
+/**
+ * Kilograms of spare parts a town's buildings wear out in an hour, for each credit an hour of
+ * their upkeep. Parts are the same manufactured goods the foundries make, so a town's own industry
+ * is what keeps it standing, and a town without enough of it buys from one that has. A town of
+ * ninety buildings needs about thirteen kilograms an hour: two thirds of what its foundries make
+ * over a lunar day and night. Invented; root docs/DECISIONS.md D82.
+ */
+export const PARTS_KG = 5;
+/**
+ * A full yard sends the foundry shift home. Once buildings take parts out of it a full yard is
+ * never quite full, so the shift is called back only when there is real room again: this share of
+ * the yard, which is less than the smallest sale.
+ */
+export const YARD_RESTART = 0.02;
 export const PRICES = [0.75, 1, 1.3];   // low, fair, high
 
 export const GROUND = { flat: 0, rim: 1, floor: 2, boulder: 3, heritage: 4 } as const;
@@ -63,10 +77,54 @@ export type DemandKey = 'r' | 'i' | 'v';
  * The server owns the yard: it says how much room is left before each hour and takes away what was made.
  * A practice game has no yard and its foundries are paid by Earth as before.
  */
-export interface Cargo { cap: number; room: number; made: number; }
+export interface Cargo {
+  cap: number; room: number; made: number;
+  /** Kilograms in the yard now, as the rules count them through the hour. */
+  stock?: number;
+  /** The town is past its founding spares: its buildings wear and need parts. The server says when. */
+  wear?: boolean;
+  /** Credits a kilogram for parts landed from Earth when the yard has none. The server's price. */
+  importAt?: number;
+  /** Kilograms taken from the yard as parts and not yet reported, and kilograms Earth landed this hour. */
+  used?: number; landed?: number;
+  /** The yard filled and the shift went home; it stays home until there is room worth coming back for. */
+  full?: boolean;
+}
+
+/**
+ * The ground a town stands on. Six readings from 0 to 1. A half is the ground this game was first
+ * tuned on (for ice, none), and a town with no plot at all plays exactly as the game always has.
+ * Every plot's readings add up to the same total: no ground is better, each is better at something.
+ *   sun    how much of the time the arrays are lit
+ *   ice    water ice within reach, so less has to come from Earth for each person
+ *   metal  iron and titanium in the soil: what a foundry makes
+ *   glass  aluminium and silicon: frames and panes made on the spot, so buildings need fewer parts
+ *   he3    how rich a survey find is when a foundry stands on it
+ *   view   Earth in the sky and things worth seeing: what brings visitors
+ * The server assigns it from where the plot is on the Moon (root docs/DECISIONS.md D84).
+ */
+export interface Plot { sun: number; ice: number; metal: number; glass: number; he3: number; view: number; lat?: number; lon?: number; name?: string; }
+export type PlotKey = 'sun' | 'ice' | 'metal' | 'glass' | 'he3' | 'view';
+/**
+ * How much a reading counts. At 1 the ground gives this many times the usual, at 0 the same
+ * fraction of it. Small differences get flattened by the rest of the rules and every town comes
+ * out the same, so this is large on purpose. Invented; D84.
+ */
+export const PLOT_SWING = 2.5;
+/**
+ * What a reading multiplies: 1 on the reference ground, PLOT_SWING on the best, 1 / PLOT_SWING on the worst.
+ * Ice is the exception. Almost none of the Moon has any, and the game was tuned on ground without it, so
+ * having no ice costs nothing and having it is all gain: at most the square root of PLOT_SWING, about 1.6
+ * times less to bring from Earth. Measured at the full swing, polar towns ended twice as rich as any other.
+ */
+export const gain = (s: State, k: PlotKey) => {
+  if (!s.plot) return 1;
+  return k === 'ice' ? Math.pow(PLOT_SWING, Math.max(0, s.plot.ice - 0.05) / 1.8) : Math.pow(PLOT_SWING, 2 * (s.plot[k] - 0.5));
+};
 
 export interface Flows {
   make: number;           // kilograms of goods per hour, when there is a yard
+  parts: number;          // kilograms of spare parts the buildings need per hour, once they wear
   yardFull: boolean;      // foundries are standing idle because the yard has no room
   gen: number; load: number; demand: number; battCap: number;
   o2Cap: number; waterCap: number; housing: number; lodging: number;
@@ -91,6 +149,7 @@ export interface State {
   rough: number[];        // hours a grader needs on each tile
   ore: number[];          // 0, or 1 + index into ORES once a rover has found it
   cargo?: Cargo;
+  plot?: Plot;
   pois: Poi[]; finds: Find[]; graders: Grader[];
   event: GameEvent | null; nextEvent: number; lastEvent: EventKind | '';
   buildings: Building[]; nextUid: number; rev: number; netDirty: boolean;
@@ -158,7 +217,7 @@ const isQuarters = (t: BuildingType) => t === 'habitat' || t === 'lander' || t =
 
 // ---------- setup ----------
 function emptyFlows(): Flows {
-  return { make: 0, yardFull: false, gen: 0, load: 0, demand: 0, battCap: 0, o2Cap: 0, waterCap: 0, housing: 0, lodging: 0, o2Rate: 0, waterRate: 0, foodRate: 0,
+  return { make: 0, parts: 0, yardFull: false, gen: 0, load: 0, demand: 0, battCap: 0, o2Cap: 0, waterCap: 0, housing: 0, lodging: 0, o2Rate: 0, waterRate: 0, foodRate: 0,
     jobs: 0, workers: 0, staff: 1, earn: { foundry: 0, rent: 0, visitors: 0, shops: 0, grant: 0 }, upkeep: 0, income: 0,
     nightDeficit: 0, essentialDeficit: 0, exposed: 0, atRisk: 0, lackO2: false, lackWater: false, lackFood: false, offline: 0,
     saving: false, habHomes: 50, habLodges: 50 };
@@ -462,7 +521,7 @@ export function sunsetCharge(s: State, extraDay = 0): number {
     if (d.priority <= ESSENTIAL) essDay += drawOf(b, false);
     if (!working(b)) continue;
     cap += d.battery;
-    if (b.on) { if (d.solar) peak += d.gen; else steady += d.gen; }
+    if (b.on) { if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen; }
   }
   if (isNight(s.t)) return s.charge;
   const ph = phaseOf(s.t), sunset = HALF - ph;
@@ -479,7 +538,7 @@ function powerFor(s: State, extraNight: number, extraDay: number): string {
     day += drawOf(b, false);
     if (!working(b)) continue;
     cap += d.battery;
-    if (d.solar) peak += d.gen; else steady += d.gen;
+    if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen;
   }
   const nightKwh = Math.max(0, essential + extraNight - steady) * DARK;
   if (extraNight > 0 && cap < nightKwh * POWER_MARGIN) return 'night power';
@@ -500,7 +559,8 @@ function computeFlows(s: State, dt = 0) {
   const sunset = hoursToSunset(s.t), toDawn = hoursToSunrise(s.t);
 
   // First pass: capacity and what life support needs.
-  const full = !!s.cargo && s.cargo.room <= 0;
+  if (s.cargo) { if (s.cargo.room <= 0) s.cargo.full = true; else if (s.cargo.room >= s.cargo.cap * YARD_RESTART) s.cargo.full = false; }
+  const full = !!s.cargo?.full;
   let nightDraw = 0, steady = 0, essential = 0, planned = 0;
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
@@ -530,7 +590,7 @@ function computeFlows(s: State, dt = 0) {
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
     if (!working(b) || !b.on) { b.powered = false; continue; }
-    f.gen += d.gen * (d.solar ? sun * (dusty(s, b) ? 0.5 : 1) : 1);
+    f.gen += d.gen * (d.solar ? sun * gain(s, 'sun') * (dusty(s, b) ? 0.5 : 1) : 1);
     const optional = d.priority > ESSENTIAL && d.drawNight > 0;
     if (optional && f.saving && !(b.type === 'o2plant' && o2Short)) { b.asleep = true; b.powered = false; continue; }
     if (storm && (b.type === 'printer' || b.type === 'garage')) { b.asleep = true; b.powered = false; continue; }   // nobody works outdoors in a storm
@@ -556,11 +616,12 @@ function computeFlows(s: State, dt = 0) {
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
     f.upkeep += b.progress >= 1 ? d.upkeep * (grows(b.type) ? b.level : 1) : 0;
+    if (s.cargo?.wear && b.progress >= 1) f.parts += (PARTS_KG / gain(s, 'glass')) * d.upkeep * (grows(b.type) ? b.level : 1);
     if (!b.powered || !working(b)) continue;
     if (b.type === 'o2plant') f.o2Rate += O2_PLANT;
     else if (b.type === 'recycler') recycling = true;
     else if (b.type === 'greenhouse') { f.foodRate += GREENHOUSE_FOOD; f.o2Rate += 0.02; f.waterRate -= 0.04; }
-    else if (b.type === 'printer') { const out = b.level * f.staff * (1 + richOf(s, b)); if (s.cargo) f.make += FOUNDRY_KG * out; else f.earn.foundry += FOUNDRY * out; }
+    else if (b.type === 'printer') { const out = b.level * f.staff * gain(s, 'metal') * (1 + richOf(s, b) * gain(s, 'he3')); if (s.cargo) f.make += FOUNDRY_KG * out; else f.earn.foundry += FOUNDRY * out; }
     else if (b.type === 'habitat') { f.housing += bedsOf(b); habR += habAt(s, b.x, b.y) * b.level; nR += b.level; }
     else if (b.type === 'lodge') { f.lodging += bedsOf(b); habV += habAt(s, b.x, b.y) * b.level; nV += b.level; }
     else if (b.type === 'market') shops += b.level;
@@ -575,7 +636,7 @@ function computeFlows(s: State, dt = 0) {
   f.earn.visitors = s.tourists * VISITOR_RATE * s.price * (0.5 + f.habLodges / 100) * (s.mood / 100) * (0.5 + 0.5 * f.staff);
   f.earn.shops = Math.min(aliveCount(s) + s.residents, shops * 16) * 0.035 * s.price * f.staff;   // people spend their wages
   f.earn.grant = Math.max(0, 0.8 - 0.04 * (pop - 4));
-  f.upkeep += suppliesRate(pop) * Math.max(0, pop - 4);
+  f.upkeep += (suppliesRate(pop) / gain(s, 'ice')) * Math.max(0, pop - 4);
   f.income = f.earn.foundry + f.earn.rent + f.earn.visitors + f.earn.shops + f.earn.grant - f.upkeep;
   s.flows = f;
 }
@@ -610,7 +671,7 @@ function computeDemand(s: State) {
   // Commercial: lodges come when there is something to see and a way to get here.
   // Concourses come when enough people live here to keep one busy.
   const pad = count('pad') > 0;
-  const draw = pad ? (6 + count('garage') * 6 + count('garden') * 4) * (s.mood / 100) / s.price : 0;
+  const draw = pad ? (6 + count('garage') * 6 + count('garden') * 4) * gain(s, 'view') * (s.mood / 100) / s.price : 0;
   const film = s.deals.find(d => d.kind === 'broadcast');   // a signed broadcast makes lodge keepers want to build
   const tourism = pad ? clamp((Math.max(draw, film ? (film.amount ?? 6) + 2 : 0) - f.lodging) / 6, -1, 1) : 0;
   const shops = s.buildings.filter(b => b.type === 'market').reduce((a, b) => a + b.level, 0);
@@ -786,7 +847,17 @@ export function tick(s: State) {
   s.water = Math.min(f.waterCap, s.water + f.waterRate * dt);
   s.food = s.food + f.foodRate * dt;
   s.materials += f.income * dt; if (f.income > 0) s.stats.earned += f.income * dt;
-  if (s.cargo && f.make > 0) { const made = Math.min(f.make * dt, s.cargo.room); s.cargo.made += made; s.cargo.room -= made; }
+  if (s.cargo && f.make > 0) { const made = Math.min(f.make * dt, s.cargo.room); s.cargo.made += made; s.cargo.room -= made; if (s.cargo.stock !== undefined) s.cargo.stock += made; if (made < f.make * dt - 1e-9) s.cargo.full = true; }
+  // Buildings wear. Parts come out of the yard; when it has none Earth lands them, at Earth's price.
+  if (s.cargo?.wear && f.parts > 0 && dt > 0) {
+    const c = s.cargo, need = f.parts * dt, take = Math.min(need, Math.max(0, c.stock ?? 0));
+    c.stock = (c.stock ?? 0) - take; c.used = (c.used ?? 0) + take; c.room = Math.min(c.cap, c.room + take);
+    const short = need - take;
+    if (short > 1e-9) {
+      c.landed = (c.landed ?? 0) + short; s.materials -= short * (c.importAt ?? 0);
+      alertOnce(s, 'parts', 'warn', 'The yard is out of spare parts, so Earth is landing them at twice what goods fetch at the port. Keep goods in the yard for the buildings, or buy them at the Flats.', 240);
+    }
+  }
   f.lackO2 = s.o2 <= 0; f.lackWater = s.water <= 0; f.lackFood = s.food <= 0;
   s.o2 = Math.max(0, s.o2); s.water = Math.max(0, s.water); s.food = Math.max(0, s.food);
 
