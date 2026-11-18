@@ -2,7 +2,7 @@
 // Each offer comes with one advisor for it and one against. Accepting creates a deal with a deadline:
 // meet its terms and it pays, miss the date and it costs.
 
-import { State, HALF, LUNAR_DAY, phaseOf, addBuilding, aliveCount, earn, isNight, population, pushAlert, rnd, siteProblem, support, working } from './sim';
+import { State, LUNAR_DAY, phaseOf, addBuilding, aliveCount, earn, isNight, population, pushAlert, rnd, siteProblem, support, working } from './sim';
 
 export type DealKind = 'team' | 'oxygen' | 'works' | 'broadcast';
 export interface Offer { kind: DealKind; amount?: number; from: string; title: string; text: string; need: string; pay: number; penalty: number; hours: number; expires: number;
@@ -16,7 +16,7 @@ const RESERVE = 100;   // hours of breathing kept back before any oxygen is sold
 /** Contracts grow with the town: a deal worth 90 to an outpost is worth 270 to a town of sixty. */
 const scale = (s: State) => 1 + Math.min(4, Math.floor(population(s) / 15)) * 0.5;
 /** A deadline never falls in the dark, when no passenger ship flies: it slides to 60 hours after the next sunrise. */
-const inDaylight = (t: number) => (phaseOf(t) >= HALF ? t + (LUNAR_DAY - phaseOf(t)) + 60 : t);
+const inDaylight = (t: number) => (isNight(t) ? t + (LUNAR_DAY - phaseOf(t)) + 60 : t);
 const pick = <T,>(s: State, list: T[]) => list[Math.floor(rnd(s) * list.length)];
 
 function freeIndustryLot(s: State): [number, number] | null {

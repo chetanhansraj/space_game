@@ -61,6 +61,20 @@ MARIA = (
     ("Mare Crisium", 17.0, 59.1, 9.0),
     ("Mare Humorum", -24.4, -38.6, 7.0),
 )
+#: The South Pole-Aitken basin on the far side: the Moon's largest and
+#: oldest impact scar. It stripped the upper crust and laid bare deeper
+#: rock, olivine and pyroxene rich in magnesium and iron, so its floor
+#: is metal-bearing ground with no plain on it. Centre and radius in
+#: degrees; catalogue centre, radius drawn well inside its 2,500 km.
+AITKEN = ("South Pole-Aitken basin", -53.0, -169.0, 35.0)
+#: How much of a plain's iron the basin floor is worth. *Invented*, D85.
+AITKEN_METAL = 0.6
+#: The far side never passes through the shelter of Earth's magnetic
+#: tail, so the solar wind plants helium-3 there steadily. It has little
+#: of the titanium-rich soil that holds it best, so it is worth this
+#: share of a plain's. *Invented*, D85.
+FAR_HE3 = 0.55
+
 #: A plot is drawn from one of four kinds of ground in turn, so that the
 #: Moon's people are spread over all of it. Left to chance four in five
 #: would land in the highlands, which cover most of the Moon.
@@ -93,7 +107,14 @@ def region(lat: float, lon: float) -> str:
     mare, name = _mare(lat, lon)
     if mare >= 0.5:
         return name
+    if _aitken(lat, lon) >= 0.5:
+        return AITKEN[0]
     return "Near-side highlands" if abs(lon) < 90 else "Far-side highlands"
+
+
+def _aitken(lat: float, lon: float) -> float:
+    """How much of the South Pole-Aitken basin's floor this is, 0 to 1."""
+    return 1.0 / (1.0 + (_arc(lat, lon, AITKEN[1], AITKEN[2]) / AITKEN[3]) ** 6)
 
 
 def pattern(lat: float, lon: float) -> dict[str, float]:
@@ -106,14 +127,19 @@ def pattern(lat: float, lon: float) -> dict[str, float]:
     # people; the edge between them has neither.
     facing = math.cos(math.radians(_arc(lat, lon, 0.0, 0.0)))
     draw = abs(facing)
+    far = max(0.0, -facing)
+    # iron: the plains' basalt, or the deep rock the great basin laid bare
+    iron = max(mare, AITKEN_METAL * _aitken(lat, lon))
+    high = math.cos(math.radians(lat))     # where the Sun stands high
     return {
         "sun": 0.35 + 0.6 * pole,           # polar rims are lit most of the year
         "ice": 0.05 + 0.9 * pole * pole,    # cold traps in polar craters
-        "metal": 0.15 + 0.8 * mare,         # basalt: iron and titanium
-        "glass": 0.15 + 0.8 * (1.0 - mare),  # highland feldspar: aluminium
-        # the solar wind's helium-3 is held best by old titanium-rich soil,
-        # and falls most where the Sun stands high
-        "he3": 0.10 + 0.8 * mare * math.cos(math.radians(lat)),
+        "metal": 0.15 + 0.8 * iron,
+        "glass": 0.15 + 0.8 * (1.0 - iron),  # highland feldspar: aluminium
+        # the solar wind's helium-3 is held best by the plains' old
+        # titanium-rich soil, falls most where the Sun stands high, and
+        # reaches the far side without Earth's magnetic tail in the way
+        "he3": 0.10 + 0.8 * high * max(mare, FAR_HE3 * far),
         "view": 0.10 + 0.8 * draw,
     }
 
@@ -132,8 +158,9 @@ def _draw(lat: float, lon: float, key: str) -> float:
 FLEX = ("sun", "metal", "glass", "he3")
 
 
-def _budget(raw: dict[str, float]) -> dict[str, float]:
-    """Move the soil and sunlight readings together until all six total BUDGET.
+def _budget(raw: dict[str, float], spent: float = 0.0) -> dict[str, float]:
+    """Move the soil and sunlight readings together until all six, and what
+    the plot has already been given in daylight (``spent``), total BUDGET.
 
     Moving, not scaling, keeps what makes a place itself: the difference
     between its readings. A reading that reaches the floor or the ceiling
@@ -141,7 +168,7 @@ def _budget(raw: dict[str, float]) -> dict[str, float]:
     """
     values = dict(raw)
     for _ in range(40):
-        gap = BUDGET - sum(values.values())
+        gap = BUDGET - spent - sum(values.values())
         if abs(gap) < 1e-9:
             break
         free = [k for k in FLEX
@@ -154,13 +181,48 @@ def _budget(raw: dict[str, float]) -> dict[str, float]:
     return {key: round(values[key], 3) for key in KEYS}
 
 
+#: Hours of dark in a lunar day of 708 hours: half of it across nearly
+#: all the Moon, whatever the latitude, because the Moon hardly tilts and
+#: has no seasons to speak of.
+NIGHT = 354
+#: On a polar rim the Sun circles the horizon and high ground is lit
+#: most of the year. From POLAR_FROM degrees the dark shortens, down to
+#: POLAR_NIGHT hours at the pole itself: lit about nine tenths of the
+#: time, which is what the best real rims get. *Invented* as a rule, D85.
+POLAR_FROM, POLAR_NIGHT = 75.0, 180
+
+
+#: What a night shorter than the usual is worth, out of the same budget
+#: every plot has: a pole with almost no night gives up this many points
+#: of soil and sunlight for it. A short night is the most valuable thing
+#: ground can have, because the dark is what a town is built against.
+#: Measured before this was counted: polar towns ended nearly three
+#: times as rich as any other. *Invented*, tuned by measuring, D85.
+NIGHT_WORTH = 1.5
+
+
+def night_worth(dark: int) -> float:
+    """Budget points a plot has already been given in daylight."""
+    return NIGHT_WORTH * (NIGHT - dark) / NIGHT
+
+
+def dark_hours(lat: float) -> int:
+    """How long the night is at this latitude."""
+    if abs(lat) <= POLAR_FROM:
+        return NIGHT
+    share = (abs(lat) - POLAR_FROM) / (90.0 - POLAR_FROM)
+    return round(NIGHT - share * (NIGHT - POLAR_NIGHT))
+
+
 def plot_at(lat: float, lon: float) -> dict:
     """The plot at a place: its readings, where it is and what it is called."""
     lat, lon = round(float(lat), 1), round(float(lon), 1)
     base = pattern(lat, lon)
     raw = {key: min(HIGH, max(LOW, base[key] + NOISE * _draw(lat, lon, key)))
            for key in KEYS}
-    return {**_budget(raw), "lat": lat, "lon": lon, "name": region(lat, lon)}
+    dark = dark_hours(lat)
+    return {**_budget(raw, night_worth(dark)), "lat": lat, "lon": lon,
+            "name": region(lat, lon), "dark": dark}
 
 
 def kind_of(lat: float, lon: float) -> str:
@@ -172,15 +234,35 @@ def kind_of(lat: float, lon: float) -> str:
     return "near" if abs(lon) < 90 else "far"
 
 
-def place_for(token: str) -> tuple[float, float]:
+#: How many plots a new company is shown, to choose one. Chetan, 18
+#: November 2026: "given 3 options player chooses 1".
+OFFERS = 3
+
+
+def offers_for(token: str) -> list[dict]:
+    """The plots a company may choose between: each a different kind of ground.
+
+    Drawn from the company's name, so asking twice shows the same three.
+    Three of the four kinds, starting from one the name picks, so that
+    the choice is always between really different ground and, over many
+    companies, every kind is offered equally often.
+    """
+    first = hashlib.sha256(f"kind:{token}".encode()).digest()[0]
+    return [plot_at(*place_for(f"{token}:{turn}",
+                               KINDS[(first + turn) % len(KINDS)]))
+            for turn in range(OFFERS)]
+
+
+def place_for(token: str, kind: str | None = None) -> tuple[float, float]:
     """A place on the Moon drawn from a name.
 
-    The name picks the kind of ground, then points are drawn evenly over
-    the sphere, each from the name and its turn, until one is that kind.
-    The same name always gives the same place.
+    The name picks the kind of ground unless one is asked for, then
+    points are drawn evenly over the sphere, each from the name and its
+    turn, until one is that kind. The same name always gives the same
+    place.
     """
     first = hashlib.sha256(f"kind:{token}".encode()).digest()
-    want = KINDS[first[0] % len(KINDS)]
+    want = kind or KINDS[first[0] % len(KINDS)]
     lat = lon = 0.0
     for turn in range(2000):
         digest = hashlib.sha256(f"place:{token}:{turn}".encode()).digest()

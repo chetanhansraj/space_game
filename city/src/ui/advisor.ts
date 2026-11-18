@@ -4,7 +4,7 @@
 
 import { BUILDINGS, BuildingType, ZONE_COST } from '../sim/buildings';
 import { MISSIONS } from '../sim/missions';
-import { State, HALF, DARK, ESSENTIAL, POWER_MARGIN, drawOf, hoursToSunrise, hoursToSunset, isNight, nightCover, population, sunFactor } from '../sim/sim';
+import { State, darkHours, carryHours, ESSENTIAL, POWER_MARGIN, drawOf, hoursToSunrise, hoursToSunset, isNight, nightCover, population, sunFactor } from '../sim/sim';
 import { repairCost } from '../sim/world';
 
 export interface Advice { who: number; title: string; why: string; tool?: BuildingType; zone?: number; off?: BuildingType[]; on?: BuildingType[]; }
@@ -55,7 +55,7 @@ export function urgent(s: State): Advice | null {
       why: `${pop} people breathe ${(pop * 0.035 * 24).toFixed(1)} kg a day, more than the plants make by day. We have ${r0(o2h)} hours left. Build another.` };
   }
   // The tank has to hold a whole night of breathing, because the plants rest in the dark.
-  const o2Night = 0.035 * pop * (HALF + 40) + 8;
+  const o2Night = 0.035 * pop * (darkHours() + 40) + 8;
   if (!night && plants.length && f.o2Cap < o2Night && !all('o2tank').some(b => b.progress < 1) && (s.mission > 6 || hoursToSunset(s.t) < 200))
     return { who: KENJI, title: 'The oxygen tank is too small for the night', tool: pick('o2tank'),
       why: `${pop} people need ${r0(o2Night)} kg to breathe until the plant has sunlight again, and we can store ${r0(f.o2Cap)} kg. An Oxygen Tank adds 240 kg.` };
@@ -72,7 +72,7 @@ export function urgent(s: State): Advice | null {
   // What life support will need tonight, counting buildings still going up.
   let essential = 0, steady = 0;
   for (const b of s.buildings) { const d = BUILDINGS[b.type]; if (d.priority <= ESSENTIAL) essential += drawOf(b, true); if (!d.solar) steady += d.gen; }
-  const need = Math.max(0, essential - steady) * DARK;
+  const need = Math.max(0, essential - steady) * carryHours();
 
   if (!night) {
     const sunset = hoursToSunset(s.t);
@@ -80,9 +80,9 @@ export function urgent(s: State): Advice | null {
     if (planned < need * (s.mission > 6 ? POWER_MARGIN : 1) && exists('habitat') && (s.mission > 6 || sunset < 150) && sunset > 12) {
       const more = Math.ceil((need * POWER_MARGIN - planned) / BUILDINGS.battery.battery);
       if (more >= 4 && sunset > 55) return { who: LENA, title: 'Build a Fission Reactor for the night', tool: pick('reactor') ?? pick('battery'),
-        why: `Life support draws ${(need / DARK).toFixed(1)} kW all night. With a safe margin that is ${r0(need * POWER_MARGIN)} kWh and we can store ${r0(planned)}. It would take ${more} more Battery Banks, or one reactor that gives 10 kW day and night.` };
+        why: `Life support draws ${(need / carryHours()).toFixed(1)} kW all night. With a safe margin that is ${r0(need * POWER_MARGIN)} kWh and we can store ${r0(planned)}. It would take ${more} more Battery Banks, or one reactor that gives 10 kW day and night.` };
       return { who: ASHA, title: `Tonight needs ${more} more Battery Bank${more > 1 ? 's' : ''}`, tool: pick('battery'),
-        why: `Habitats, lodges and the recycler draw ${(need / DARK).toFixed(1)} kW all night. With a safe margin that is ${r0(need * POWER_MARGIN)} kWh and we can store ${r0(planned)}.` };
+        why: `Habitats, lodges and the recycler draw ${(need / carryHours()).toFixed(1)} kW all night. With a safe margin that is ${r0(need * POWER_MARGIN)} kWh and we can store ${r0(planned)}.` };
     }
     return null;
   }

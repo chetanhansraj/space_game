@@ -1,13 +1,14 @@
 """The ground a town stands on (D84)."""
 from __future__ import annotations
 
+import collections
 import datetime as dt
 import json
 
 import pytest
 
 from sim import plots, towngame
-from sim.game import Game
+from sim.game import Game, GameError
 from sim.persist import default_routes
 from sim.plots import BUDGET, HIGH, KEYS, LOW, place_for, plot_at
 from sim.town import Engine
@@ -18,7 +19,8 @@ SAMPLE = [plot_at(*place_for(f"company-{i}")) for i in range(600)]
 
 
 def total(plot) -> float:
-    return sum(plot[key] for key in KEYS)
+    """The six readings, and what the plot was already given in daylight."""
+    return sum(plot[key] for key in KEYS) + plots.night_worth(plot["dark"])
 
 
 def test_every_plot_adds_up_to_the_same():
@@ -49,8 +51,9 @@ def test_where_a_plot_is_decides_what_it_is_good_for():
     far = plot_at(-4.0, -157.4)          # Korolev, deep on the far side
     assert plain["name"] == "Mare Serenitatis" and pole["name"] == "South polar rim"
     assert high["name"] == "Near-side highlands" and far["name"] == "Far-side highlands"
+    # (the far side's helium-3 and the great basin's iron have a test of their own)
     # iron and titanium are in the plains, aluminium in the highlands
-    assert plain["metal"] > 0.7 > 0.5 > high["metal"] and pole["metal"] < 0.3
+    assert plain["metal"] > 0.7 > 0.5 > high["metal"] and pole["metal"] < 0.35
     assert high["glass"] > 0.7 > 0.3 > plain["glass"]
     # helium-3 is held by the plains' old titanium-rich soil
     assert plain["he3"] > 0.6 and pole["he3"] < 0.2
@@ -67,6 +70,104 @@ def test_ice_and_outlook_are_never_handed_out_to_balance_the_books():
     for plot in SAMPLE:
         if abs(plot["lat"]) < 55:
             assert plot["ice"] <= LOW + plots.NOISE + 0.001, plot
+
+
+def test_the_night_is_as_long_as_the_latitude_makes_it():
+    """Half the lunar day across nearly all the Moon; short on a polar rim,
+    and a short night is paid for out of the same budget as everything else."""
+    assert plots.dark_hours(0) == plots.dark_hours(60) == plots.dark_hours(-75) == 354
+    assert plots.dark_hours(90) == plots.dark_hours(-90) == plots.POLAR_NIGHT
+    assert 354 > plots.dark_hours(80) > plots.dark_hours(86) > plots.POLAR_NIGHT
+    pole, plain = plot_at(-89.5, 0.0), plot_at(28.0, 17.5)
+    assert pole["dark"] < 200 and plain["dark"] == 354
+    assert plots.night_worth(354) == 0 and plots.night_worth(pole["dark"]) > 0.6
+    assert sum(pole[k] for k in KEYS) < sum(plain[k] for k in KEYS) - 0.6
+
+
+def test_a_short_night_is_a_short_night_in_the_rules():
+    """The plot's hours of dark are the town's: sunset comes when it says."""
+    engine = Engine()
+
+    def sunset(plot):
+        """The hour the rules call sunset, and how long they say the night
+        is, in a town the steward keeps alive that long."""
+        state, credits = engine.create(1969, 160.0, plot).state, 160.0
+        for hour in range(1, 720):
+            for intent in engine.steward(state, credits):
+                done, _ = engine.apply(state, intent, credits)
+                if done:
+                    state, credits = done.state, done.credits
+            town = engine.tick(state, 1.0, credits)
+            state, credits = town.state, town.credits
+            said = [a["msg"] for a in json.loads(state)["alerts"]
+                    if a["msg"].startswith("Sunset.")]
+            if said:
+                return hour, said[0]
+        raise AssertionError("the Sun never set")
+
+    even = dict.fromkeys(KEYS, 0.5)
+    hour, said = sunset(None)
+    assert hour == 354 and "354 hours" in said
+    assert sunset({**even, "dark": 354})[0] == hour
+    hour, said = sunset({**even, "dark": 186})
+    assert hour == 522 and "186 hours" in said              # 708 less 186
+    first = json.loads(engine.create(1969, 160.0, {**even, "dark": 186,
+                                                   "name": "South polar rim"}).state)
+    assert "522 hours" in first["alerts"][0]["msg"]
+    assert "South polar rim" in first["alerts"][0]["msg"]
+
+
+def test_a_company_is_offered_three_different_kinds_of_ground():
+    for company in ("p_one", "p_two", "p_three", "p_four", "p_five"):
+        offers = plots.offers_for(company)
+        assert offers == plots.offers_for(company), "the same three each time"
+        assert len(offers) == plots.OFFERS == 3
+        kinds = [plots.kind_of(p["lat"], p["lon"]) for p in offers]
+        assert len(set(kinds)) == 3
+        for plot in offers:
+            assert total(plot) == pytest.approx(BUDGET, abs=0.005)
+    first = collections.Counter(
+        plots.kind_of(o["lat"], o["lon"])
+        for i in range(400) for o in plots.offers_for(f"company-{i}"))
+    for kind in plots.KINDS:
+        assert 0.2 < first[kind] / 1200 < 0.3, kind
+
+
+def test_the_far_side_has_what_your_notes_say_it_has():
+    """Chetan's notes of 18 November: aluminium-rich highlands, iron and
+    magnesium laid bare in the South Pole-Aitken basin, steady helium-3."""
+    floor = plot_at(-53.0, -169.0)
+    crust = plot_at(-4.0, -157.4)
+    plain = plot_at(28.0, 17.5)
+    assert floor["name"] == "South Pole-Aitken basin"
+    assert floor["metal"] > crust["metal"] + 0.25
+    assert crust["glass"] > plain["glass"] + 0.4
+    near_high = plot_at(-43.3, -11.4)
+    assert crust["he3"] > near_high["he3"] + 0.15
+    assert plain["he3"] > crust["he3"], "the plains' soil still holds it best"
+
+
+@pytest.mark.usefixtures("real_ground")
+def test_a_company_chooses_one_of_its_three_and_only_those():
+    g = Game.open(":memory:", now=T0, routes=default_routes())
+    person, _ = g.signup("Tranquility Co")
+    offers = g.town_meta(person)["offers"]
+    assert offers == towngame.plot_offers(person.id) and len(offers) == 3
+    for bad in (3, -1, 1.0, True, "2"):
+        with pytest.raises(GameError):
+            g.found_town(person, bad)
+    assert g._town_row(person.id) is None, "a refused choice founds nothing"
+    meta = g.found_town(person, 2)
+    assert meta["plot"] == offers[2] and "offers" not in meta
+    assert json.loads(g.town_state(person))["plot"] == offers[2]
+    g.db.close()
+
+
+@pytest.mark.usefixtures("real_ground")
+def test_a_house_company_has_its_one_plot_and_no_choice():
+    assert len(towngame.plot_offers("house_tycho")) == 1
+    with pytest.raises(GameError):
+        towngame.plot_for("house_tycho", 1)
 
 
 def test_people_are_spread_over_every_kind_of_ground():

@@ -9,7 +9,7 @@
 import { BUILDINGS, BuildingType, ZONES, ZONE_BUILDS, ZONE_COST } from './sim/buildings';
 import { MISSIONS } from './sim/missions';
 import { urgent } from './ui/advisor';
-import { State, Intent, PRICES, siteProblem, zoneProblem, habAt, aliveCount, population, support, isNight } from './sim/sim';
+import { State, Intent, PRICES, ground, siteProblem, zoneProblem, habAt, aliveCount, population, support, isNight } from './sim/sim';
 
 /** The last of the crew's missions that needs a working foundry. A temperament that shuts foundries waits until it is done. */
 const FOUNDRY_MISSIONS = MISSIONS.reduce((last, m, i) => (/foundry|Industry/.test(m.goal) ? i : last), -1);
@@ -169,6 +169,7 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
    * power for tonight) and nothing else. No missions, no zoning for growth, no contracts signed.
    */
   return (s: State, keep = false) => {
+    ground(s);
     const u = urgent(s), m = MISSIONS[s.mission];
     const count = (t: BuildingType) => s.buildings.filter(b => b.type === t).length;
     const answer = (why: string, z: number): boolean => {
