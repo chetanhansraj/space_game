@@ -248,8 +248,18 @@ def test_the_list_of_towns_is_public(client, game, monkeypatch):
     # that add up to the same for everyone (D84).
     plot = mine["plot"]
     assert plot == towns[0]["plot"] and -90 <= plot["lat"] <= 90
-    assert round(sum(plot[k] for k in ("sun", "ice", "metal", "glass", "he3",
-                                       "view")), 2) == 3.0
+    from sim import plots
+    assert round(sum(plot[k] for k in plots.KEYS)
+                 + plots.night_worth(plot["dark"]), 2) == 3.0
+    # A company is shown three plots and founds on the one it chooses.
+    other = _join(client, "Second Landing")
+    offers = client.get("/api/town", headers=other).json()["meta"]["offers"]
+    assert len(offers) == 3
+    assert client.post("/api/town/found", headers=other,
+                       json={"choice": 7}).status_code == 400
+    chosen = client.post("/api/town/found", headers=other,
+                         json={"choice": 1}).json()["meta"]["plot"]
+    assert chosen == offers[1]
 
 
 def test_found_a_town_and_build_in_it(client, game):

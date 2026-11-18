@@ -282,6 +282,17 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .dbar { position: relative; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.09); overflow: hidden; }
 .dbar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.35); }
 .dbar i { position: absolute; top: 0; bottom: 0; }
+.plots { margin: 4px 0 14px; } .plots h3 { margin: 0 0 4px; } .plots p { margin: 0 0 10px; color: var(--dim); font-size: 14px; }
+.plots .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.plots .plot { text-align: left; padding: 10px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .04); color: inherit; font: inherit; cursor: pointer; display: grid; gap: 4px; }
+.plots .plot[aria-pressed="true"] { border-color: var(--cyan); background: rgba(94, 220, 255, .10); }
+.plots .plot b { font-size: 15px; } .plots .plot small { color: var(--dim); font-size: 12px; margin-bottom: 4px; }
+.plots .plot span { display: grid; grid-template-columns: 74px 1fr; align-items: center; gap: 6px; font-size: 12px; }
+.plots .plot span i { font-style: normal; color: var(--dim); }
+.plots .plot u { display: block; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .10); overflow: hidden; text-decoration: none; }
+.plots .plot u s { display: block; height: 100%; background: #9b9ab8; text-decoration: none; }
+.plots .plot[aria-pressed="true"] u s { background: var(--cyan); }
+@media (max-width: 640px) { .plots .row { grid-template-columns: 1fr; } }
 .ground { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
 .ground li { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 8px; align-items: baseline; }
 .ground li b { font-weight: 500; font-size: 14px; } .ground li em { font-style: normal; font-size: 12px; color: var(--dim); }
