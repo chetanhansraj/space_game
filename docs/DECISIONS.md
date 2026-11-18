@@ -2021,6 +2021,82 @@ multiplies, a swing of 2.5 (1.6 for ice), the budget of 3.0, neighbour
 noise of 0.15, the four kinds of ground in equal shares, the two new
 companies and where all seven stand.
 
+### D85 — Night by latitude, three plots to choose from, and ground tuned by measuring
+
+*Direction from Chetan, 18 November 2026*, answering D84's open points:
+do night by latitude; a person is given three options and chooses one;
+his notes on the far side; the Moon will have many ports; every plot
+will have more of certain elements. This entry builds the first three
+and says where the last two stand.
+
+**Night by latitude.** A plot carries its hours of dark and the rules
+keep them. Across nearly all the Moon that is 354 hours, half the lunar
+day, whatever the latitude: the Moon hardly tilts, so there are no long
+polar summers the way there are on Earth. What the poles have is high
+ground the Sun circles. From 75 degrees the dark shortens, to 180 hours
+at the pole. Batteries, air tanks, the adviser and the sunset warnings
+all follow the plot's own night.
+
+**Three plots, one chosen.** A new company is shown three plots, each a
+different kind of ground, always the same three for that company, and
+founds on the one it picks. A choice it was not offered founds nothing.
+A town that fell silent before plots existed chooses when its new crew
+is sent, which is the case for Chetan's own.
+
+**The far side, from his notes.** The South Pole-Aitken basin's floor is
+metal-bearing ground (deep rock rich in iron and magnesium, laid bare).
+The far side has helium-3 of its own, about half a plain's, because the
+solar wind reaches it without Earth's magnetic tail in the way but it
+lacks the titanium-rich soil that holds it best. Its highlands remain
+the richest in aluminium.
+
+**Equal in play, by measuring.** The steward on 160 sampled plots for
+three lunar days, with goods, parts and sales counted as the server
+counts them. Polar ground ended 2.7 times as rich as the rest. Fitting
+the outcome to the readings showed why, and none of it was what I
+expected:
+- *Visitors cost more than they paid.* A good outlook was a handicap,
+  and the poles won by having none. A good outlook now raises what each
+  visitor pays, not how many come, at half the swing of the others.
+- *A short night is the most valuable thing ground can have.* It is now
+  counted in the plot's budget: a pole gives up soil and sunlight for
+  its daylight (1.5 points for no night at all).
+- *The pole's night had been set too short*: 180 hours now, not 70.
+
+After: the five kinds of ground end within 1.4 times of each other at
+the median (2,390 to 3,375 credits), and 3 towns of 160 are lost.
+
+**Measured on the server.** `python scripts/demo_towns.py 120`, seven
+house towns on their own ground: all seven stand on their first crew
+(two needed a second under D84). 101 t of goods and 6.8 million credits
+pass between towns. Holdings run from 1.0 to 8.7 million.
+
+**Not equal yet.** A point of sunlight or of helium-3 is worth less
+than a point of iron or outlook. And the finding above is about the
+rules, not the ground: as the town's rules stand, visitors at fair
+prices lose money. That is the same thing D83 found from the other
+side, that high prices are simply better (question 23).
+
+**Where the rest of his list stands, plainly.**
+- *Many ports.* Not built, and he is right that it should have been
+  earlier. The trade world has three ports on the Moon: the Flats and
+  the two polar depots. Tying each town to its nearest is ten lines.
+  I did not do it alone because it strands every town away from the
+  Flats: nobody hauls. The seeded hauling firms are bankrupt (F9), and
+  house companies own ships they never fly. Ports need three things
+  together: each plot at its nearest port, more ports with routes
+  between them, and house companies that carry their own goods to where
+  the price is best. That is the next build.
+- *Every plot has more of certain elements.* Ground changes how much a
+  town makes and needs, not yet what. Ice into water and propellant,
+  highland soil into glass and panels, the plains into metal: these are
+  new goods on the book and new buildings, and they are what ports are
+  for. After ports.
+
+*Invented, and yours to change:* 180 hours of dark at the pole from 75
+degrees; a short night worth 1.5 points; the basin's iron at 0.6 of a
+plain's; the far side's helium-3 at 0.55; outlook at half swing.
+
 ---
 
 ## Still open — needs you
@@ -2088,10 +2164,8 @@ Deliberately not decided, because these are yours.
     cost that much to run once they need goods and parts, or the rate is
     too generous. This is the number that decides whether flying a ship
     is worth anyone's time.
-25. **Assigned or chosen** — D84. A company is given its ground, as you
-    said. The alternative is to offer three and let the person pick. Say
-    if a person should also be able to see their readings before they
-    found, or move.
+25. **Assigned or chosen** — D84. *Answered 18 November: three options,
+    the player chooses one. Built, D85.*
 26. **How much the ground should matter** — D84. Up to 2.5 times either
     way. Play a plot and say whether it feels like your own ground or
     like a handicap.
