@@ -35,6 +35,18 @@ SHACKLETON = "shackleton_depot"
 PEARY = "peary_ridge"
 TRANQUILLITATIS = "tranquillitatis_flats"
 NODES = (SHACKLETON, PEARY, TRANQUILLITATIS)
+#: Every port on the Moon. The first three are the settlements the world
+#: was seeded with: they have households, an Authority desk and Earth's
+#: orders. The rest are places to land with an order book and nothing
+#: else, added so that a town anywhere on the Moon has a port of its own
+#: within reach (D86). Their names and positions are in routes.NODE_ANCHOR
+#: and orbital/data/anchors.toml.
+FURTHER_PORTS = (
+    "imbrium_landing", "procellarum_roads", "crisium_anchorage",
+    "tycho_station", "korolev_field", "aitken_deep", "mendeleev_port",
+    "moscoviense_landing",
+)
+PORTS = NODES + FURTHER_PORTS
 
 #: docs/seed-data.md section 2, volatility column. Drives price elasticity.
 VOLATILITY = {
@@ -115,7 +127,7 @@ def build(db, seed: int = 20260904, game_time: str = "2190-01-01T00:00:00Z",
         ledger.bootstrap(game_time)
         seed_assets(ledger)
 
-    books = {node: OrderBook(db, ledger, node) for node in NODES}
+    books = {node: OrderBook(db, ledger, node) for node in PORTS}
     authorities = {node: ArkAuthority(db, ledger, books[node]) for node in NODES}
     earth = EarthMarket(ledger, books)
 

@@ -95,7 +95,7 @@ async function boot(hot: any) {
     // A sale made while nobody was pressing anything: say so, once, in the town's own money.
     if (was && ui.yard && ui.yard.sold_kg > was.sold_kg) {
       const kg = ui.yard.sold_kg - was.sold_kg, cr = ui.yard.sales - was.sales;
-      say(`Sold ${Math.round(kg / 1000)} t of goods at the Flats: +${Math.round(cr / ui.yard.kcr)} credits`, 6000);
+      say(`Sold ${Math.round(kg / 1000)} t of goods${ui.yard.bid_port ? ` at ${ui.yard.bid_port}` : ''}: +${Math.round(cr / ui.yard.kcr)} credits`, 6000);
     }
     if (!r.state) return;
     s = r.state;

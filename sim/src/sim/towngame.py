@@ -50,7 +50,8 @@ from market.money import CREDIT
 from . import TICKS_PER_GAME_DAY, plots
 from .earth import ACCOUNT as EARTH
 from .errors import GameError
-from .seed_world import TONNE, TRANQUILLITATIS
+from .routes import NODE_ANCHOR
+from .seed_world import PORTS, TONNE, TRANQUILLITATIS
 from .ships import KESTREL
 from .shocks import Event
 from .town import Engine, TownError
@@ -118,6 +119,16 @@ PARTS_BID_STEP = 500
 #: every hour, so this limits how much of the owner's money waits on the
 #: book, not how much the town can buy. *Invented*, D83.
 PARTS_ORDER_LOTS = 2
+#: The Ark's freight line carries a town's goods from its own port to a
+#: buyer at another, inside the hour: a hop between any two places on the
+#: Moon is under an hour's flight. What it charges for a tonne is the
+#: propellant that hop burns to throw a tonne, at propellant's seed
+#: price, times this for the vehicle's own mass and the line's costs.
+#: The charge is burned: a sink, not anyone's income. *Invented*, D86.
+FREIGHT_OVERHEAD = 2.0
+#: Exhaust velocity the line's hoppers are costed at, metres a second:
+#: hydrogen and oxygen, which is what the Moon's ice makes.
+FREIGHT_EXHAUST = 4_400.0
 
 
 #: A caretaker's wage, in credits a game hour, while one is hired. Burned:
@@ -340,6 +351,62 @@ class TownOps:
         return (self.world.ledger.asset(YARD_ASSET).base_value
                 * PARTS_IMPORT_PREMIUM)
 
+    # -- ports and freight (D86) ------------------------------------------------
+
+    def _port_at(self, lat: float, lon: float) -> str:
+        """The port nearest a place on the Moon."""
+        registry = self.world.routes.registry
+
+        def far(node: str) -> float:
+            site = registry[NODE_ANCHOR[node]].site
+            return plots._arc(lat, lon, site.lat_deg, site.lon_deg)
+        return min(PORTS, key=lambda node: (far(node), node))
+
+    def _port_name(self, node: str) -> str:
+        return getattr(self, "node_names", {}).get(node, node)
+
+    def _port(self, player_id: str) -> str:
+        """The port a company's town trades at: the one nearest its plot.
+
+        A town from before plots, or on the reference ground the tests
+        use, is at the Flats, where every town used to be.
+        """
+        row = self._town_row(player_id)
+        plot = json.loads(row["plot"] or "{}") if row is not None else {}
+        if "lat" not in plot:
+            return TOWN_NODE
+        return self._port_at(plot["lat"], plot["lon"])
+
+    def _freight(self, origin: str, destination: str) -> int:
+        """Credits a tonne to carry goods between two ports. Nothing at home."""
+        if origin == destination:
+            return 0
+        leg = self.world.routes.leg(origin, destination)
+        if leg is None:
+            raise GameError("The freight line does not fly that way.")
+        fuel = math.exp(leg.dv / FREIGHT_EXHAUST) - 1.0     # tonnes a tonne
+        price = self.world.ledger.asset("PROP").base_value
+        return int(math.ceil(fuel * FREIGHT_OVERHEAD * price / 100.0)) * 100
+
+    def _best_market(self, home: str, limit: int) -> tuple[str, int, int] | None:
+        """Where a town's goods fetch most after freight: port, bid, freight.
+
+        Every port's best bid is looked at, less what it costs to carry a
+        tonne there. ``None`` if nowhere nets the town its price.
+        """
+        best = None
+        for port in PORTS:
+            bid = self.world.books[port].best_bid(YARD_ASSET)
+            if not bid:
+                continue
+            freight = self._freight(home, port)
+            net = bid - freight
+            if net >= limit and (best is None or net > best[1] - best[2]
+                                 or (net == best[1] - best[2]
+                                     and freight < best[2])):
+                best = (port, bid, freight)
+        return best
+
     def _parts_settle(self, player, account: str, book: dict, now: str
                       ) -> None:
         """Take the town's bid off the book and bring its money home.
@@ -354,7 +421,8 @@ class TownOps:
                 "SELECT remaining_kg, status FROM book_order WHERE id = ?",
                 (last["id"],)).fetchone()
             if row["status"] == "OPEN":
-                self.world.books[TOWN_NODE].cancel(last["id"], now)
+                self.world.books[last.get("port", TOWN_NODE)].cancel(
+                    last["id"], now)
             left = ledger.balance(account, CREDIT)
             book["bought_kg"] += last["kg"] - row["remaining_kg"]
             book["spent"] += last["funded"] - left
@@ -378,13 +446,20 @@ class TownOps:
         ledger = self.world.ledger
         spec = ledger.asset(YARD_ASSET)
         lot = spec.lot_mass_kg
+        home = self._port(player.id)
         held = ledger.balance(account, YARD_ASSET)
         short = min(self._keep_kg(book, summary), YARD_KG) - held
-        rival = self.db.execute(
-            "SELECT MAX(price) FROM book_order WHERE node = ? AND asset = ? "
+        # What the best buyer who is not a town pays, wherever on the Moon
+        # that is, plus what it costs to carry a tonne from there to here:
+        # a seller beside that buyer must do at least as well by coming
+        # to this port. Then a step more.
+        best = self.db.execute(
+            "SELECT price, node FROM book_order WHERE asset = ? "
             "AND side = 'BID' AND status = 'OPEN' "
-            "AND account_id NOT LIKE 'town:%'",
-            (TOWN_NODE, YARD_ASSET)).fetchone()[0] or spec.base_value
+            "AND account_id NOT LIKE 'town:%' ORDER BY price DESC, id "
+            "LIMIT 1", (YARD_ASSET,)).fetchone()
+        rival = (best["price"] + self._freight(best["node"], home)
+                 if best else spec.base_value)
         price = min(book["max_price"] or self._parts_price(),
                     self._parts_price(), rival + PARTS_BID_STEP)
         lots = min(short // lot, PARTS_ORDER_LOTS,
@@ -395,10 +470,10 @@ class TownOps:
         ledger.transfer(player.account, account, CREDIT, cost, kind="sweep",
                         game_time=now, ref=player.id,
                         memo="parts order paid in")
-        placed = self.world.books[TOWN_NODE].place(
+        placed = self.world.books[home].place(
             YARD_ASSET, BID, price, lots * lot, account, now)
         book["order"] = {"id": placed.order_id, "kg": lots * lot,
-                         "funded": cost}
+                         "funded": cost, "port": home}
 
     def _yard_close(self, player, now: str) -> None:
         """A town that has stopped: nothing of its is left on the book."""
@@ -436,21 +511,33 @@ class TownOps:
 
     def _yard_sell(self, player, account: str, book: dict, qty_kg: int,
                    limit: int, now: str):
-        """Sell from the yard into the port's order book, now or not at all.
+        """Sell from the yard to the best bid on the Moon, now or not at all.
 
-        Whole trading lots only, to whoever is bidding most, at their
-        price and never below ``limit``. The takings go straight to the
-        company. Nothing rests on the book afterwards: an order a player
-        forgot about is not left standing in their name.
+        Whole trading lots only, to whoever is bidding most once the
+        freight to their port is taken off, at their price, and never for
+        less than ``limit`` after freight. The freight line is paid out of
+        the takings and what it is paid is burned. The rest goes straight
+        to the company. Nothing rests on the book afterwards: an order a
+        player forgot about is not left standing in their name.
         """
         ledger = self.world.ledger
         lot = ledger.asset(YARD_ASSET).lot_mass_kg
         lots = min(qty_kg, ledger.balance(account, YARD_ASSET)) // lot
         if lots < 1:
             return None
+        home = self._port(player.id)
+        market = self._best_market(home, limit)
+        # nowhere nets the price: ask at home, which will fill nothing, and
+        # say so the way an unfilled order always has
+        port, freight = (market[0], market[2]) if market else (home, 0)
         try:
-            result = self._ioc(TOWN_NODE, YARD_ASSET, ASK, limit, lots * lot,
-                               account, now)
+            result = self._ioc(port, YARD_ASSET, ASK, limit + freight,
+                               lots * lot, account, now)
+            carried = freight * (result.filled_kg // lot)
+            if carried:
+                ledger.burn(account, carried, now, ref=player.id,
+                            memo=f"freight to {port}")
+                book["freight"] = book.get("freight", 0) + carried
         finally:
             takings = ledger.balance(account, CREDIT)
             if takings > 0:
@@ -458,11 +545,12 @@ class TownOps:
                                 kind="sweep", game_time=now, ref=player.id,
                                 memo="yard takings to the company")
         if result.filled_kg:
-            value = sum(f.value for f in result.fills)
+            value = sum(f.value for f in result.fills) - carried
             book["sold_kg"] += result.filled_kg
             book["sold_today"] += result.filled_kg
             book["sales"] += value
             book["sales_today"] += value
+            book["sold_at"] = port
         return result
 
     def _save_yard(self, pid: str, book: dict) -> None:
@@ -545,14 +633,17 @@ class TownOps:
         book["first_sale"] = True
         return [Event(
             tick=self.world.tick, kind="town_first_sale", subject=player.id,
-            detail=f"{player.name}'s town sold its first goods at the Flats",
+            detail=f"{player.name}'s town sold its first goods at "
+                   f"{self._port_name(book.get('sold_at', TOWN_NODE))}",
             data={"player": player.id, "company": player.name,
                   "kg": result.filled_kg})]
 
     def _town_ship(self, player):
         ship = self._docked(player)
-        if ship.location != TOWN_NODE:
-            raise GameError("Your ship is not at Tranquillitatis Flats.")
+        home = self._port(player.id)
+        if ship.location != home:
+            raise GameError(f"Your ship is not at {self._port_name(home)}, "
+                            "your town's port.")
         return ship
 
     def town_load(self, player, qty_t: int) -> dict:
@@ -897,6 +988,7 @@ class TownOps:
                 "kind": TEMPER_NAMES.get(
                     HOUSE_TEMPER.get(row["player_id"], ""), ""),
                 "plot": json.loads(row["plot"] or "{}"),
+                "port": self._port_name(self._port(row["player_id"])),
                 "lost": lost, "crews": row["attempt"] + 1,
                 "age_days": (self.world.tick - row["founded_tick"]) // day,
                 "population": 0 if lost else book["pop"],
@@ -1005,10 +1097,10 @@ class TownOps:
             except MarketError:
                 pass    # the book refused it this hour; try the next
         if self._trade_open(result.summary, book) and not lost and book["sell"]:
-            bid = self.world.books[TOWN_NODE].best_bid(YARD_ASSET)
             spare = (ledger.balance(account, YARD_ASSET)
                      - self._keep_kg(book, result.summary))
-            if bid and bid >= book["min_price"] and spare > 0:
+            if spare > 0 and self._best_market(self._port(player.id),
+                                               book["min_price"]):
                 try:
                     with transaction(self.db):
                         sold = self._yard_sell(
@@ -1073,22 +1165,29 @@ class TownOps:
         """The yard as the screen shows it. Reads only."""
         ledger = self.world.ledger
         spec = ledger.asset(YARD_ASSET)
-        market = self.world.books[TOWN_NODE]
+        home = self._port(player.id)
+        market = self.world.books[home]
+        best = self._best_market(home, 0)   # where a sale would go now
         account = f"town:{player.id}"
         book = self._yard_book(row)
         day = self.world.tick // TICKS_PER_GAME_DAY
         today = book["day"] == day
         ship = self.ship_of(player)
-        docked = (ship.state.value == "docked" and ship.location == TOWN_NODE)
+        docked = (ship.state.value == "docked" and ship.location == home)
         return {
-            "asset": YARD_ASSET, "name": spec.name, "node": TOWN_NODE,
+            "asset": YARD_ASSET, "name": spec.name, "node": home,
+            "port": self._port_name(home),
             "held_kg": ledger.balance(account, YARD_ASSET),
             "cap_kg": YARD_KG, "lot_kg": spec.lot_mass_kg,
             "anchor": spec.base_value,
             "make_kg_per_hour": summary.get("make", 0),
             "foundries": summary.get("foundries", 0),
             "full": bool(summary.get("yardFull")),
-            "bid": market.best_bid(YARD_ASSET),
+            # the best price on the Moon after freight, and where it is
+            "bid": best[1] - best[2] if best else None,
+            "bid_port": self._port_name(best[0]) if best else None,
+            "freight": best[2] if best else 0,
+            "freight_paid": book.get("freight", 0),
             "last": market.last_price(YARD_ASSET),
             "sell": book["sell"], "min_price": book["min_price"],
             "parts": {

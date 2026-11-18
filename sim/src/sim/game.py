@@ -32,7 +32,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
 
-from market.book import ASK, BID
+from market.book import ASK, BID, OrderBook
 from market.db import connect, transaction
 from market.errors import MarketError
 from market.money import CREDIT
@@ -44,7 +44,7 @@ from .towngame import TownOps
 from .errors import GameError
 from .contracts import ContractBoard, ContractError, encode
 from .routes import DOCKING_FEE, NODE_ANCHOR
-from .seed_world import NODES, SHACKLETON, TONNE, add_goods_demand, build
+from .seed_world import PORTS, SHACKLETON, TONNE, add_goods_demand, build
 from .ships import KESTREL, Ship, ShipState
 from .shocks import Event
 
@@ -91,6 +91,14 @@ NODE_NAMES = {
     "shackleton_depot": "Shackleton Depot",
     "peary_ridge": "Peary Ridge",
     "tranquillitatis_flats": "Tranquillitatis Flats",
+    "imbrium_landing": "Imbrium Landing",
+    "procellarum_roads": "Procellarum Roads",
+    "crisium_anchorage": "Crisium Anchorage",
+    "tycho_station": "Tycho Station",
+    "korolev_field": "Korolev Field",
+    "aitken_deep": "Aitken Deep",
+    "mendeleev_port": "Mendeleev Port",
+    "moscoviense_landing": "Moscoviense Landing",
 }
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,'&-]{1,30}[A-Za-z0-9.]$")
@@ -138,6 +146,7 @@ class Game(BaseOps, TownOps):
     """
 
     dev_fund_account = DEV_FUND
+    node_names = NODE_NAMES
     arrears_cap = ARREARS_CAP
 
     def __init__(self, db, world, launch_real: _dt.datetime) -> None:
@@ -174,6 +183,11 @@ class Game(BaseOps, TownOps):
             # demand for them here. In memory only: the next tick saves it,
             # and doing it again on a restart before then changes nothing.
             add_goods_demand(world.firms)
+            # And a world from before the further ports gains their order
+            # books: empty, as a new port's is.
+            for port in PORTS:
+                if port not in world.books:
+                    world.books[port] = OrderBook(db, world.ledger, port)
             launch = _dt.datetime.fromisoformat(cls._meta(db, "launch_real"))
             return cls(db, world, launch)
 
@@ -793,7 +807,7 @@ class Game(BaseOps, TownOps):
     def node_info(self) -> list[dict]:
         out = []
         registry = self.world.routes.registry
-        for node in NODES:
+        for node in PORTS:
             anchor = registry[NODE_ANCHOR[node]]
             site = anchor.site
             out.append({"id": node, "name": NODE_NAMES[node],
@@ -886,7 +900,7 @@ class Game(BaseOps, TownOps):
         prop = holdings.get("PROP", 0)
         routes = []
         if ship.state is ShipState.DOCKED:
-            for node in NODES:
+            for node in PORTS:
                 if node == ship.location:
                     continue
                 plan = self.plan(player, node)

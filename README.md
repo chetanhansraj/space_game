@@ -157,6 +157,11 @@ and six readings that differ by location and from neighbour to
 neighbour, and add up to the same for everyone. `sim/src/sim/plots.py`,
 `sim/tests/test_plots.py`; D84.
 
+**Eleven ports and a freight line.** A town trades at the port nearest
+its plot; its goods reach the best bid on the Moon by freight, which is
+charged and burned. `sim/tests/test_ports.py`; D85 (night, choice of
+three plots) and D86.
+
 **The works is a town too.** Six people found it, more arrive on a daily shuttle
 when there are berths, air, water and food for them, and they are the
 workforce its industry needs. It runs on the one universal clock, on the

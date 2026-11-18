@@ -2097,6 +2097,87 @@ side, that high prices are simply better (question 23).
 degrees; a short night worth 1.5 points; the basin's iron at 0.6 of a
 plain's; the far side's helium-3 at 0.55; outlook at half swing.
 
+### D86 — Eleven ports, each town at its nearest, and a freight line
+
+*Direction from Chetan, 18 November 2026:* "the moon will many ports, I
+thought you would have fixed this long back." He is right. Every town
+traded at the Flats wherever it stood.
+
+**The ports.** Eight are added to the three the world was seeded with.
+
+| Port | Where | Kind |
+|---|---|---|
+| Tranquillitatis Flats | 8.5 N, 31.4 E | seeded settlement |
+| Shackleton Depot | south pole | seeded settlement |
+| Peary Ridge | north pole | seeded settlement |
+| Imbrium Landing | 32.8 N, 15.6 W | landing and order book |
+| Procellarum Roads | 18.4 N, 57.4 W | landing and order book |
+| Crisium Anchorage | 17.0 N, 59.1 E | landing and order book |
+| Tycho Station | 43.3 S, 11.4 W | landing and order book |
+| Korolev Field | 4.0 S, 157.4 W | landing and order book |
+| Aitken Deep | 53.0 S, 169.0 W | landing and order book |
+| Mendeleev Port | 5.7 N, 140.9 E | landing and order book |
+| Moscoviense Landing | 27.3 N, 148.1 E | landing and order book |
+
+Each new port is a lunar-surface anchor in orbital's data, so the hop
+between any two is costed by the code that already costs Peary to
+Shackleton: analytic, cached, never solved on request (invariant 4). A
+further port has no households, no Authority desk and no order from
+Earth. It is a place to land and a book.
+
+**A town trades at the port nearest its plot.** Its bid for parts rests
+there, its ship loads there, its yard panel names it.
+
+**The freight line, and why.** Tying towns to ports and stopping there
+would have stranded every town away from the Flats, because nothing
+moves goods: the seeded haulers are bankrupt (F9), house companies do
+not fly their ships, and nobody on the Moon makes propellant. So the Ark
+runs a freight line. A yard's sale goes to the best bid on the Moon
+after freight, and the line carries it inside the hour, which is honest:
+no hop between two places on the Moon takes an hour. A tonne costs the
+propellant the hop burns to throw a tonne (the rocket equation, at
+hydrogen and oxygen's exhaust velocity), at propellant's seed price,
+doubled for the vehicle and the line. Tycho to the Flats is 3,300 cr a
+tonne; the far side is more.
+
+**Money.** Freight is a new sink (invariant 7): what the line is paid is
+burned out of the seller's takings in the same transaction as the sale.
+It is nobody's income (invariant 3). Nothing is created.
+
+**Buying parts across ports.** A town short of parts bids what the best
+other buyer on the Moon pays, plus the freight from that buyer's port to
+its own, plus a step, and never above Earth's price. Found by measuring:
+at a port with no other bidder the earlier rule bid just over Earth's
+45,000, sellers went to the Flats where households pay 80,000, and the
+resort at Tycho had 12 t of parts landed from Earth instead.
+
+**Measured.** `python scripts/demo_towns.py 120`: seven towns at five
+ports (three at the Flats, and one each at Imbrium Landing, Tycho
+Station, Shackleton Depot and Korolev Field), all on their first crew.
+85 t of goods and 6.2 million credits passed between towns across
+ports. 510,000 cr was burned as freight. No credit created, no failed
+town hours.
+
+**What this is not, plainly.**
+- *Nobody flies a ship.* The freight line is a stand-in for carriers the
+  world does not have. It is priced at twice the propellant so that a
+  company with its own ship could do better, but a ship needs
+  propellant and nobody makes any. That is the next thing, and it is the
+  first of the "what the ground makes" goods: ice into propellant, on
+  polar ground.
+- *The new ports are empty of everything but towns.* No households, no
+  Earth order. A town there sells to the Flats by freight or to a
+  neighbour at its own port.
+- *The trade client's Moon map* draws its ports from the server's list,
+  so the new ones should appear, but I have not looked at it in a
+  browser. The town page is checked.
+- *Plots are not placed near ports.* A plot's nearest port can be far
+  away. Freight covers it.
+
+*Invented, and yours to change:* the eight ports, their names and
+places; a docking fee of 400 cr like the Flats'; the line's overhead of
+2.0 and exhaust velocity of 4,400 m/s.
+
 ---
 
 ## Still open — needs you

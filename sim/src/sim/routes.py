@@ -30,6 +30,14 @@ NODE_ANCHOR = {
     "shackleton_depot": "luna_south",
     "peary_ridge": "luna_north",
     "tranquillitatis_flats": "luna_equatorial",
+    "imbrium_landing": "luna_imbrium",
+    "procellarum_roads": "luna_procellarum",
+    "crisium_anchorage": "luna_crisium",
+    "tycho_station": "luna_tycho",
+    "korolev_field": "luna_korolev",
+    "aitken_deep": "luna_aitken",
+    "mendeleev_port": "luna_mendeleev",
+    "moscoviense_landing": "luna_moscoviense",
     "selene_station": "luna_orbit",
     "ark_terminus": "luna_south",
     "eros_claim_field": "eros",
@@ -47,6 +55,10 @@ DOCKING_FEE = {
     "selene_station": 1_200, "ark_terminus": 2_000, "eros_claim_field": 200,
     "vesta_station": 1_500, "ceres_exchange": 2_500, "psyche_works": 900,
     "pallas_reach": 600, "tharsis_yards": 3_000, "hellas_agricultural": 1_800,
+    # the further lunar ports charge what the Flats do (D86)
+    "imbrium_landing": 400, "procellarum_roads": 400, "crisium_anchorage": 400,
+    "tycho_station": 400, "korolev_field": 400, "aitken_deep": 400,
+    "mendeleev_port": 400, "moscoviense_landing": 400,
 }
 
 
