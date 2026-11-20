@@ -3,8 +3,8 @@
 // Buildings are pictures rendered from 3D models at this angle; a type with no picture falls back to a flat-shaded prism
 // with a two-letter label. The ground is one lit picture built per town (ground.ts).
 
-import { Application, Container, Graphics, Text, Sprite, Texture, Matrix } from './pixi';
-import { buildGround, buildOutskirts, GP, Stamp } from './ground';
+import { Application, Container, Graphics, Text, Sprite, Texture, Matrix, Mesh, MeshGeometry } from './pixi';
+import { buildGround, buildLand, landNet, LANDS, GP, Stamp } from './ground';
 // @ts-ignore
 import craterA from '../art/craterA.png';
 // @ts-ignore
@@ -31,9 +31,11 @@ import type { Texture as Tex } from './pixi';
 import { ART, Art } from '../art/art';
 import { BUILDINGS, BuildingType, ZONES } from '../sim/buildings';
 import { ORES } from '../sim/world';
-import { State, GROUND, sunFactor, population, LUNAR_DAY, HALF } from '../sim/sim';
+import { State, GROUND, SIZE, sunFactor, population, LUNAR_DAY, HALF } from '../sim/sim';
 
 const TW = 64, TH = 32;
+// Zoomed far out, a picture is drawn many times smaller than it was made. Smaller copies are kept ready so it does not sparkle.
+const soft = (t: Tex): Tex => { t.source.autoGenerateMipmaps = true; return t; };
 const iso = (x: number, y: number, z = 0): [number, number] => [(x - y) * (TW / 2), (x + y) * (TH / 2) - z];
 
 interface Look { top: number; hgt: number; inset: number; ink: number; cap?: number; }
@@ -59,6 +61,18 @@ const LOOK: Record<BuildingType, Look> = {
 };
 
 const TEX = new Map<Art, Tex>();
+const PIC = new Map<Art, HTMLImageElement>();
+const EDGE = new Map<Art, Tex>();
+// A building's picture as a flat white shape, for drawing a line round it when it is selected. Made the first time it is needed.
+function edgeOf(a: Art): Tex | undefined {
+  let t = EDGE.get(a); const img = PIC.get(a);
+  if (!t && img) {
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const x = c.getContext('2d')!; x.drawImage(img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    t = soft(Texture.from(c)); EDGE.set(a, t);
+  }
+  return t;
+}
 let DUST: HTMLImageElement | null = null;          // the dust texture, once loaded
 const ROCKS: Tex[] = [];
 const STAMPS: Stamp[] = [];                       // crater shading rendered in Blender, used once all four are in
@@ -101,10 +115,12 @@ export class View {
   private overlay = new Graphics();
   private lights = new Graphics();
   private ghost = new Graphics();
+  private mark = new Graphics();        // the selected building's plot, on the ground under the buildings
+  private halo = new Container();       // a line round the selected building's picture, at its own depth so nearer buildings still stand in front
+  private haloKey = '';
   private stars = new Graphics();
+  private landJob = 0;
   private groundTex: Tex[] = [];        // the two ground pictures of the town on screen, freed when the ground is redrawn
-  private cuts = [new Graphics(), new Graphics(), new Graphics(), new Graphics(), new Graphics(), new Graphics(), new Graphics()];   // below the horizon: ground layers show only here; buildings get a little headroom
-  private horizon = new Graphics();    // far hills along the horizon, and the dimming of distant ground
   private labels = new Container();
   private fx = new Container();
   private seenPop = 0;
@@ -127,36 +143,16 @@ export class View {
     v.objects.sortableChildren = true;
     { const img = new Image(); img.onload = () => { DUST = img; v.drawnSeed = -1; }; img.src = regolithJpg as string; }
     { const got: (Stamp | null)[] = [null, null, null, null]; [[craterA, 0.4], [craterB, 0.425], [craterC, 0.3625], [craterD, 0.375]].forEach(([u, rim], i) => { const img = new Image(); img.onload = () => { got[i] = { img, rim: rim as number }; if (got.every(Boolean)) { STAMPS.push(...(got as Stamp[])); v.drawnSeed = -1; } }; img.src = u as string; }); }
-    [rock0, rock1, rock2, rock3, rock4, rock5].forEach((u, i) => { const img = new Image(); img.onload = () => { ROCKS[i] = Texture.from(img); v.drawnSeed = -1; }; img.src = u as string; });
-    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, Texture.from(img)); v.drawnRev = -1; }; img.src = a.url; }   // an image element, because the page may not fetch
+    [rock0, rock1, rock2, rock3, rock4, rock5].forEach((u, i) => { const img = new Image(); img.onload = () => { ROCKS[i] = soft(Texture.from(img)); v.drawnSeed = -1; }; img.src = u as string; });
+    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, soft(Texture.from(img))); PIC.set(a, img); v.drawnRev = -1; }; img.src = a.url; }   // an image element, because the page may not fetch
     v.lights.blendMode = 'add';
-    v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.objects, v.ghost, v.overlay, v.lights, v.fx);
-    v.app.stage.addChild(v.stars, v.world, ...v.cuts, v.horizon);
-    v.terrain.mask = v.cuts[0]; v.zones.mask = v.cuts[1]; v.labels.mask = v.cuts[2]; v.objects.mask = v.cuts[3]; v.overlay.mask = v.cuts[4]; v.lights.mask = v.cuts[5]; v.findLabels.mask = v.cuts[6]; v.layoutHorizon(); v.app.renderer.on('resize', () => v.layoutHorizon());
+    v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.mark, v.objects, v.ghost, v.overlay, v.lights, v.fx);
+    v.app.stage.addChild(v.stars, v.world);
     for (let i = 0; i < 260; i++) {
       const r = hash(i, 7) < 0.9 ? 0.7 : 1.3;
       v.stars.circle(hash(i, 1) * 2800, hash(i, 2) * 1700, r).fill({ color: 0xffffff, alpha: 0.25 + hash(i, 3) * 0.55 });
     }
     return v;
-  }
-
-  // ----- the horizon: the ground runs back to a curved edge under a black sky -----
-  private horizonY(x: number, W: number, H: number) { const t = (x - W / 2) / (W / 2); return H * 0.2 + t * t * H * 0.05; }
-  private layoutHorizon() {
-    const W = this.app.screen.width, H = this.app.screen.height, hz = this.horizon, step = 16;
-    hz.clear();
-    const edge = (lift: number) => { const q: number[] = []; for (let x = -step; x <= W + step; x += step) q.push(x, this.horizonY(x, W, H) - lift); return q; };
-    this.cuts.forEach((c, i) => { c.clear(); c.poly([...edge(i === 3 ? H * 0.16 : i > 3 ? 4 : 0), W + step, H + 10, -step, H + 10]).fill(0xffffff); });   // a tall building near the edge keeps its top
-    // distant ground loses contrast toward the edge: thin layers, each reaching a little less far
-    for (let i = 1; i <= 22; i++) {
-      const far = edge(0), near: number[] = [], d = i * H * 0.0075;
-      for (let j = far.length - 2; j >= 0; j -= 2) near.push(far[j], far[j + 1] + d);
-      hz.poly([...far, ...near]).fill({ color: 0x0a0a12, alpha: 0.04 });
-    }
-    // the edge itself: smooth, as the real one is, with a thin sunlit line
-    const rim = edge(0), under: number[] = [];
-    for (let j = rim.length - 2; j >= 0; j -= 2) under.push(rim[j], rim[j + 1] + 2.5);
-    hz.poly([...rim, ...under]).fill({ color: 0xb4b4bd, alpha: 0.85 });
   }
 
   // ----- camera -----
@@ -165,13 +161,19 @@ export class View {
     this.world.scale.set(this.scale);
     this.world.position.set(this.app.screen.width / 2 - sx * this.scale, this.app.screen.height / 2 - sy * this.scale);
   }
-  panBy(dx: number, dy: number) { this.world.position.x += dx; this.world.position.y += dy; }
+  // The middle of the screen stays over the claim, so the town can never be lost off the edge of the land.
+  private hold() {
+    const W = this.app.screen.width, H = this.app.screen.height, k = this.scale, e = SIZE * TW / 2, p = this.world.position;
+    p.x = W / 2 - Math.max(-e, Math.min(e, (W / 2 - p.x) / k)) * k;
+    p.y = H / 2 - Math.max(0, Math.min(e, (H / 2 - p.y) / k)) * k;
+  }
+  panBy(dx: number, dy: number) { this.world.position.x += dx; this.world.position.y += dy; this.hold(); }
   zoomAt(px: number, py: number, factor: number) {
-    const next = Math.max(0.45, Math.min(2.6, this.scale * factor));
+    const next = Math.max(0.045, Math.min(2.6, this.scale * factor));   // far enough out to see the land curve away, with the town small on it
     const k = next / this.scale;
     this.world.position.x = px - (px - this.world.position.x) * k;
     this.world.position.y = py - (py - this.world.position.y) * k;
-    this.scale = next; this.world.scale.set(next);
+    this.scale = next; this.world.scale.set(next); this.hold();
   }
   // The building whose picture is under a point on the screen, nearest first; 0 if none.
   pick(s: State, px: number, py: number): number {
@@ -199,12 +201,17 @@ export class View {
     for (const c of g0.removeChildren()) c.destroy({ children: true });   // the boulder pictures are shared, so textures are freed by hand below
     for (const t of this.groundTex.splice(0)) t.destroy(true);
     const n = s.size;
-    // the land around the claim, out to the horizon
-    const M = 64, gpo = 12;
-    const farTex = Texture.from(buildOutskirts(s, DUST, STAMPS, M, gpo)); this.groundTex.push(farTex);
-    const far = new Sprite(farTex); far.setFromMatrix(new Matrix(32 / gpo, 16 / gpo, -32 / gpo, 16 / gpo, 0, -2 * M * 16)); g0.addChild(far);
+    // The land around the claim: level near the town, then curving away like the globe it is. Three pictures, one inside
+    // the next. The nearest is made now; the two far ones a moment later, so the town itself is on screen without waiting.
+    const job = ++this.landJob, lands = new Container(); g0.addChild(lands);
+    const lay = (i: number) => {
+      const tex = soft(Texture.from(buildLand(s, DUST, STAMPS, LANDS[i], i))); this.groundTex.push(tex);
+      const m = new Mesh({ geometry: new MeshGeometry(landNet(n, LANDS[i])), texture: tex }); m.zIndex = -i; lands.addChild(m); lands.sortChildren();
+    };
+    lay(0);
+    [2, 1].forEach((i, k) => setTimeout(() => { if (job === this.landJob) lay(i); }, 60 + 90 * k));
     // the ground: one lit picture seen from straight above, laid onto the tilted grid
-    const tex = Texture.from(buildGround(s, DUST, STAMPS)); this.groundTex.push(tex);
+    const tex = soft(Texture.from(buildGround(s, DUST, STAMPS))); this.groundTex.push(tex);
     const land = new Sprite(tex); land.setFromMatrix(new Matrix(32 / GP, 16 / GP, -32 / GP, 16 / GP, 0, 0)); g0.addChild(land);
     const g = new Graphics(); g0.addChild(g);
     // the claim's edge: a line on the ground and a post at each corner
@@ -238,6 +245,7 @@ export class View {
 
   // ----- buildings, redrawn when the set of buildings changes -----
   private drawBuildings(s: State) {
+    this.objects.removeChild(this.halo); this.haloKey = '';   // the selection line is kept and put back by the next frame
     for (const c of this.objects.removeChildren()) c.destroy({ children: true });
     const n = s.size;
     this.spots = s.buildings.filter(b => b.type !== 'conduit' && b.progress >= 1 && b.connected).map(b => [b.x + BUILDINGS[b.type].w + 0.15, b.y + BUILDINGS[b.type].h * 0.5] as [number, number]);
@@ -318,7 +326,7 @@ export class View {
     const ph = s.t % LUNAR_DAY, sun = sunFactor(s.t);
     const light = ph < HALF ? Math.min(1, 0.35 + sun * 10) : Math.max(0, 0.35 * (1 - (ph - HALF) / 8), 0.35 * (1 - (LUNAR_DAY - ph) / 8));
     const tint = light < 0.5 ? mix(0x4c5a86, 0xffcf9a, light * 2) : mix(0xffcf9a, 0xffffff, (light - 0.5) * 2);
-    this.terrain.tint = tint; this.horizon.tint = tint; this.objects.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
+    this.terrain.tint = tint; this.objects.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
     const dark = 1 - light;
 
     const o = this.overlay, l = this.lights; o.clear(); l.clear();
@@ -354,10 +362,31 @@ export class View {
       }
     }
     this.actors(s, o, l, tint, dark, now, speed);
-    if (selected !== null) {
-      const b = s.buildings.find(q => q.uid === selected);
-      if (b) this.outline(o, b.x, b.y, BUILDINGS[b.type].w, BUILDINGS[b.type].h, 0xffffff, 2);
+    // The selected building: its plot lit on the ground beneath it, and a line round its picture. Both sit at the
+    // building's own depth, so neither is drawn across a building standing in front.
+    const mk = this.mark; mk.clear();
+    const sb = selected !== null ? s.buildings.find(q => q.uid === selected) : undefined;
+    const key = sb ? `${sb.uid}:${s.rev}:${TEX.size}` : '';
+    if (key !== this.haloKey) {
+      this.haloKey = key; this.objects.removeChild(this.halo);
+      for (const c of this.halo.removeChildren()) c.destroy();
+      const art = sb && artOf(sb), edge = art && edgeOf(art);
+      if (sb && art && edge) {
+        const d = BUILDINGS[sb.type], m = iso(sb.x + d.w / 2, sb.y + d.h / 2);
+        for (let i = 0; i < 12; i++) { const sp = new Sprite(edge); sp.anchor.set(art.ax, art.ay); sp.scale.set(art.k); sp.position.set(m[0] + Math.cos(i * Math.PI / 6) * 3, m[1] + Math.sin(i * Math.PI / 6) * 3); sp.tint = 0x7af0ff; this.halo.addChild(sp); }
+        this.halo.zIndex = (sb.x + d.w + sb.y + d.h) * 10 + 0.5; this.objects.addChild(this.halo);
+      }
     }
+    if (sb) {
+      const d = BUILDINGS[sb.type], e = 0.14;
+      const a = iso(sb.x - e, sb.y - e), b = iso(sb.x + d.w + e, sb.y - e), c = iso(sb.x + d.w + e, sb.y + d.h + e), f = iso(sb.x - e, sb.y + d.h + e);
+      mk.poly([a[0], a[1], b[0], b[1], c[0], c[1], f[0], f[1]]).fill({ color: 0x22d3ee, alpha: 0.2 }).stroke({ color: 0x7af0ff, width: 2, alpha: 0.95 });
+      if (!this.halo.children.length) this.outline(o, sb.x, sb.y, d.w, d.h, 0xffffff, 2);   // no picture: the old outline
+    }
+    // Zoomed far out the town is small: names would be specks, and the claim needs a line that stays visible.
+    const tiny = this.scale < 0.3;
+    this.labels.visible = this.findLabels.visible = !tiny;
+    if (tiny) { const n = s.size, a = iso(0, 0), b = iso(n, 0), c = iso(n, n), f = iso(0, n); o.poly([a[0], a[1], b[0], b[1], c[0], c[1], f[0], f[1]]).stroke({ color: 0x22d3ee, width: 1.5 / this.scale, alpha: 0.8 }); }
 
     const gh = this.ghost; gh.clear();
     if (tool && hover) {
