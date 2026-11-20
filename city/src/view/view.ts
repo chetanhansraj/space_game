@@ -3,8 +3,8 @@
 // Buildings are pictures rendered from 3D models at this angle; a type with no picture falls back to a flat-shaded prism
 // with a two-letter label. The ground is one lit picture built per town (ground.ts).
 
-import { Application, Container, Graphics, Text, Sprite, Texture, Matrix } from './pixi';
-import { buildGround, buildOutskirts, GP, Stamp } from './ground';
+import { Application, Container, Graphics, Text, Sprite, Texture, Matrix, Mesh, MeshGeometry } from './pixi';
+import { buildGround, buildOutskirts, landNet, GP, Stamp } from './ground';
 // @ts-ignore
 import craterA from '../art/craterA.png';
 // @ts-ignore
@@ -31,7 +31,7 @@ import type { Texture as Tex } from './pixi';
 import { ART, Art } from '../art/art';
 import { BUILDINGS, BuildingType, ZONES } from '../sim/buildings';
 import { ORES } from '../sim/world';
-import { State, GROUND, sunFactor, population, LUNAR_DAY, HALF } from '../sim/sim';
+import { State, GROUND, SIZE, sunFactor, population, LUNAR_DAY, HALF } from '../sim/sim';
 
 const TW = 64, TH = 32;
 const iso = (x: number, y: number, z = 0): [number, number] => [(x - y) * (TW / 2), (x + y) * (TH / 2) - z];
@@ -103,8 +103,6 @@ export class View {
   private ghost = new Graphics();
   private stars = new Graphics();
   private groundTex: Tex[] = [];        // the two ground pictures of the town on screen, freed when the ground is redrawn
-  private cuts = [new Graphics(), new Graphics(), new Graphics(), new Graphics(), new Graphics(), new Graphics(), new Graphics()];   // below the horizon: ground layers show only here; buildings get a little headroom
-  private horizon = new Graphics();    // far hills along the horizon, and the dimming of distant ground
   private labels = new Container();
   private fx = new Container();
   private seenPop = 0;
@@ -131,32 +129,12 @@ export class View {
     for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, Texture.from(img)); v.drawnRev = -1; }; img.src = a.url; }   // an image element, because the page may not fetch
     v.lights.blendMode = 'add';
     v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.objects, v.ghost, v.overlay, v.lights, v.fx);
-    v.app.stage.addChild(v.stars, v.world, ...v.cuts, v.horizon);
-    v.terrain.mask = v.cuts[0]; v.zones.mask = v.cuts[1]; v.labels.mask = v.cuts[2]; v.objects.mask = v.cuts[3]; v.overlay.mask = v.cuts[4]; v.lights.mask = v.cuts[5]; v.findLabels.mask = v.cuts[6]; v.layoutHorizon(); v.app.renderer.on('resize', () => v.layoutHorizon());
+    v.app.stage.addChild(v.stars, v.world);
     for (let i = 0; i < 260; i++) {
       const r = hash(i, 7) < 0.9 ? 0.7 : 1.3;
       v.stars.circle(hash(i, 1) * 2800, hash(i, 2) * 1700, r).fill({ color: 0xffffff, alpha: 0.25 + hash(i, 3) * 0.55 });
     }
     return v;
-  }
-
-  // ----- the horizon: the ground runs back to a curved edge under a black sky -----
-  private horizonY(x: number, W: number, H: number) { const t = (x - W / 2) / (W / 2); return H * 0.2 + t * t * H * 0.05; }
-  private layoutHorizon() {
-    const W = this.app.screen.width, H = this.app.screen.height, hz = this.horizon, step = 16;
-    hz.clear();
-    const edge = (lift: number) => { const q: number[] = []; for (let x = -step; x <= W + step; x += step) q.push(x, this.horizonY(x, W, H) - lift); return q; };
-    this.cuts.forEach((c, i) => { c.clear(); c.poly([...edge(i === 3 ? H * 0.16 : i > 3 ? 4 : 0), W + step, H + 10, -step, H + 10]).fill(0xffffff); });   // a tall building near the edge keeps its top
-    // distant ground loses contrast toward the edge: thin layers, each reaching a little less far
-    for (let i = 1; i <= 22; i++) {
-      const far = edge(0), near: number[] = [], d = i * H * 0.0075;
-      for (let j = far.length - 2; j >= 0; j -= 2) near.push(far[j], far[j + 1] + d);
-      hz.poly([...far, ...near]).fill({ color: 0x0a0a12, alpha: 0.04 });
-    }
-    // the edge itself: smooth, as the real one is, with a thin sunlit line
-    const rim = edge(0), under: number[] = [];
-    for (let j = rim.length - 2; j >= 0; j -= 2) under.push(rim[j], rim[j + 1] + 2.5);
-    hz.poly([...rim, ...under]).fill({ color: 0xb4b4bd, alpha: 0.85 });
   }
 
   // ----- camera -----
@@ -165,13 +143,19 @@ export class View {
     this.world.scale.set(this.scale);
     this.world.position.set(this.app.screen.width / 2 - sx * this.scale, this.app.screen.height / 2 - sy * this.scale);
   }
-  panBy(dx: number, dy: number) { this.world.position.x += dx; this.world.position.y += dy; }
+  // The middle of the screen stays over the claim, so the town can never be lost off the edge of the land.
+  private hold() {
+    const W = this.app.screen.width, H = this.app.screen.height, k = this.scale, e = SIZE * TW / 2, p = this.world.position;
+    p.x = W / 2 - Math.max(-e, Math.min(e, (W / 2 - p.x) / k)) * k;
+    p.y = H / 2 - Math.max(0, Math.min(e, (H / 2 - p.y) / k)) * k;
+  }
+  panBy(dx: number, dy: number) { this.world.position.x += dx; this.world.position.y += dy; this.hold(); }
   zoomAt(px: number, py: number, factor: number) {
-    const next = Math.max(0.45, Math.min(2.6, this.scale * factor));
+    const next = Math.max(0.3, Math.min(2.6, this.scale * factor));   // far enough out to see the land curve away
     const k = next / this.scale;
     this.world.position.x = px - (px - this.world.position.x) * k;
     this.world.position.y = py - (py - this.world.position.y) * k;
-    this.scale = next; this.world.scale.set(next);
+    this.scale = next; this.world.scale.set(next); this.hold();
   }
   // The building whose picture is under a point on the screen, nearest first; 0 if none.
   pick(s: State, px: number, py: number): number {
@@ -199,10 +183,10 @@ export class View {
     for (const c of g0.removeChildren()) c.destroy({ children: true });   // the boulder pictures are shared, so textures are freed by hand below
     for (const t of this.groundTex.splice(0)) t.destroy(true);
     const n = s.size;
-    // the land around the claim, out to the horizon
+    // the land around the claim: level near the town, then curving away like the globe it is
     const M = 64, gpo = 12;
     const farTex = Texture.from(buildOutskirts(s, DUST, STAMPS, M, gpo)); this.groundTex.push(farTex);
-    const far = new Sprite(farTex); far.setFromMatrix(new Matrix(32 / gpo, 16 / gpo, -32 / gpo, 16 / gpo, 0, -2 * M * 16)); g0.addChild(far);
+    const far = new Mesh({ geometry: new MeshGeometry(landNet(n, M)), texture: farTex }); g0.addChild(far);   // level under the claim, then bending away to a real horizon
     // the ground: one lit picture seen from straight above, laid onto the tilted grid
     const tex = Texture.from(buildGround(s, DUST, STAMPS)); this.groundTex.push(tex);
     const land = new Sprite(tex); land.setFromMatrix(new Matrix(32 / GP, 16 / GP, -32 / GP, 16 / GP, 0, 0)); g0.addChild(land);
@@ -318,7 +302,7 @@ export class View {
     const ph = s.t % LUNAR_DAY, sun = sunFactor(s.t);
     const light = ph < HALF ? Math.min(1, 0.35 + sun * 10) : Math.max(0, 0.35 * (1 - (ph - HALF) / 8), 0.35 * (1 - (LUNAR_DAY - ph) / 8));
     const tint = light < 0.5 ? mix(0x4c5a86, 0xffcf9a, light * 2) : mix(0xffcf9a, 0xffffff, (light - 0.5) * 2);
-    this.terrain.tint = tint; this.horizon.tint = tint; this.objects.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
+    this.terrain.tint = tint; this.objects.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
     const dark = 1 - light;
 
     const o = this.overlay, l = this.lights; o.clear(); l.clear();
