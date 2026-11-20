@@ -9,3 +9,4 @@ export type Container = PIXI.Container;
 export type Graphics = PIXI.Graphics;
 export type Text = PIXI.Text;
 export type Texture = PIXI.Texture;
+export type Sprite = PIXI.Sprite;
