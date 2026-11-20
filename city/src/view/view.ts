@@ -61,6 +61,18 @@ const LOOK: Record<BuildingType, Look> = {
 };
 
 const TEX = new Map<Art, Tex>();
+const PIC = new Map<Art, HTMLImageElement>();
+const EDGE = new Map<Art, Tex>();
+// A building's picture as a flat white shape, for drawing a line round it when it is selected. Made the first time it is needed.
+function edgeOf(a: Art): Tex | undefined {
+  let t = EDGE.get(a); const img = PIC.get(a);
+  if (!t && img) {
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const x = c.getContext('2d')!; x.drawImage(img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    t = soft(Texture.from(c)); EDGE.set(a, t);
+  }
+  return t;
+}
 let DUST: HTMLImageElement | null = null;          // the dust texture, once loaded
 const ROCKS: Tex[] = [];
 const STAMPS: Stamp[] = [];                       // crater shading rendered in Blender, used once all four are in
@@ -103,6 +115,9 @@ export class View {
   private overlay = new Graphics();
   private lights = new Graphics();
   private ghost = new Graphics();
+  private mark = new Graphics();        // the selected building's plot, on the ground under the buildings
+  private halo = new Container();       // a line round the selected building's picture, at its own depth so nearer buildings still stand in front
+  private haloKey = '';
   private stars = new Graphics();
   private landJob = 0;
   private groundTex: Tex[] = [];        // the two ground pictures of the town on screen, freed when the ground is redrawn
@@ -129,9 +144,9 @@ export class View {
     { const img = new Image(); img.onload = () => { DUST = img; v.drawnSeed = -1; }; img.src = regolithJpg as string; }
     { const got: (Stamp | null)[] = [null, null, null, null]; [[craterA, 0.4], [craterB, 0.425], [craterC, 0.3625], [craterD, 0.375]].forEach(([u, rim], i) => { const img = new Image(); img.onload = () => { got[i] = { img, rim: rim as number }; if (got.every(Boolean)) { STAMPS.push(...(got as Stamp[])); v.drawnSeed = -1; } }; img.src = u as string; }); }
     [rock0, rock1, rock2, rock3, rock4, rock5].forEach((u, i) => { const img = new Image(); img.onload = () => { ROCKS[i] = soft(Texture.from(img)); v.drawnSeed = -1; }; img.src = u as string; });
-    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, soft(Texture.from(img))); v.drawnRev = -1; }; img.src = a.url; }   // an image element, because the page may not fetch
+    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, soft(Texture.from(img))); PIC.set(a, img); v.drawnRev = -1; }; img.src = a.url; }   // an image element, because the page may not fetch
     v.lights.blendMode = 'add';
-    v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.objects, v.ghost, v.overlay, v.lights, v.fx);
+    v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.mark, v.objects, v.ghost, v.overlay, v.lights, v.fx);
     v.app.stage.addChild(v.stars, v.world);
     for (let i = 0; i < 260; i++) {
       const r = hash(i, 7) < 0.9 ? 0.7 : 1.3;
@@ -230,6 +245,7 @@ export class View {
 
   // ----- buildings, redrawn when the set of buildings changes -----
   private drawBuildings(s: State) {
+    this.objects.removeChild(this.halo); this.haloKey = '';   // the selection line is kept and put back by the next frame
     for (const c of this.objects.removeChildren()) c.destroy({ children: true });
     const n = s.size;
     this.spots = s.buildings.filter(b => b.type !== 'conduit' && b.progress >= 1 && b.connected).map(b => [b.x + BUILDINGS[b.type].w + 0.15, b.y + BUILDINGS[b.type].h * 0.5] as [number, number]);
@@ -346,9 +362,26 @@ export class View {
       }
     }
     this.actors(s, o, l, tint, dark, now, speed);
-    if (selected !== null) {
-      const b = s.buildings.find(q => q.uid === selected);
-      if (b) this.outline(o, b.x, b.y, BUILDINGS[b.type].w, BUILDINGS[b.type].h, 0xffffff, 2);
+    // The selected building: its plot lit on the ground beneath it, and a line round its picture. Both sit at the
+    // building's own depth, so neither is drawn across a building standing in front.
+    const mk = this.mark; mk.clear();
+    const sb = selected !== null ? s.buildings.find(q => q.uid === selected) : undefined;
+    const key = sb ? `${sb.uid}:${s.rev}:${TEX.size}` : '';
+    if (key !== this.haloKey) {
+      this.haloKey = key; this.objects.removeChild(this.halo);
+      for (const c of this.halo.removeChildren()) c.destroy();
+      const art = sb && artOf(sb), edge = art && edgeOf(art);
+      if (sb && art && edge) {
+        const d = BUILDINGS[sb.type], m = iso(sb.x + d.w / 2, sb.y + d.h / 2);
+        for (let i = 0; i < 12; i++) { const sp = new Sprite(edge); sp.anchor.set(art.ax, art.ay); sp.scale.set(art.k); sp.position.set(m[0] + Math.cos(i * Math.PI / 6) * 3, m[1] + Math.sin(i * Math.PI / 6) * 3); sp.tint = 0x7af0ff; this.halo.addChild(sp); }
+        this.halo.zIndex = (sb.x + d.w + sb.y + d.h) * 10 + 0.5; this.objects.addChild(this.halo);
+      }
+    }
+    if (sb) {
+      const d = BUILDINGS[sb.type], e = 0.14;
+      const a = iso(sb.x - e, sb.y - e), b = iso(sb.x + d.w + e, sb.y - e), c = iso(sb.x + d.w + e, sb.y + d.h + e), f = iso(sb.x - e, sb.y + d.h + e);
+      mk.poly([a[0], a[1], b[0], b[1], c[0], c[1], f[0], f[1]]).fill({ color: 0x22d3ee, alpha: 0.2 }).stroke({ color: 0x7af0ff, width: 2, alpha: 0.95 });
+      if (!this.halo.children.length) this.outline(o, sb.x, sb.y, d.w, d.h, 0xffffff, 2);   // no picture: the old outline
     }
     // Zoomed far out the town is small: names would be specks, and the claim needs a line that stays visible.
     const tiny = this.scale < 0.3;
