@@ -2246,26 +2246,47 @@ and craters stayed the same size right up to it.
 
 **What replaces it.** The land is now a shape, not a mask. The claim
 stands on a level cap 27 tiles in radius (its corners are 25.5 out). Past
-the cap the ground bends down and away on a circle of 60 tiles radius,
-seen from the same angle as everything else (30 degrees above, no
-perspective). It is drawn as a net of triangles that ends exactly where
-the surface turns out of sight, so the horizon is the land's own edge:
-it moves and scales with the town, and craters flatten as they near it.
-Bent ground is shaded the way lunar dust reflects (bright to the edge of
-the disc, as the full Moon is), and falls into shadow far round the bend.
+the cap the ground bends down and away on a circle, seen from the same
+angle as everything else (30 degrees above, no perspective). It is drawn
+as a net of triangles that ends exactly where the surface turns out of
+sight, so the horizon is the land's own edge: it moves and scales with
+the town, and craters flatten as they near it. Bent ground is shaded the
+way lunar dust reflects (bright to the edge of the disc, as the full Moon
+is), and falls into shadow far round the bend.
+
+**Scale.** The first bend was 60 tiles in radius. Chetan, the same
+evening: "the curved moon looks great but ... at the point we can see the
+curvature of the moon so much the town should be tiny". The bend is now
+540 tiles, nine times wider, and the zoom goes out to 0.045 (was 0.45).
+The horizon first shows when the claim is about a sixth of the screen
+wide, and at the furthest zoom the claim is about a fifteenth of it. To
+have land that far out without one enormous picture, the land is three
+pictures, one inside the next (82, 256 and 520 tiles from the centre),
+each coarser than the last and fading at its rim over the one beneath.
+The two far ones are made a moment after the town appears. Pictures keep
+smaller copies of themselves so the town does not sparkle when small.
+Zoomed far out, crater names are hidden and the claim line is kept at a
+visible width.
 
 **In play.** At working zoom the ground fills the screen. Zoomed out, the
-town sits on a curved Moon under the stars and the Earth. The zoom now
-goes out to 0.3 (was 0.45) so that view can be reached. The middle of the
-screen is held over the claim, so the town cannot be lost by panning.
-The Earth is drawn behind the ground, not over it.
+town sits small on a curved Moon under the stars and the Earth. The
+middle of the screen is held over the claim, so the town cannot be lost
+by panning. The Earth is drawn behind the ground, not over it.
 
-**Drawing only.** No rule, rate, price or amount changed. The two sizes
-above are picture sizes, not world sizes: the bend is far tighter than
+**Selecting a building.** Also from that message: "the tile selected
+overlaps other buildings actually the building could also have an outline
+of selection". The white diamond drawn over everything is gone. The
+selected building's plot is lit on the ground beneath the buildings, and
+a cyan line is drawn round its picture at its own depth, so a nearer
+building still stands in front of both.
+
+**Drawing only.** No rule, rate, price or amount changed. The sizes above
+are picture sizes, not world sizes: the bend is still far tighter than
 the real Moon's, chosen so the curve can be seen at all.
 
-**Known gaps.** Far-side plots still show the Earth. This is not yet the
-zoom out to the real globe with the plot marked on it.
+**Known gaps.** Far-side plots still show the Earth. The three land
+pictures take about 50 MB of memory while a town is open. This is not yet the zoom
+out to the real globe with the plot marked on it.
 
 ## Still open — needs you
 
