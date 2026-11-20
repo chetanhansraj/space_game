@@ -189,6 +189,9 @@
   const bodies = {};            // system view: id -> {obj, tag}
   let world = null, meShip = null, clockFn = () => 0, selected = null;
   let tween = null, introSpin = false;
+  const towns = {};                  // by company: every town on the Moon, as the server lists them
+  let pose = null, held = null;      // the camera when it is being led between the town's view and the globe's
+  let asleep = false;                // nothing is drawn while the town page has this one out of sight
   const savedCam = { moon: null, system: null };
   const tex = {};
 
@@ -492,6 +495,67 @@
     }
   }
 
+  // -- towns --------------------------------------------------------------------
+  // A town is a small lit diamond on the ground where its plot is. Yours is gold and carries a beam.
+  function syncTowns(list, mine) {
+    const seen = {};
+    for (const t of list || []) {
+      const p = t.plot || {};
+      if (typeof p.lat !== "number" || typeof p.lon !== "number" || t.lost) continue;
+      seen[t.company] = true;
+      let o = towns[t.company];
+      const own = t.company === mine;
+      if (o && o.own !== own) { dropTown(t.company); o = null; }
+      if (!o) {
+        const normal = ll(p.lat, p.lon, 1).normalize(), pos = normal.clone().multiplyScalar(R * 1.003);
+        const col = own ? COL.amber : COL.white, group = new THREE.Group();
+        const mark = new THREE.Mesh(new THREE.RingGeometry(own ? 0.013 : 0.008, own ? 0.022 : 0.014, 4),
+          new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: own ? 1 : 0.9, side: THREE.DoubleSide, depthWrite: false }));
+        mark.position.copy(pos); mark.lookAt(normal.clone().multiplyScalar(R * 2)); group.add(mark);
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(own ? 0.007 : 0.0045, 10, 8), new THREE.MeshBasicMaterial({ color: col }));
+        dot.position.copy(pos); group.add(dot);
+        if (own) {
+          const geo = new THREE.CylinderGeometry(0.003, 0.003, 0.3, 8, 1, true); geo.translate(0, 0.15, 0);
+          const beam = new THREE.Mesh(geo, beamMaterial(COL.amber));
+          beam.position.copy(pos); beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal); group.add(beam);
+        }
+        const hit = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), new THREE.MeshBasicMaterial({ visible: false }));
+        hit.position.copy(pos); hit.userData.town = t.company; group.add(hit);
+        moonScene.add(group);
+        const el = tag("", "town" + (own ? " mine" : ""), () => { if (cb.onTown) cb.onTown(t.company); });
+        o = towns[t.company] = { group, pos, normal, hit, tag: el, own };
+      }
+      o.data = t;
+      o.tag.innerHTML = `<div class="name">${escapeHtml(own ? "Your town" : t.company)}</div>` +
+        `<div class="sub">${t.population} ${t.population === 1 ? "person" : "people"}</div>`;
+    }
+    for (const k of Object.keys(towns)) if (!seen[k]) dropTown(k);
+  }
+  function dropTown(k) { const o = towns[k]; if (!o) return; moonScene.remove(o.group); o.tag.remove(); delete towns[k]; }
+
+  // -- between the town and the globe ---------------------------------------------
+  // The town page pulls back until its curved land is a ball of radius rho pixels, with the town two thirds of the way
+  // up it. This is the same ball from the same side: the whole Moon in the middle of the screen at that size, the plot
+  // sixty degrees up from its centre. The two pictures are dissolved into each other while they agree.
+  function matchPose(lat, lon, rho) {
+    const n = ll(lat, lon, 1).normalize(), y = new THREE.Vector3(0, 1, 0);
+    let north = y.clone().sub(n.clone().multiplyScalar(y.dot(n)));
+    if (north.length() < 1e-3) north = new THREE.Vector3(1, 0, 0).sub(n.clone().multiplyScalar(n.x));   // at a pole any way is south
+    north.normalize();
+    const c = n.clone().multiplyScalar(0.5).sub(north.multiplyScalar(Math.sin(60 * DEG)));             // sixty degrees south of the plot
+    const up = n.clone().sub(c.clone().multiplyScalar(n.dot(c))).normalize();                          // the plot toward the top of the screen
+    const half = Math.tan(camera.fov * DEG / 2), a = Math.atan((rho / (innerHeight / 2)) * half);
+    return { p: c.multiplyScalar(R / Math.sin(a)), t: new THREE.Vector3(), u: up };
+  }
+  function restPose(lat, lon) {
+    return { p: ll(Math.max(-58, Math.min(58, lat)), lon, 6.0), t: new THREE.Vector3(), u: new THREE.Vector3(0, 1, 0) };
+  }
+  function lead(to, ms, release, done) {
+    tween = null; held = null; controls.enabled = false;
+    pose = { from: { p: camera.position.clone(), t: controls.target.clone(), u: camera.up.clone() }, to, start: performance.now(), ms, release, done };
+  }
+  function applyPose(q) { camera.position.copy(q.p); camera.up.copy(q.u); camera.lookAt(q.t); }
+
   // -- camera -------------------------------------------------------------------
   function flyTo(pos, target, ms) {
     tween = { p0: camera.position.clone(), p1: pos, t0: controls.target.clone(), t1: target,
@@ -527,6 +591,7 @@
       controls.target.copy(s ? s.t : new THREE.Vector3());
       controls.update();
       for (const k of Object.keys(nodes)) nodes[k].tag.style.display = v === "moon" ? "" : "none";
+      for (const k of Object.keys(towns)) towns[k].tag.style.display = v === "moon" ? "" : "none";
       for (const k of Object.keys(ships)) if (ships[k].tag) ships[k].tag.style.display = v === "moon" ? "" : "none";
       for (const k of Object.keys(bodies)) bodies[k].tag.style.display = v === "system" ? "" : "none";
       fade.style.opacity = 0;
@@ -547,6 +612,7 @@
 
   function frame(ms) {
     requestAnimationFrame(frame);
+    if (asleep) return;
     const t = ms / 1000;
     if (tween) {
       const k = Math.min(1, (performance.now() - tween.start) / tween.ms);
@@ -555,8 +621,17 @@
       controls.target.lerpVectors(tween.t0, tween.t1, e);
       if (k >= 1) tween = null;
     }
-    controls.autoRotate = introSpin;
-    controls.update();
+    if (pose) {
+      const k = Math.min(1, (performance.now() - pose.start) / pose.ms), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      applyPose({ p: pose.from.p.clone().lerp(pose.to.p, e), t: pose.from.t.clone().lerp(pose.to.t, e), u: pose.from.u.clone().lerp(pose.to.u, e).normalize() });
+      if (k >= 1) {
+        const q = pose; pose = null;
+        if (q.release) { camera.up.set(0, 1, 0); controls.target.copy(q.to.t); controls.enabled = true; controls.update(); }
+        else held = q.to;
+        if (q.done) q.done();
+      }
+    } else if (held) applyPose(held);
+    else { controls.autoRotate = introSpin; controls.update(); }
     for (const sc of [moonScene, sysScene]) for (const c of sc.children)
       if (c.userData.sky) c.position.copy(camera.position);
     if (active === "moon") {
@@ -568,6 +643,11 @@
         n.beam.material.uniforms.t.value = t + k.length;
         const facing = n.normal.dot(tmp.copy(camera.position).sub(n.pos)) > 0;
         projectTag(n.tag, n.pos.clone().add(n.normal.clone().multiplyScalar(0.05)), facing);
+      }
+      const close = camera.position.length() < 4.6;      // other towns are named once you come near; yours always
+      for (const k of Object.keys(towns)) {
+        const o = towns[k], facing = o.normal.dot(tmp.copy(camera.position).sub(o.pos)) > 0;
+        projectTag(o.tag, o.pos.clone().add(o.normal.clone().multiplyScalar(o.own ? 0.05 : 0.03)), facing && (o.own || close));
       }
       for (const k of Object.keys(ships)) {
         const o = ships[k]; if (!o.tag) continue;
@@ -596,8 +676,9 @@
     const mouse = new THREE.Vector2((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
     const ray = new THREE.Raycaster(); ray.setFromCamera(mouse, camera);
     if (active === "moon") {
-      const hits = ray.intersectObjects(Object.values(nodes).map((n) => n.hit));
-      if (hits.length) select(hits[0].object.userData.node, true);
+      const hits = ray.intersectObjects(Object.values(nodes).map((n) => n.hit).concat(Object.values(towns).map((o) => o.hit)));
+      if (hits.length && hits[0].object.userData.town) { if (cb.onTown) cb.onTown(hits[0].object.userData.town); }
+      else if (hits.length) select(hits[0].object.userData.node, true);
     } else {
       const hits = ray.intersectObjects(Object.values(bodies).filter((b) => b.mesh).map((b) => b.mesh));
       if (hits.length && hits[0].object.userData.body === "earth") setView("moon");
@@ -646,6 +727,21 @@
       }
     },
     setSky: syncSky,
+    setTowns: syncTowns,
+    sleep(on) { asleep = !!on; },
+    town(company) { return towns[company] ? towns[company].data : null; },
+    // Arriving from the town: stand where its last picture was taken.
+    arrive(lat, lon, rho) { tween = null; pose = null; controls.enabled = false; held = matchPose(lat, lon, rho); applyPose(held); },
+    // Then draw back to the globe's own view and hand the camera to the player.
+    settle(lat, lon, done) { lead(restPose(lat, lon), 1900, true, done); },
+    // Leaving for the town: go to where its first picture will be taken, and stay there.
+    depart(lat, lon, rho, done) { lead(matchPose(lat, lon, rho), 1500, false, done); },
+    // Is the camera as low as it goes, straight over this town?
+    over(company) {
+      const o = towns[company]; if (!o || pose || held) return false;
+      return camera.position.length() < controls.minDistance + 0.12 && camera.position.clone().normalize().dot(o.normal) > Math.cos(16 * DEG);
+    },
+    flyToTown(company) { const o = towns[company]; if (o && !pose && !held) flyTo(restPose(o.data.plot.lat, o.data.plot.lon).p, new THREE.Vector3()); },
     setMe(shipId) { meShip = shipId; if (world) syncShips(world.ships); },
     setClock(fn) { clockFn = fn; },
     select, setView, flyTo,

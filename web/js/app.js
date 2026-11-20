@@ -10,6 +10,9 @@
   "use strict";
   const $ = (s) => document.querySelector(s);
   const KEY = "lunarark.key";
+  // Shown inside the town page, as the view the town rises into. The town page leads the camera in and out.
+  const EMBED = /[?&]embed=1/.test(location.search);
+  const up = (m) => { if (EMBED && parent !== window) parent.postMessage(Object.assign({ ark: true }, m), location.origin); };
   const S = {
     token: null, world: null, me: null, sky: null, contracts: [], markets: {},
     node: null, tab: "market", open: null, offset: 0, feedSeen: new Set(),
@@ -132,6 +135,31 @@
   const typing = () => document.activeElement && document.activeElement.closest && document.activeElement.closest(".trade");
 
   // -- the player ---------------------------------------------------------------
+  // -- towns ------------------------------------------------------------------
+  async function loadTowns() {
+    try { const r = await api("/towns"); S.towns = r.towns; Scene.setTowns(r.towns, S.me ? S.me.name : S.mine); }
+    catch (e) { /* the next one will do */ }
+  }
+  function goDown() {
+    if (EMBED) { $("#townCard").classList.add("hidden"); up({ say: "down" }); return; }
+    $("#fade").style.opacity = 1; setTimeout(() => { location.href = "/town/"; }, 420);
+  }
+  function showTown(company) {
+    const t = Scene.town(company); if (!t) return;
+    const mine = t.company === (S.me ? S.me.name : S.mine), p = t.plot || {};
+    const where = `${Math.abs(p.lat).toFixed(1)}°${p.lat >= 0 ? "N" : "S"} · ${Math.abs(p.lon).toFixed(1)}°${p.lon >= 0 ? "E" : "W"}`;
+    const stat = (n, l) => `<div><b>${esc(String(n))}</b><small>${l}</small></div>`;
+    $("#townKind").textContent = mine ? "Your town" : t.house ? (t.kind || "House town") : "A player's town";
+    $("#townName").textContent = t.company;
+    $("#townWhere").textContent = `${p.name || "The Moon"} · ${where} · trades through ${t.port}`;
+    $("#townStats").innerHTML = stat(t.population, "people") + stat(t.tier, "standing") + stat(t.buildings, "buildings") +
+      stat(t.age_days, "days old") + stat(t.sold_t, "tonnes sold");
+    $("#townGo").classList.toggle("hidden", !mine);
+    $("#townCard").classList.remove("hidden");
+    Scene.flyToTown(company);
+    bindClose();
+  }
+
   async function loadMe() {
     if (!S.token) return;
     const me = await api("/me");
@@ -471,11 +499,13 @@
   async function enter(returning) {
     await loadMe();
     S.node = S.me.ship.location;
-    Scene.select(S.node, true);
+    Scene.select(S.node, !EMBED);
+    loadTowns();
     selectNode(S.node, false);
     const away = await api("/session", {});
     // The base is the same company one altitude down: same key, same world.
     $("#baseBtn").classList.remove("hidden"); $("#townBtn").classList.remove("hidden");
+    if (EMBED) return;
     if (location.hash === "#inbox") { history.replaceState(null, "", "/"); openInbox(); return; }
     if (returning && (away.hours >= 1 || away.unread)) showAway(away);
     else if (!returning) setTimeout(() => { if ($("#keyShow").classList.contains("hidden")) openInbox(); }, 400);
@@ -498,10 +528,43 @@
     Scene.setView(v);
   }
 
+  // -- inside the town page -------------------------------------------------------
+  // The town page says where its town is and how big its last picture drew the Moon. This page stands the camera
+  // there, and on the word draws back to its own view; going down, it returns there and says when it has arrived.
+  function embed() {
+    document.body.classList.add("embed");
+    let at = null, pulls = 0, pulled = 0;
+    addEventListener("message", (ev) => {
+      if (ev.origin !== location.origin || !ev.data || !ev.data.ark) return;
+      const m = ev.data;
+      if (m.say === "sleep") { S.asleep = true; Scene.sleep(true); return; }
+      if (m.say === "arrive") {
+        at = m; S.mine = m.company;
+        if (S.asleep) { S.asleep = false; Scene.sleep(false); loadWorld().catch(() => {}); loadTowns(); if (S.token) loadMe().catch(() => {}); }
+        document.body.classList.toggle("lookonly", !!m.locked);
+        $("#lockChip").textContent = m.locked ? `Looking only · the market opens to a town with a landing pad and ${m.needs} people` : "";
+        if (Scene.view() !== "moon") setView("moon");
+        document.querySelectorAll(".overlay").forEach((o) => { if (o.id !== "intro") o.classList.add("hidden"); });
+        if (S.towns) Scene.setTowns(S.towns, S.me ? S.me.name : S.mine);
+        Scene.arrive(m.lat, m.lon, m.rho);
+      } else if (m.say === "settle" && at) Scene.settle(at.lat, at.lon);
+      else if (m.say === "depart" && at) Scene.depart(at.lat, at.lon, at.rho, () => up({ say: "departed" }));
+    });
+    // Low over your own town, pulling in further goes down into it.
+    addEventListener("wheel", (ev) => {
+      if (ev.deltaY >= 0 || !at || !Scene.over(at.company)) return;
+      const now = performance.now(); pulls = now - pulled < 1400 ? pulls + 1 : 1; pulled = now;
+      if (pulls >= 3) { pulls = 0; goDown(); } else toast("Keep going to drop into your town.");
+    }, { passive: true });
+    S.asleep = true; Scene.sleep(true);      // until the town page brings it into view
+    up({ say: "loaded" });
+  }
+
   // -- boot ---------------------------------------------------------------------
   async function boot() {
     Scene.init($("#stage"), $("#labels"), {
       onSelect: (id) => { if (id !== S.node) selectNode(id, false); },
+      onTown: showTown,
       onView: (v) => {
         document.querySelectorAll("#views button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
         $("#hint").textContent = v === "moon" ? "Drag to turn the Moon · scroll to zoom · click a port"
@@ -512,8 +575,9 @@
     document.querySelectorAll("#views button").forEach((b) => b.onclick = () => setView(b.dataset.view));
     document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => { S.tab = b.dataset.tab; drawPort(); });
     $("#inboxBtn").onclick = openInbox;
-    $("#townBtn").onclick = () => { $("#fade").style.opacity = 1; setTimeout(() => { location.href = "/town/"; }, 420); };
-    $("#baseBtn").onclick = () => { $("#fade").style.opacity = 1; setTimeout(() => { location.href = "/base/"; }, 420); };
+    $("#townBtn").onclick = goDown;
+    $("#townGo").onclick = goDown;
+    $("#baseBtn").onclick = () => { $("#fade").style.opacity = 1; setTimeout(() => { (EMBED ? top : window).location.href = "/base/"; }, 420); };
     $("#joinForm").onsubmit = signup;
     $("#keyForm").onsubmit = signInWithKey;
     $("#haveKey").onclick = () => $("#keyForm").classList.toggle("hidden");
@@ -532,14 +596,19 @@
     loadSky(); loadContracts(); loadMarket(S.node);
     if (S.token) {
       try { await enter(true); } catch (e) { if (!S.token) { /* signed out in api() */ } }
-    } else intro();
+    } else if (EMBED) { S.spectating = true; loadTowns(); }
+    else { intro(); loadTowns(); }
+    if (EMBED) embed();
+    setInterval(() => { if (!S.asleep) loadTowns(); }, 20000);
 
-    setInterval(drawClock, 250);
-    setInterval(() => loadWorld().catch(() => {}), 3000);
-    setInterval(() => { if (S.token) loadMe().catch(() => {}); }, 3000);
-    setInterval(() => loadContracts(), 6000);
-    setInterval(() => { if (S.tab === "market" && S.node) loadMarket(S.node); }, 5000);
-    setInterval(loadSky, 30000);
+    // Out of sight inside the town page, this page neither draws nor asks the server anything.
+    const awake = (fn) => () => { if (!S.asleep) fn(); };
+    setInterval(awake(drawClock), 250);
+    setInterval(awake(() => loadWorld().catch(() => {})), 3000);
+    setInterval(awake(() => { if (S.token) loadMe().catch(() => {}); }), 3000);
+    setInterval(awake(() => loadContracts()), 6000);
+    setInterval(awake(() => { if (S.tab === "market" && S.node) loadMarket(S.node); }), 5000);
+    setInterval(awake(loadSky), 30000);
   }
   boot();
 })();
