@@ -4,7 +4,7 @@
 // with a two-letter label. The ground is one lit picture built per town (ground.ts).
 
 import { Application, Container, Graphics, Text, Sprite, Texture, Matrix, Mesh, MeshGeometry } from './pixi';
-import { buildGround, buildOutskirts, landNet, GP, Stamp } from './ground';
+import { buildGround, buildLand, landNet, LANDS, GP, Stamp } from './ground';
 // @ts-ignore
 import craterA from '../art/craterA.png';
 // @ts-ignore
@@ -34,6 +34,8 @@ import { ORES } from '../sim/world';
 import { State, GROUND, SIZE, sunFactor, population, LUNAR_DAY, HALF } from '../sim/sim';
 
 const TW = 64, TH = 32;
+// Zoomed far out, a picture is drawn many times smaller than it was made. Smaller copies are kept ready so it does not sparkle.
+const soft = (t: Tex): Tex => { t.source.autoGenerateMipmaps = true; return t; };
 const iso = (x: number, y: number, z = 0): [number, number] => [(x - y) * (TW / 2), (x + y) * (TH / 2) - z];
 
 interface Look { top: number; hgt: number; inset: number; ink: number; cap?: number; }
@@ -102,6 +104,7 @@ export class View {
   private lights = new Graphics();
   private ghost = new Graphics();
   private stars = new Graphics();
+  private landJob = 0;
   private groundTex: Tex[] = [];        // the two ground pictures of the town on screen, freed when the ground is redrawn
   private labels = new Container();
   private fx = new Container();
@@ -125,8 +128,8 @@ export class View {
     v.objects.sortableChildren = true;
     { const img = new Image(); img.onload = () => { DUST = img; v.drawnSeed = -1; }; img.src = regolithJpg as string; }
     { const got: (Stamp | null)[] = [null, null, null, null]; [[craterA, 0.4], [craterB, 0.425], [craterC, 0.3625], [craterD, 0.375]].forEach(([u, rim], i) => { const img = new Image(); img.onload = () => { got[i] = { img, rim: rim as number }; if (got.every(Boolean)) { STAMPS.push(...(got as Stamp[])); v.drawnSeed = -1; } }; img.src = u as string; }); }
-    [rock0, rock1, rock2, rock3, rock4, rock5].forEach((u, i) => { const img = new Image(); img.onload = () => { ROCKS[i] = Texture.from(img); v.drawnSeed = -1; }; img.src = u as string; });
-    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, Texture.from(img)); v.drawnRev = -1; }; img.src = a.url; }   // an image element, because the page may not fetch
+    [rock0, rock1, rock2, rock3, rock4, rock5].forEach((u, i) => { const img = new Image(); img.onload = () => { ROCKS[i] = soft(Texture.from(img)); v.drawnSeed = -1; }; img.src = u as string; });
+    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, soft(Texture.from(img))); v.drawnRev = -1; }; img.src = a.url; }   // an image element, because the page may not fetch
     v.lights.blendMode = 'add';
     v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.objects, v.ghost, v.overlay, v.lights, v.fx);
     v.app.stage.addChild(v.stars, v.world);
@@ -151,7 +154,7 @@ export class View {
   }
   panBy(dx: number, dy: number) { this.world.position.x += dx; this.world.position.y += dy; this.hold(); }
   zoomAt(px: number, py: number, factor: number) {
-    const next = Math.max(0.3, Math.min(2.6, this.scale * factor));   // far enough out to see the land curve away
+    const next = Math.max(0.045, Math.min(2.6, this.scale * factor));   // far enough out to see the land curve away, with the town small on it
     const k = next / this.scale;
     this.world.position.x = px - (px - this.world.position.x) * k;
     this.world.position.y = py - (py - this.world.position.y) * k;
@@ -183,12 +186,17 @@ export class View {
     for (const c of g0.removeChildren()) c.destroy({ children: true });   // the boulder pictures are shared, so textures are freed by hand below
     for (const t of this.groundTex.splice(0)) t.destroy(true);
     const n = s.size;
-    // the land around the claim: level near the town, then curving away like the globe it is
-    const M = 64, gpo = 12;
-    const farTex = Texture.from(buildOutskirts(s, DUST, STAMPS, M, gpo)); this.groundTex.push(farTex);
-    const far = new Mesh({ geometry: new MeshGeometry(landNet(n, M)), texture: farTex }); g0.addChild(far);   // level under the claim, then bending away to a real horizon
+    // The land around the claim: level near the town, then curving away like the globe it is. Three pictures, one inside
+    // the next. The nearest is made now; the two far ones a moment later, so the town itself is on screen without waiting.
+    const job = ++this.landJob, lands = new Container(); g0.addChild(lands);
+    const lay = (i: number) => {
+      const tex = soft(Texture.from(buildLand(s, DUST, STAMPS, LANDS[i], i))); this.groundTex.push(tex);
+      const m = new Mesh({ geometry: new MeshGeometry(landNet(n, LANDS[i])), texture: tex }); m.zIndex = -i; lands.addChild(m); lands.sortChildren();
+    };
+    lay(0);
+    [2, 1].forEach((i, k) => setTimeout(() => { if (job === this.landJob) lay(i); }, 60 + 90 * k));
     // the ground: one lit picture seen from straight above, laid onto the tilted grid
-    const tex = Texture.from(buildGround(s, DUST, STAMPS)); this.groundTex.push(tex);
+    const tex = soft(Texture.from(buildGround(s, DUST, STAMPS))); this.groundTex.push(tex);
     const land = new Sprite(tex); land.setFromMatrix(new Matrix(32 / GP, 16 / GP, -32 / GP, 16 / GP, 0, 0)); g0.addChild(land);
     const g = new Graphics(); g0.addChild(g);
     // the claim's edge: a line on the ground and a post at each corner
@@ -342,6 +350,10 @@ export class View {
       const b = s.buildings.find(q => q.uid === selected);
       if (b) this.outline(o, b.x, b.y, BUILDINGS[b.type].w, BUILDINGS[b.type].h, 0xffffff, 2);
     }
+    // Zoomed far out the town is small: names would be specks, and the claim needs a line that stays visible.
+    const tiny = this.scale < 0.3;
+    this.labels.visible = this.findLabels.visible = !tiny;
+    if (tiny) { const n = s.size, a = iso(0, 0), b = iso(n, 0), c = iso(n, n), f = iso(0, n); o.poly([a[0], a[1], b[0], b[1], c[0], c[1], f[0], f[1]]).stroke({ color: 0x22d3ee, width: 1.5 / this.scale, alpha: 0.8 }); }
 
     const gh = this.ghost; gh.clear();
     if (tool && hover) {

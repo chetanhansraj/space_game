@@ -117,33 +117,58 @@ export function buildGround(s: State, detail: HTMLImageElement | null, stamps: S
   return cv;
 }
 
-// The land around the claim, so the town stands on the Moon and not on a slab: the same soil and light at a coarser
-// grain, M tiles out on every side, with its own scatter of rendered craters. Soil patches and the dust texture line up
-// with the claim's own picture so the join does not show.
-export function buildOutskirts(s: State, detail: HTMLImageElement | null, stamps: Stamp[], M: number, gp: number): HTMLCanvasElement {
-  const n = s.size, T = n + 2 * M, N = T * gp;
+// The land around the claim, so the town stands on the Moon and not on a slab. It is three pictures, one inside the
+// next, each several times coarser and reaching about three times further than the one before, so there is detail
+// beside the town and still land under the horizon when the town is a speck. Each inner picture fades out at its rim
+// over the one beneath. Soil tone is worked out from the place on the ground, so the pictures agree where they meet.
+export interface Land {
+  half: number;      // tiles from the claim's centre to the picture's edge
+  px: number;        // the picture's width and height
+  hole: number;      // craters keep clear of ground nearer than this (the picture above covers it); 0 = keep clear of the claim
+  rim: number;       // the picture fades out from here ...
+  end: number;       // ... to here. Nothing is drawn past it. 0 for the outermost: it runs on round the bend
+  grain: number;     // tiles one copy of the dust photograph covers
+  craters: number; small: number; large: number;   // how many, and their radii in tiles
+}
+export const CAP = 27;     // tiles from the claim's centre that stay level (the claim's corners are 25.5 out)
+export const BEND = 540;   // radius of the bend, in tiles: wide enough that the town is small by the time the curve shows
+export const LANDS: Land[] = [
+  { half: 82, px: 1968, hole: 0, rim: 70, end: 80, grain: 16, craters: 420, small: 0.5, large: 7 },
+  { half: 256, px: 2048, hole: 72, rim: 225, end: 250, grain: 64, craters: 180, small: 2.5, large: 26 },
+  { half: 520, px: 2048, hole: 227, rim: 0, end: 0, grain: 256, craters: 130, small: 6, large: 70 },
+];
+const smooth = (a: number, b: number, x: number) => { const k = x <= a ? 0 : x >= b ? 1 : (x - a) / (b - a); return k * k * (3 - 2 * k); };
+
+export function buildLand(s: State, detail: HTMLImageElement | null, stamps: Stamp[], L: Land, salt: number): HTMLCanvasElement {
+  const n = s.size, N = L.px, C = n / 2, per = N / (2 * L.half), t0 = C - L.half;   // per = picture pixels per tile; t0 = the tile at the picture's left edge
   const cv = document.createElement('canvas'); cv.width = cv.height = N;
   const ctx = cv.getContext('2d')!;
-  if (detail) { const dw = 16 * gp; for (let y = 0; y < N; y += dw) for (let x = 0; x < N; x += dw) ctx.drawImage(detail, x, y, dw, dw); }
+  if (detail) { const dw = L.grain * per, o = (Math.floor(t0 / L.grain) * L.grain - t0) * per; for (let y = o; y < N; y += dw) for (let x = o; x < N; x += dw) ctx.drawImage(detail, x, y, dw, dw); }
   else { ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, N, N); }
   const sc = document.createElement('canvas'); sc.width = sc.height = N;
   const sctx = sc.getContext('2d')!; sctx.fillStyle = 'rgb(128,128,128)'; sctx.fillRect(0, 0, N, N);
-  let seed = (s.seed | 0) ^ 0x2545f491;
+  let seed = (s.seed | 0) ^ (0x2545f491 + salt * 0x9e3779b1);
   const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; };
-  if (stamps.length) for (let i = 0; i < 420; i++) {
-    const r = 0.5 + Math.pow(rnd(), 2.6) * 7, tx = rnd() * T - M, ty = rnd() * T - M, k = Math.floor(rnd() * stamps.length);
-    if (tx > -r * 1.4 - 1 && tx < n + r * 1.4 + 1 && ty > -r * 1.4 - 1 && ty < n + r * 1.4 + 1) continue;   // none cut by the claim's edge
-    const st = stamps[k], d = 2 * r * gp / st.rim; sctx.drawImage(st.img, (tx + M) * gp - d / 2, (ty + M) * gp - d / 2, d, d);
+  const far = L.rim || L.half;
+  if (stamps.length) for (let i = 0; i < L.craters; i++) {
+    const r = L.small + Math.pow(rnd(), 2.5) * L.large, tx = t0 + rnd() * 2 * L.half, ty = t0 + rnd() * 2 * L.half, k = Math.floor(rnd() * stamps.length);
+    const d0 = Math.hypot(tx - C, ty - C), w = r * 1.4;
+    if (L.hole ? d0 - w < L.hole : tx > -w - 1 && tx < n + w + 1 && ty > -w - 1 && ty < n + w + 1) continue;   // none cut by the claim's edge, or by the picture above
+    if (d0 + w > far) continue;                                                                                // none cut by this picture's own rim
+    const st = stamps[k], d = 2 * r * per / st.rim; sctx.drawImage(st.img, (tx - t0) * per - d / 2, (ty - t0) * per - d / 2, d, d);
   }
   const spx = sctx.getImageData(0, 0, N, N).data, img = ctx.getImageData(0, 0, N, N), px = img.data, sd = s.seed | 0;
   for (let y = 0; y < N; y++) {
-    const ty = y / gp - M;
+    const ty = t0 + y / per;
     for (let x = 0; x < N; x++) {
-      const tx = x / gp - M, i = (y * N + x) * 4;
-      const patch = 0.84 + 0.2 * vnoise(tx / 7 + 31, ty / 7 + 17, sd) + 0.1 * vnoise(tx / 2.2, ty / 2.2, sd + 5);
-      const f = patch * (spx[i] / 128) * 0.83 * bend(tx - n / 2, ty - n / 2);
+      const tx = t0 + x / per, i = (y * N + x) * 4, dx = tx - C, dy = ty - C, d0 = Math.hypot(dx, dy);
+      if (L.end && d0 >= L.end) { px[i + 3] = 0; continue; }
+      let patch = 0.84 + 0.2 * vnoise(tx / 7 + 31, ty / 7 + 17, sd) + 0.1 * vnoise(tx / 2.2, ty / 2.2, sd + 5);
+      if (d0 > 40) patch *= 1 + smooth(40, 130, d0) * (0.34 * vnoise(tx / 48 + 9, ty / 48 + 3, sd + 11) + 0.2 * vnoise(tx / 150 + 5, ty / 150 + 7, sd + 13) - 0.27);   // broad light and dark country, far out
+      const f = patch * (spx[i] / 128) * 0.83 * bend(dx, dy);
       const rr = px[i] * f * 0.985, gg = px[i + 1] * f * 0.975, bb = px[i + 2] * f * 1.04;
       px[i] = rr > 255 ? 255 : rr; px[i + 1] = gg > 255 ? 255 : gg; px[i + 2] = bb > 255 ? 255 : bb;
+      if (L.rim && d0 > L.rim) px[i + 3] = 255 * (1 - smooth(L.rim, L.end, d0));
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -154,15 +179,13 @@ export function buildOutskirts(s: State, detail: HTMLImageElement | null, stamps
 // The claim stands on a level cap of ground. Past the cap the land bends down and away on a circle, like the top of a
 // globe, so it ends in a true horizon: craters flatten as they near it and the edge belongs to the ground, not the screen.
 // Seen as the town is drawn: from 30 degrees above, with no perspective.
-export const CAP = 27;    // tiles from the claim's centre that stay level (the claim's corners are 25.5 out)
-export const BEND = 60;   // radius of the bend, in tiles
 const UP = 32 * Math.SQRT2 * Math.cos(Math.PI / 6);   // screen pixels for one tile of height
 const SUN = (() => { const l = Math.hypot(0.42, 0.62, 0.6); return [0.42 / l, 0.62 / l, 0.6 / l]; })();
 const LEVEL = SUN[2] / (SUN[2] + 0.5);
 
 // How bright bent ground looks next to level ground. Moon dust does not darken toward the edge of the disc the way a
 // matt ball does (the full Moon is as bright at its rim as at its centre), so this follows the dust, not the ball.
-// Far round the bend, past what the picture covers, the land falls into shadow.
+// Far round the bend, past what the pictures cover, the land falls into shadow.
 function bend(dx: number, dy: number): number {
   const s = Math.hypot(dx, dy);
   if (s <= CAP) return 1;
@@ -175,19 +198,20 @@ function bend(dx: number, dy: number): number {
   return f * (1 - 0.95 * k * k * (3 - 2 * k));
 }
 
-// The bent land as a net of triangles, in the town's own screen units, with where each corner falls on the outskirts
-// picture. It stops exactly at the horizon in every direction, so no hidden ground is drawn.
-export function landNet(n: number, M: number): { positions: Float32Array; uvs: Float32Array; indices: Uint32Array } {
-  const A = 180, K = 30, T = n + 2 * M, C = n / 2, reach = C + M - 1;
+// One land picture laid over the bent ground as a net of triangles, in the town's own screen units. An inner picture
+// stops where it has faded out. The outermost runs on to the horizon in every direction and stops exactly there, so no
+// hidden ground is drawn; past what it covers, its last, shadowed edge is stretched on round the bend.
+export function landNet(n: number, L: Land): { positions: Float32Array; uvs: Float32Array; indices: Uint32Array } {
+  const A = 180, K = 34, reach = L.end || CAP + BEND * 0.9, stop = L.end ? (L.end - CAP) / BEND : Infinity;
   const positions = new Float32Array(A * (K + 1) * 2), uvs = new Float32Array(A * (K + 1) * 2), indices: number[] = [];
   for (let j = 0; j < A; j++) {
     const f = 2 * Math.PI * j / A, cf = Math.cos(f), sf = Math.sin(f);
-    const edge = Math.atan2(0.5, -0.8660254 * (cf + sf) * 0.70710678);   // how far round the bend the horizon lies, this way
+    const edge = Math.min(stop, Math.atan2(0.5, -0.8660254 * (cf + sf) * 0.70710678));   // how far round the bend the horizon lies, this way
     for (let k = 0; k <= K; k++) {
       const th = k < 2 ? 0 : edge * (k - 1) / (K - 1), r = k === 0 ? 0 : CAP + BEND * Math.sin(th), h = -BEND * (1 - Math.cos(th));
       const s = Math.min(k === 0 ? 0 : CAP + BEND * th, reach), i = (j * (K + 1) + k) * 2;
       positions[i] = (r * cf - r * sf) * 32; positions[i + 1] = (r * cf + r * sf) * 16 - h * UP + n * 16;
-      uvs[i] = (C + s * cf + M) / T; uvs[i + 1] = (C + s * sf + M) / T;
+      uvs[i] = 0.5 + s * cf / (2 * L.half); uvs[i + 1] = 0.5 + s * sf / (2 * L.half);
     }
     const a = j * (K + 1), b = ((j + 1) % A) * (K + 1);
     for (let k = 0; k < K; k++) indices.push(a + k, a + k + 1, b + k + 1, a + k, b + k + 1, b + k);
