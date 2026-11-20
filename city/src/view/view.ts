@@ -1,8 +1,34 @@
 // The 2D isometric view. It reads the simulation state and draws it; it never
 // changes it. A 3D view can replace this file without touching the simulation.
-// Art is deliberately grey-box: flat-shaded prisms with two-letter labels.
+// Buildings are pictures rendered from 3D models at this angle; a type with no picture falls back to a flat-shaded prism
+// with a two-letter label. The ground is one lit picture built per town (ground.ts).
 
-import { Application, Container, Graphics, Text } from './pixi';
+import { Application, Container, Graphics, Text, Sprite, Texture, Matrix } from './pixi';
+import { buildGround, buildOutskirts, GP, Stamp } from './ground';
+// @ts-ignore
+import craterA from '../art/craterA.png';
+// @ts-ignore
+import craterB from '../art/craterB.png';
+// @ts-ignore
+import craterC from '../art/craterC.png';
+// @ts-ignore
+import craterD from '../art/craterD.png';
+// @ts-ignore a picture, resolved by the bundler
+import regolithJpg from '../art/regolith.jpg';
+// @ts-ignore
+import rock0 from '../art/rock0.png';
+// @ts-ignore
+import rock1 from '../art/rock1.png';
+// @ts-ignore
+import rock2 from '../art/rock2.png';
+// @ts-ignore
+import rock3 from '../art/rock3.png';
+// @ts-ignore
+import rock4 from '../art/rock4.png';
+// @ts-ignore
+import rock5 from '../art/rock5.png';
+import type { Texture as Tex } from './pixi';
+import { ART, Art } from '../art/art';
 import { BUILDINGS, BuildingType, ZONES } from '../sim/buildings';
 import { ORES } from '../sim/world';
 import { State, GROUND, sunFactor, population, LUNAR_DAY, HALF } from '../sim/sim';
@@ -31,6 +57,13 @@ const LOOK: Record<BuildingType, Look> = {
   garden: { top: 0x3fa66a, hgt: 10, inset: 0.06, ink: 0x06220f, cap: 0xb9f0c8 },
   clinic: { top: 0xf4f1ea, hgt: 16, inset: 0.1, ink: 0x2b2a33, cap: 0xff6b6b },
 };
+
+const TEX = new Map<Art, Tex>();
+let DUST: HTMLImageElement | null = null;          // the dust texture, once loaded
+const ROCKS: Tex[] = [];
+const STAMPS: Stamp[] = [];                       // crater shading rendered in Blender, used once all four are in
+// The picture for a building at its level: the upgraded one from level 2 when there is one.
+const artOf = (b: { type: BuildingType; level?: number }): Art | undefined => { const a = ART[b.type]; if (!a || !a.levels || (b.level || 1) < 2) return a; return a.levels[Math.min((b.level || 1) - 2, a.levels.length - 1)]; };
 
 const shade = (c: number, k: number) => {
   const r = Math.min(255, ((c >> 16) & 255) * k) | 0, g = Math.min(255, ((c >> 8) & 255) * k) | 0, b = Math.min(255, (c & 255) * k) | 0;
@@ -69,6 +102,9 @@ export class View {
   private lights = new Graphics();
   private ghost = new Graphics();
   private stars = new Graphics();
+  private groundTex: Tex[] = [];        // the two ground pictures of the town on screen, freed when the ground is redrawn
+  private cuts = [new Graphics(), new Graphics(), new Graphics(), new Graphics(), new Graphics(), new Graphics(), new Graphics()];   // below the horizon: ground layers show only here; buildings get a little headroom
+  private horizon = new Graphics();    // far hills along the horizon, and the dimming of distant ground
   private labels = new Container();
   private fx = new Container();
   private seenPop = 0;
@@ -89,14 +125,38 @@ export class View {
     host.appendChild(v.app.canvas);
     v.app.canvas.style.touchAction = 'none';
     v.objects.sortableChildren = true;
+    { const img = new Image(); img.onload = () => { DUST = img; v.drawnSeed = -1; }; img.src = regolithJpg as string; }
+    { const got: (Stamp | null)[] = [null, null, null, null]; [[craterA, 0.4], [craterB, 0.425], [craterC, 0.3625], [craterD, 0.375]].forEach(([u, rim], i) => { const img = new Image(); img.onload = () => { got[i] = { img, rim: rim as number }; if (got.every(Boolean)) { STAMPS.push(...(got as Stamp[])); v.drawnSeed = -1; } }; img.src = u as string; }); }
+    [rock0, rock1, rock2, rock3, rock4, rock5].forEach((u, i) => { const img = new Image(); img.onload = () => { ROCKS[i] = Texture.from(img); v.drawnSeed = -1; }; img.src = u as string; });
+    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, Texture.from(img)); v.drawnRev = -1; }; img.src = a.url; }   // an image element, because the page may not fetch
     v.lights.blendMode = 'add';
     v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.objects, v.ghost, v.overlay, v.lights, v.fx);
-    v.app.stage.addChild(v.stars, v.world);
+    v.app.stage.addChild(v.stars, v.world, ...v.cuts, v.horizon);
+    v.terrain.mask = v.cuts[0]; v.zones.mask = v.cuts[1]; v.labels.mask = v.cuts[2]; v.objects.mask = v.cuts[3]; v.overlay.mask = v.cuts[4]; v.lights.mask = v.cuts[5]; v.findLabels.mask = v.cuts[6]; v.layoutHorizon(); v.app.renderer.on('resize', () => v.layoutHorizon());
     for (let i = 0; i < 260; i++) {
       const r = hash(i, 7) < 0.9 ? 0.7 : 1.3;
       v.stars.circle(hash(i, 1) * 2800, hash(i, 2) * 1700, r).fill({ color: 0xffffff, alpha: 0.25 + hash(i, 3) * 0.55 });
     }
     return v;
+  }
+
+  // ----- the horizon: the ground runs back to a curved edge under a black sky -----
+  private horizonY(x: number, W: number, H: number) { const t = (x - W / 2) / (W / 2); return H * 0.2 + t * t * H * 0.05; }
+  private layoutHorizon() {
+    const W = this.app.screen.width, H = this.app.screen.height, hz = this.horizon, step = 16;
+    hz.clear();
+    const edge = (lift: number) => { const q: number[] = []; for (let x = -step; x <= W + step; x += step) q.push(x, this.horizonY(x, W, H) - lift); return q; };
+    this.cuts.forEach((c, i) => { c.clear(); c.poly([...edge(i === 3 ? H * 0.16 : i > 3 ? 4 : 0), W + step, H + 10, -step, H + 10]).fill(0xffffff); });   // a tall building near the edge keeps its top
+    // distant ground loses contrast toward the edge: thin layers, each reaching a little less far
+    for (let i = 1; i <= 22; i++) {
+      const far = edge(0), near: number[] = [], d = i * H * 0.0075;
+      for (let j = far.length - 2; j >= 0; j -= 2) near.push(far[j], far[j + 1] + d);
+      hz.poly([...far, ...near]).fill({ color: 0x0a0a12, alpha: 0.04 });
+    }
+    // the edge itself: smooth, as the real one is, with a thin sunlit line
+    const rim = edge(0), under: number[] = [];
+    for (let j = rim.length - 2; j >= 0; j -= 2) under.push(rim[j], rim[j + 1] + 2.5);
+    hz.poly([...rim, ...under]).fill({ color: 0xb4b4bd, alpha: 0.85 });
   }
 
   // ----- camera -----
@@ -113,6 +173,21 @@ export class View {
     this.world.position.y = py - (py - this.world.position.y) * k;
     this.scale = next; this.world.scale.set(next);
   }
+  // The building whose picture is under a point on the screen, nearest first; 0 if none.
+  pick(s: State, px: number, py: number): number {
+    const wx = (px - this.world.position.x) / this.scale, wy = (py - this.world.position.y) / this.scale;
+    let hit = 0, depth = -1;
+    for (const b of s.buildings) {
+      if (b.type === 'conduit') continue;
+      const d = BUILDINGS[b.type], art = artOf(b), m = iso(b.x + d.w / 2, b.y + d.h / 2);
+      const half = d.w * (TW / 2) * 0.86, top = (art ? art.top : LOOK[b.type].hgt) + 6, dx = Math.abs(wx - m[0]), dy = wy - m[1];
+      // inside the footprint diamond, or inside the body standing on it
+      const onGround = dx / (d.w * TW / 2) + Math.abs(dy) / (d.h * TH / 2) <= 1;
+      const onBody = dx <= half && dy <= 0 && dy >= -top;
+      if ((onGround || onBody) && b.x + b.y + d.w + d.h > depth) { depth = b.x + b.y + d.w + d.h; hit = b.uid; }
+    }
+    return hit;
+  }
   screenToTile(px: number, py: number): { x: number; y: number } {
     const wx = (px - this.world.position.x) / this.scale, wy = (py - this.world.position.y) / this.scale;
     return { x: Math.floor((wx / (TW / 2) + wy / (TH / 2)) / 2), y: Math.floor((wy / (TH / 2) - wx / (TW / 2)) / 2) };
@@ -120,30 +195,30 @@ export class View {
 
   // ----- terrain, drawn once per site -----
   private drawTerrain(s: State) {
-    const g = this.terrain; g.clear();
-    const n = s.size, depth = 16;
-    // the cut edges of the claim, so the site reads as a slab of regolith
-    const p0 = iso(0, n), p1 = iso(n, n), p2 = iso(n, 0);
-    g.poly([p0[0], p0[1], p1[0], p1[1], p1[0], p1[1] + depth, p0[0], p0[1] + depth]).fill(0x2c2a36);
-    g.poly([p1[0], p1[1], p2[0], p2[1], p2[0], p2[1] + depth, p1[0], p1[1] + depth]).fill(0x1f1d28);
+    const g0 = this.terrain; g0.clear();
+    for (const c of g0.removeChildren()) c.destroy({ children: true });   // the boulder pictures are shared, so textures are freed by hand below
+    for (const t of this.groundTex.splice(0)) t.destroy(true);
+    const n = s.size;
+    // the land around the claim, out to the horizon
+    const M = 64, gpo = 12;
+    const farTex = Texture.from(buildOutskirts(s, DUST, STAMPS, M, gpo)); this.groundTex.push(farTex);
+    const far = new Sprite(farTex); far.setFromMatrix(new Matrix(32 / gpo, 16 / gpo, -32 / gpo, 16 / gpo, 0, -2 * M * 16)); g0.addChild(far);
+    // the ground: one lit picture seen from straight above, laid onto the tilted grid
+    const tex = Texture.from(buildGround(s, DUST, STAMPS)); this.groundTex.push(tex);
+    const land = new Sprite(tex); land.setFromMatrix(new Matrix(32 / GP, 16 / GP, -32 / GP, 16 / GP, 0, 0)); g0.addChild(land);
+    const g = new Graphics(); g0.addChild(g);
+    // the claim's edge: a line on the ground and a post at each corner
+    { const a = iso(0, 0), b = iso(n, 0), c = iso(n, n), d = iso(0, n);
+      g.poly([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]).stroke({ color: 0x22d3ee, width: 2, alpha: 0.55 });
+      for (const q of [a, b, c, d]) g.rect(q[0] - 1.5, q[1] - 14, 3, 14).fill(0xd9dbe2).circle(q[0], q[1] - 15, 2.5).fill(0x22d3ee); }
+    // a faint grid, so plots can still be counted
+    for (let i = 0; i <= n; i++) { const a = iso(i, 0), b = iso(i, n), c = iso(0, i), d = iso(n, i); g.moveTo(a[0], a[1]).lineTo(b[0], b[1]).moveTo(c[0], c[1]).lineTo(d[0], d[1]); }
+    g.stroke({ color: 0x000000, width: 1, alpha: 0.09 });
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const kind = s.ground[y * n + x];
-      const noise = hash(x, y);
-      let z = 0, col = mix(0x6f6c7a, 0x7d7a88, noise);
-      if (kind === GROUND.rim) { z = 5; col = mix(0x8d8a97, 0x9a97a4, noise); }
-      else if (kind === GROUND.floor) { z = -4; col = mix(0x4b4957, 0x565462, noise); }
-      else if (kind === GROUND.heritage) col = mix(0x8a836f, 0x938c78, noise);
-      const a = iso(x, y, z), b = iso(x + 1, y, z), c = iso(x + 1, y + 1, z), d = iso(x, y + 1, z);
-      if (z > 0) {
-        g.poly([d[0], d[1], c[0], c[1], c[0], c[1] + z, d[0], d[1] + z]).fill(shade(col, 0.7));
-        g.poly([c[0], c[1], b[0], b[1], b[0], b[1] + z, c[0], c[1] + z]).fill(shade(col, 0.5));
-      }
-      g.poly([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]).fill(col).stroke({ color: 0x000000, width: 1, alpha: kind === GROUND.flat ? 0.07 : 0.03 });
-      if (kind === GROUND.boulder) {
-        const m = iso(x + 0.5, y + 0.5), r = 5 + noise * 4;
-        g.poly([m[0] - r, m[1] + 2, m[0] - r * 0.4, m[1] - r * 0.9, m[0] + r * 0.7, m[1] - r * 0.6, m[0] + r, m[1] + 3, m[0], m[1] + 6]).fill(shade(col, 0.6));
-        g.poly([m[0] - r * 0.4, m[1] - r * 0.9, m[0] + r * 0.7, m[1] - r * 0.6, m[0] + r * 0.1, m[1]]).fill(shade(col, 1.15));
-      }
+      if (s.ground[y * n + x] !== GROUND.boulder) continue;
+      const noise = hash(x, y), m = iso(x + 0.5, y + 0.5), rt = ROCKS[Math.floor(noise * 6) % 6];
+      if (rt) { const sp = new Sprite(rt); sp.anchor.set(0.5, 0.82); const w = 30 + hash(y, x) * 20; sp.scale.set(w / rt.width); sp.position.set(m[0], m[1] + 4); g.ellipse(m[0] + 2, m[1] + 3, w * 0.5, w * 0.2).fill({ color: 0x000000, alpha: 0.28 }); g0.addChild(sp); }
+      else { const r = 5 + noise * 4; g.poly([m[0] - r, m[1] + 2, m[0] - r * 0.4, m[1] - r * 0.9, m[0] + r * 0.7, m[1] - r * 0.6, m[0] + r, m[1] + 3, m[0], m[1] + 6]).fill(0x4a4855); }
     }
     // Places rovers visit: crater names, and the 1969 landing site with its descent stage and flag.
     for (const c of this.labels.removeChildren()) c.destroy();
@@ -191,7 +266,13 @@ export class View {
         // contact shadow
         const sa = iso(b.x, b.y), sb = iso(b.x + d.w, b.y), sc = iso(b.x + d.w, b.y + d.h), sd = iso(b.x, b.y + d.h);
         g.poly([sa[0], sa[1], sb[0], sb[1], sc[0], sc[1], sd[0], sd[1]]).fill({ color: 0x000000, alpha: 0.22 * alpha });
-        prism(g, b.x, b.y, d.w, d.h, 0, H, L.inset, top, alpha);
+        const art = artOf(b), tex = art && TEX.get(art);
+        if (art && tex) {
+          const m = iso(b.x + d.w / 2, b.y + d.h / 2);
+          const sp = new Sprite(tex); sp.anchor.set(art.ax, art.ay); sp.scale.set(art.k); sp.position.set(m[0], m[1]); sp.alpha = alpha;
+          sp.tint = b.damaged ? 0xd98a8a : built && (!b.on || !b.connected) ? 0x8f8d99 : 0xffffff;
+          g.addChild(sp);
+        } else prism(g, b.x, b.y, d.w, d.h, 0, H, L.inset, top, alpha);
         if (b.type === 'solar') {
           for (let i = 1; i < 4; i++) {
             const p = iso(b.x + L.inset + (i * (d.w - 2 * L.inset)) / 4, b.y + L.inset, H), q = iso(b.x + L.inset + (i * (d.w - 2 * L.inset)) / 4, b.y + d.h - L.inset, H);
@@ -211,7 +292,9 @@ export class View {
           g.poly([a[0], a[1], bb[0], bb[1], c[0], c[1], dd[0], dd[1]]).stroke({ color: 0x22d3ee, width: 1.5, alpha: 0.9 });
         }
         g.zIndex = (b.x + d.w + b.y + d.h) * 10 + 1;
-        if (d.short && b.type !== 'pad') {
+        if (art && tex) {
+          if (b.level > 1 + (ART[b.type]?.levels?.length || 0)) { const m = iso(b.x + d.w / 2, b.y + d.h / 2, art.top + 10); const t = new Text({ text: 'L' + b.level, style: { fontFamily: 'Space Mono, ui-monospace, monospace', fontSize: 11, fontWeight: '700', fill: 0xffc15e, stroke: { color: 0x0b0a14, width: 3 } } }); t.anchor.set(0.5); t.position.set(m[0], m[1]); t.resolution = 2; g.addChild(t); }
+        } else if (d.short && b.type !== 'pad') {
           const capLift = L.cap !== undefined ? 9 : 0;
           const m = iso(b.x + d.w / 2, b.y + d.h / 2, H + capLift);
           const t = new Text({ text: d.short + (b.level > 1 ? b.level : ''), style: { fontFamily: 'Space Mono, ui-monospace, monospace', fontSize: d.w * d.h > 1 ? 13 : 10, fontWeight: '600', fill: L.cap !== undefined ? 0x2a1e05 : L.ink } });
@@ -235,7 +318,7 @@ export class View {
     const ph = s.t % LUNAR_DAY, sun = sunFactor(s.t);
     const light = ph < HALF ? Math.min(1, 0.35 + sun * 10) : Math.max(0, 0.35 * (1 - (ph - HALF) / 8), 0.35 * (1 - (LUNAR_DAY - ph) / 8));
     const tint = light < 0.5 ? mix(0x4c5a86, 0xffcf9a, light * 2) : mix(0xffcf9a, 0xffffff, (light - 0.5) * 2);
-    this.terrain.tint = tint; this.objects.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
+    this.terrain.tint = tint; this.horizon.tint = tint; this.objects.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
     const dark = 1 - light;
 
     const o = this.overlay, l = this.lights; o.clear(); l.clear();
@@ -243,7 +326,8 @@ export class View {
     for (const b of s.buildings) {
       const d = BUILDINGS[b.type], L = LOOK[b.type], H = L.hgt * (1 + 0.55 * ((b.level || 1) - 1));
       if (b.type === 'conduit') continue;
-      const m = iso(b.x + d.w / 2, b.y + d.h / 2, H + (L.cap !== undefined ? 9 : 0));
+      const art = artOf(b);
+      const m = iso(b.x + d.w / 2, b.y + d.h / 2, art ? art.top + 4 : H + (L.cap !== undefined ? 9 : 0));
       const py = m[1] - 16;
       if (b.progress < 1) {
         o.rect(m[0] - 15, py - 2, 30, 5).fill({ color: 0x0b0a14, alpha: 0.85 });
@@ -266,9 +350,7 @@ export class View {
         const col = b.type === 'reactor' ? 0xff8a3d : warm ? 0xffd08a : 0x8fc2ff;
         const cm = iso(b.x + d.w / 2, b.y + d.h / 2, H * 0.5);
         const r = 16 + d.w * d.h * 5;
-        l.ellipse(cm[0], cm[1], r * 1.7, r).fill({ color: col, alpha: 0.1 * dark });
-        l.ellipse(cm[0], cm[1], r, r * 0.6).fill({ color: col, alpha: 0.16 * dark });
-        l.circle(m[0], m[1], 2.2).fill({ color: 0xffffff, alpha: 0.9 * dark });
+        void col; void cm; void r;   // no glow discs on the ground: around real buildings they read as stains. Lit windows belong in night pictures.
       }
     }
     this.actors(s, o, l, tint, dark, now, speed);

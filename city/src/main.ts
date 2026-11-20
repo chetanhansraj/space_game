@@ -7,7 +7,7 @@
 // forward locally only so that the picture keeps moving. It never decides anything.
 
 import { BUILDINGS, BuildingType } from './sim/buildings';
-import { State, Intent, createState, tick, apply, refresh, placeProblem, siteProblem, zoneProblem, touchesBase, TICK, LUNAR_DAY } from './sim/sim';
+import { State, Intent, createState, tick, apply, refresh, placeProblem, siteProblem, zoneProblem, touchesBase, TICK, LUNAR_DAY, bedsOf, jobsOf, drawOf, habAt, isNight } from './sim/sim';
 import { View } from './view/view';
 import { ORES } from './sim/world';
 import { Hud, UiState, Tool, zoneOf, stateLine } from './ui/hud';
@@ -76,6 +76,8 @@ async function boot(hot: any) {
   let hover: { x: number; y: number } | null = null;
   let heldSpeed = 1, helpOpen = false;
   let look: { x: number; y: number } | null = null;   // tile under the mouse, for naming buildings
+  let mouse: { x: number; y: number; cx: number; cy: number } | null = null;   // where the mouse is, for the card that follows it
+  const tip = document.createElement('div'); tip.id = 'tip'; tip.hidden = true; document.body.appendChild(tip); let tipKey = '';
   let running = false, ended = false, acc = 0, last = performance.now(), lastHud = 0, lastSave = 0, hintUntil = 0;
 
   const say = (msg: string, ms = 2600) => { ui.hint = msg; hintUntil = performance.now() + ms; };
@@ -219,6 +221,7 @@ async function boot(hot: any) {
     const p = local(e), prev = pts.get(e.pointerId);
     if (ui.tool && (e.pointerType === 'mouse' || painting)) hover = origin(p, ui.tool);
     look = e.pointerType === 'mouse' ? view.screenToTile(p.x, p.y) : null;
+    mouse = e.pointerType === 'mouse' ? { x: p.x, y: p.y, cx: e.clientX, cy: e.clientY } : null;
     if (!prev) return;
     pts.set(e.pointerId, p);
     if (pts.size === 2) {
@@ -241,12 +244,12 @@ async function boot(hot: any) {
     if (d.moved || d.button !== 0 || !running) return;
     if (ui.tool) { hover = origin(p, ui.tool); place(p); if (e.pointerType !== 'mouse') window.setTimeout(() => { hover = null; }, 700); return; }
     const t = view.screenToTile(p.x, p.y);
-    const uid = t.x >= 0 && t.y >= 0 && t.x < s.size && t.y < s.size ? s.occ[t.y * s.size + t.x] : 0;
+    const uid = view.pick(s, p.x, p.y) || (t.x >= 0 && t.y >= 0 && t.x < s.size && t.y < s.size ? s.occ[t.y * s.size + t.x] : 0);
     ui.selected = uid || null;
   };
   cv.addEventListener('pointerup', up);
   cv.addEventListener('pointercancel', e => { pts.delete(e.pointerId); down = null; painting = false; });
-  cv.addEventListener('pointerleave', () => { if (!painting) hover = null; look = null; });
+  cv.addEventListener('pointerleave', () => { if (!painting) hover = null; look = null; mouse = null; });
   cv.addEventListener('contextmenu', e => { e.preventDefault(); ui.tool = null; hover = null; });
   cv.addEventListener('wheel', e => { e.preventDefault(); const p = local(e); view.zoomAt(p.x, p.y, e.deltaY < 0 ? 1.12 : 1 / 1.12); }, { passive: false });
 
@@ -290,10 +293,31 @@ async function boot(hot: any) {
         if (now > hintUntil) ui.hint = why ?? (apart ? 'Not touching your base. It will do nothing here unless you link it with conduit.' : '');
       }
     } else if (look && now > hintUntil && inMap(look)) {
-      const b = s.buildings.find(q => q.uid === s.occ[look!.y * s.size + look!.x]);
+      const hit = mouse ? view.pick(s, mouse.x, mouse.y) : 0, b = s.buildings.find(q => q.uid === (hit || s.occ[look!.y * s.size + look!.x]));
       if (b) ui.hint = `${BUILDINGS[b.type].name}${b.level > 1 ? ' level ' + b.level : ''} · ${stateLine(b).text} · click for details`;
       else if (ui.overlay) ui.hint = `Habitability ${s.hab[look.y * s.size + look.x]}`;
     }
+    // A card that follows the mouse: the building's name and how it stands right now.
+    { const uid = running && mouse && !ui.tool && pts.size === 0 ? view.pick(s, mouse.x, mouse.y) : 0, b = uid ? s.buildings.find(q => q.uid === uid) : undefined;
+      if (b && mouse) {
+        const d = BUILDINGS[b.type], st = stateLine(b), night = isNight(s.t), draw = drawOf(b, night), beds = bedsOf(b), jobs = jobsOf(b);
+        const rows: [string, string][] = [];
+        if (b.progress < 1) rows.push(['Built', Math.round(b.progress * 100) + '%']);
+        if (d.gen > 0) rows.push(['Makes', (d.solar ? 'up to ' : '') + d.gen + ' kW' + (d.solar ? ' in sunlight' : '')]);
+        if (draw > 0) rows.push(['Draws', draw + ' kW ' + (night ? 'tonight' : 'by day')]);
+        if (d.battery > 0) rows.push(['Stores', d.battery + ' kWh']);
+        if (beds > 0) rows.push(['Beds', String(beds)]);
+        if (jobs > 0) rows.push(['Jobs', String(jobs)]);
+        if (b.type === 'habitat' || b.type === 'lodge') rows.push(['Habitability', String(Math.round(habAt(s, b.x, b.y, d.w, d.h)))]);
+        rows.push(['Upkeep', d.upkeep + ' cr/h']);
+        const key = b.uid + '|' + b.level + '|' + st.text + '|' + rows.map(r => r[1]).join('|');
+        if (key !== tipKey) { tipKey = key; const e = (t: string) => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+          tip.innerHTML = `<b>${e(d.name)}${b.level > 1 ? ' · level ' + b.level : ''}</b><i data-tone="${st.tone}">${e(st.text)}</i><span class="fx">${e(d.effect)}</span><dl>${rows.map(r => `<div><dt>${r[0]}</dt><dd>${e(r[1])}</dd></div>`).join('')}</dl><u>Click for details</u>`; }
+        tip.hidden = false;
+        const w = tip.offsetWidth, h = tip.offsetHeight;
+        tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, mouse.cx + 18)) + 'px';
+        tip.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, mouse.cy + 18)) + 'px';
+      } else if (!tip.hidden) { tip.hidden = true; tipKey = ''; } }
     view.frame(s, ui.selected, ui.tool, hover, ok, now, running && s.phase === 'playing' ? ui.speed : 0, ui.overlay);
     if (now - lastHud > 150) { lastHud = now; hud.update(s, ui); }
     if (running && s.phase === 'playing' && now - lastSave > 5000) { lastSave = now; save(s); }
