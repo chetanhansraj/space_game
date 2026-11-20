@@ -2211,7 +2211,8 @@ shading stamps rendered in Blender with the same sun, about 300 small
 craters, and six boulder pictures on the tiles the simulation already
 marks as boulders. The land continues 64 tiles past the claim, the claim
 is a line on the ground with a post at each corner, and the view ends in
-a smooth curved horizon under the sky. The slab's cut edges are gone.
+a smooth curved horizon under the sky (replaced in D88). The slab's cut
+edges are gone.
 
 **Pointer.** The building under the pointer is found from its picture,
 not only from the ground tile, for both the hover card and a click. The
@@ -2232,6 +2233,39 @@ About 2.6 MB in 36 files.
 is very faint. Level pictures have no ground shadow. Building the ground
 costs a second or two on a slow phone. The full recipe for making more
 pictures is kept in the project notes, not in this repo.
+
+### D88 — The land curves away to its own horizon
+
+*Direction from Chetan, 20 November 2026, on seeing D87 on the server:*
+"this horizon line is laughable ... its like a mask this not what i had in
+mind for this game".
+
+He was right. D87 drew a curve across the screen and hid everything above
+it. The line was fixed to the screen, so the ground slid underneath it,
+and craters stayed the same size right up to it.
+
+**What replaces it.** The land is now a shape, not a mask. The claim
+stands on a level cap 27 tiles in radius (its corners are 25.5 out). Past
+the cap the ground bends down and away on a circle of 60 tiles radius,
+seen from the same angle as everything else (30 degrees above, no
+perspective). It is drawn as a net of triangles that ends exactly where
+the surface turns out of sight, so the horizon is the land's own edge:
+it moves and scales with the town, and craters flatten as they near it.
+Bent ground is shaded the way lunar dust reflects (bright to the edge of
+the disc, as the full Moon is), and falls into shadow far round the bend.
+
+**In play.** At working zoom the ground fills the screen. Zoomed out, the
+town sits on a curved Moon under the stars and the Earth. The zoom now
+goes out to 0.3 (was 0.45) so that view can be reached. The middle of the
+screen is held over the claim, so the town cannot be lost by panning.
+The Earth is drawn behind the ground, not over it.
+
+**Drawing only.** No rule, rate, price or amount changed. The two sizes
+above are picture sizes, not world sizes: the bend is far tighter than
+the real Moon's, chosen so the curve can be seen at all.
+
+**Known gaps.** Far-side plots still show the Earth. This is not yet the
+zoom out to the real globe with the plot marked on it.
 
 ## Still open — needs you
 
