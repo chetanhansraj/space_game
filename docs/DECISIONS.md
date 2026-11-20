@@ -2288,6 +2288,51 @@ the real Moon's, chosen so the curve can be seen at all.
 pictures take about 50 MB of memory while a town is open. This is not yet the zoom
 out to the real globe with the plot marked on it.
 
+### D89 — Building takes a quarter of the time
+
+*Direction from Chetan, 20 November 2026:* "the building or various
+building too slow, i dont want people to wait for too long to their
+building to develop".
+
+On the world clock one game hour is one real minute and nothing speeds a
+build up, so a habitat took 20 real minutes and a reactor 40. A new
+player placed a building and had nothing to do.
+
+Three ways were put to him: cut every build time to a quarter, make only
+the first building of each kind fast, or let credits finish a build. The
+quarter was recommended, because it is one number, it keeps the order of
+what is quick and what is slow, and it helps the newest player most. He
+answered "go for it bro".
+
+**The numbers** (game hours, which on the live clock are real minutes).
+The factor of four is Claude's, approved by Chetan, not measured.
+
+| Building | Was | Now |
+|---|---|---|
+| Conduit | 1 | 0.25 |
+| Oxygen Tank, Water Tank | 5 | 1.25 |
+| Solar Array, Battery Bank | 6 | 1.5 |
+| Water Recycler | 10 | 2.5 |
+| Regolith Foundry | 14 | 3.5 |
+| Oxygen Plant, Rover Bay | 16 | 4 |
+| Landing Pad, Concourse | 18 | 4.5 |
+| Habitat Module, Garden Dome | 20 | 5 |
+| Greenhouse, Clinic, Visitor Lodge | 24 | 6 |
+| Fission Reactor | 40 | 10 |
+
+**What it touches.** Only how long a placed or self-built building takes
+to finish. Costs, upkeep, output, the length of day and night and every
+other rate are as they were. No credit is created or removed. Buildings
+half built on the live world finish sooner, from where they stand.
+
+**Checked.** The town bot test passes all 17 lines with the new times,
+and all 414 server tests pass. The first night is easier to get through,
+not harder.
+
+**Not re-measured.** The 120 game day run of the seed world (D83 to D86)
+has not been repeated. Agent towns also build four times faster, so
+their early growth will be quicker than those measurements say.
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
