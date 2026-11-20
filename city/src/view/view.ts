@@ -4,7 +4,7 @@
 // with a two-letter label. The ground is one lit picture built per town (ground.ts).
 
 import { Application, Container, Graphics, Text, Sprite, Texture, Matrix, Mesh, MeshGeometry } from './pixi';
-import { buildGround, buildLand, landNet, LANDS, GP, Stamp } from './ground';
+import { buildGround, buildLand, landNet, LANDS, BALL, GP, Stamp } from './ground';
 // @ts-ignore
 import craterA from '../art/craterA.png';
 // @ts-ignore
@@ -170,8 +170,31 @@ export class View {
     p.x = W / 2 - Math.max(-e, Math.min(e, (W / 2 - p.x) / k)) * k;
     p.y = H / 2 - Math.max(0, Math.min(e, (H / 2 - p.y) / k)) * k;
   }
-  panBy(dx: number, dy: number) { this.world.position.x += dx; this.world.position.y += dy; this.hold(); }
+  panBy(dx: number, dy: number) { if (this.riseFrom) return; this.world.position.x += dx; this.world.position.y += dy; this.hold(); }
+  // ----- rising to the Moon -----
+  // Past the furthest zoom the view can go on pulling back, until the bent land is a ball in the middle of the screen
+  // with the town near its top. That last picture is the one the globe opens on, so the two can be dissolved together.
+  static readonly FAR = 0.012;                       // the scale of that last picture
+  get ballRadius() { return BALL.side * View.FAR; }  // how big it draws the Moon, in screen pixels
+  private riseFrom: { k: number; x: number; y: number } | null = null;
+  /** u from 0 (the town as it was) to 1 (the ball). Call riseEnd when back at 0. */
+  rise(u: number) {
+    const W = this.app.screen.width, H = this.app.screen.height, mid = SIZE * TH / 2;   // the middle of the claim, in the town's units
+    if (!this.riseFrom) this.riseFrom = { k: this.scale, x: this.world.position.x, y: this.world.position.y + mid * this.scale };
+    const f = this.riseFrom, e = u * u * (3 - 2 * u);
+    const k = Math.exp(Math.log(f.k) + (Math.log(View.FAR) - Math.log(f.k)) * e);
+    const tx = W / 2, ty = H / 2 - (BALL.below - BALL.above) / 2 * View.FAR;            // where the claim sits when the ball is centred
+    this.scale = k; this.world.scale.set(k);
+    this.world.position.set(f.x + (tx - f.x) * e, f.y + (ty - f.y) * e - mid * k);
+  }
+  riseEnd() {
+    const f = this.riseFrom; if (!f) return; this.riseFrom = null;
+    this.scale = f.k; this.world.scale.set(f.k); this.world.position.set(f.x, f.y - SIZE * TH / 2 * f.k); this.hold();
+  }
+  get atFurthest() { return this.scale <= 0.0451; }
+
   zoomAt(px: number, py: number, factor: number) {
+    if (this.riseFrom) return;
     const next = Math.max(0.045, Math.min(2.6, this.scale * factor));   // far enough out to see the land curve away, with the town small on it
     const k = next / this.scale;
     this.world.position.x = px - (px - this.world.position.x) * k;

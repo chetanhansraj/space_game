@@ -221,6 +221,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .bottom > * { pointer-events: auto; max-width: 100%; }
 #hint { min-height: 20px; padding: 2px 10px; border-radius: 999px; font: 500 12px var(--mono); color: #a5f3fc; background: rgba(15, 13, 28, 0.8); pointer-events: none; }
 #hint:empty { visibility: hidden; }
+/* The Moon and its market, opened over the town when the player rises to it. */
+#moonframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 60; opacity: 0; visibility: hidden; pointer-events: none; background: #030014; }
 #tip { position: fixed; z-index: 60; max-width: 250px; padding: 9px 11px 8px; border-radius: 10px; pointer-events: none; background: rgba(15, 13, 28, 0.94); border: 1px solid rgba(165, 243, 252, 0.28); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); color: #e9e6f5; font: 500 12px/1.35 var(--body, system-ui, sans-serif); }
 #tip[hidden] { display: none; }
 #tip b { display: block; font: 700 13px var(--display, inherit); letter-spacing: 0.02em; color: #fff; }
@@ -422,6 +424,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 </div>
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.22.0/dist/pixi.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.22.0/dist/packages/unsafe-eval.min.js"></script>
-<script src="game.js?v=20261121a"></script>
+<script src="game.js?v=20261121b"></script>
 </body>
 </html>
