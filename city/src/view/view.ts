@@ -61,6 +61,7 @@ const LOOK: Record<BuildingType, Look> = {
 };
 
 const TEX = new Map<Art, Tex>();
+const GLOW = new Map<Art, Tex>();    // what each picture lights up at night
 const PIC = new Map<Art, HTMLImageElement>();
 const EDGE = new Map<Art, Tex>();
 // A building's picture as a flat white shape, for drawing a line round it when it is selected. Made the first time it is needed.
@@ -118,6 +119,8 @@ export class View {
   private mark = new Graphics();        // the selected building's plot, on the ground under the buildings
   private halo = new Container();       // a line round the selected building's picture, at its own depth so nearer buildings still stand in front
   private haloKey = '';
+  private glows = new Map<number, Sprite>();   // each building's night lights, by building
+  private bodyTint = -1;
   private stars = new Graphics();
   private landJob = 0;
   private groundTex: Tex[] = [];        // the two ground pictures of the town on screen, freed when the ground is redrawn
@@ -144,7 +147,7 @@ export class View {
     { const img = new Image(); img.onload = () => { DUST = img; v.drawnSeed = -1; }; img.src = regolithJpg as string; }
     { const got: (Stamp | null)[] = [null, null, null, null]; [[craterA, 0.4], [craterB, 0.425], [craterC, 0.3625], [craterD, 0.375]].forEach(([u, rim], i) => { const img = new Image(); img.onload = () => { got[i] = { img, rim: rim as number }; if (got.every(Boolean)) { STAMPS.push(...(got as Stamp[])); v.drawnSeed = -1; } }; img.src = u as string; }); }
     [rock0, rock1, rock2, rock3, rock4, rock5].forEach((u, i) => { const img = new Image(); img.onload = () => { ROCKS[i] = soft(Texture.from(img)); v.drawnSeed = -1; }; img.src = u as string; });
-    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, soft(Texture.from(img))); PIC.set(a, img); v.drawnRev = -1; }; img.src = a.url; }   // an image element, because the page may not fetch
+    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, soft(Texture.from(img))); PIC.set(a, img); v.drawnRev = -1; }; img.src = a.url; if (a.glow) { const lit = new Image(); lit.onload = () => { GLOW.set(a, soft(Texture.from(lit))); v.drawnRev = -1; }; lit.src = a.glow; } }   // an image element, because the page may not fetch
     v.lights.blendMode = 'add';
     v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.mark, v.objects, v.ghost, v.overlay, v.lights, v.fx);
     v.app.stage.addChild(v.stars, v.world);
@@ -246,6 +249,8 @@ export class View {
   // ----- buildings, redrawn when the set of buildings changes -----
   private drawBuildings(s: State) {
     this.objects.removeChild(this.halo); this.haloKey = '';   // the selection line is kept and put back by the next frame
+    const was = new Map<number, number>(); for (const [k, e] of this.glows) was.set(k, e.alpha);   // lights already on stay on through a redraw
+    this.glows.clear(); this.bodyTint = -1;
     for (const c of this.objects.removeChildren()) c.destroy({ children: true });
     const n = s.size;
     this.spots = s.buildings.filter(b => b.type !== 'conduit' && b.progress >= 1 && b.connected).map(b => [b.x + BUILDINGS[b.type].w + 0.15, b.y + BUILDINGS[b.type].h * 0.5] as [number, number]);
@@ -311,6 +316,14 @@ export class View {
         }
       }
       this.objects.addChild(g);
+      // Night lights: the lit parts of the picture, added over it. They sit outside the body so the night tint, which
+      // darkens the body, leaves them bright.
+      const ga = b.type !== 'conduit' && built ? artOf(b) : undefined, gt = ga && TEX.get(ga) && GLOW.get(ga);
+      if (ga && gt) {
+        const m = iso(b.x + d.w / 2, b.y + d.h / 2), e = new Sprite(gt);
+        e.anchor.set(ga.ax, ga.ay); e.scale.set(ga.k); e.position.set(m[0], m[1]); e.blendMode = 'add'; e.alpha = was.get(b.uid) || 0; e.zIndex = g.zIndex + 0.2;
+        this.objects.addChild(e); this.glows.set(b.uid, e);
+      }
     }
   }
 
@@ -326,8 +339,11 @@ export class View {
     const ph = s.t % LUNAR_DAY, sun = sunFactor(s.t);
     const light = ph < HALF ? Math.min(1, 0.35 + sun * 10) : Math.max(0, 0.35 * (1 - (ph - HALF) / 8), 0.35 * (1 - (LUNAR_DAY - ph) / 8));
     const tint = light < 0.5 ? mix(0x4c5a86, 0xffcf9a, light * 2) : mix(0xffcf9a, 0xffffff, (light - 0.5) * 2);
-    this.terrain.tint = tint; this.objects.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
+    this.terrain.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
     const dark = 1 - light;
+    // Buildings take the tint one by one, so their night lights and the selection line, which sit beside them, stay bright.
+    if (tint !== this.bodyTint) { this.bodyTint = tint; const lit = new Set<unknown>(this.glows.values()); for (const c of this.objects.children) if (c !== this.halo && !lit.has(c)) c.tint = tint; }
+    const dusk = dark <= 0.3 ? 0 : dark >= 0.75 ? 1 : (dark - 0.3) / 0.45, lamps = dusk * dusk * (3 - 2 * dusk);   // lights come on as the sun goes
 
     const o = this.overlay, l = this.lights; o.clear(); l.clear();
     const blink = Math.floor(now / 420) % 2 === 0;
@@ -353,12 +369,12 @@ export class View {
         o.circle(m[0], py, 5.5).fill(0x0b0a14).circle(m[0], py, 3.6).fill(pip);
         if (b.damaged && b.repair > 0) o.circle(m[0], py, 7.5).stroke({ color: 0xffc15e, width: 1.5 });
       }
-      if (dark > 0.05 && b.connected && !b.damaged && b.on && ((needsPower && b.powered) || (d.battery > 0 && s.charge > 1) || (d.gen > 0 && !d.solar))) {
-        const warm = b.type === 'habitat' || b.type === 'lander' || b.type === 'greenhouse';
-        const col = b.type === 'reactor' ? 0xff8a3d : warm ? 0xffd08a : 0x8fc2ff;
-        const cm = iso(b.x + d.w / 2, b.y + d.h / 2, H * 0.5);
-        const r = 16 + d.w * d.h * 5;
-        void col; void cm; void r;   // no glow discs on the ground: around real buildings they read as stains. Lit windows belong in night pictures.
+      // Lights are on in a building that is running and has power; one that draws none is lit while the town has charge.
+      const glow = this.glows.get(b.uid);
+      if (glow) {
+        const on = b.connected && !b.damaged && b.on && (needsPower ? b.powered : s.charge > 1 || (d.gen > 0 && !d.solar));
+        glow.alpha += ((on ? lamps : 0) - glow.alpha) * 0.08; if (glow.alpha < 0.004) glow.alpha = 0;
+        glow.visible = glow.alpha > 0;
       }
     }
     this.actors(s, o, l, tint, dark, now, speed);
