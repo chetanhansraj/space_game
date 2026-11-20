@@ -2180,6 +2180,59 @@ places; a docking fee of 400 cr like the Flats'; the line's overhead of
 
 ---
 
+### D87 — The town is drawn from rendered pictures, on a lit lunar ground
+
+*Direction from Chetan, 20 November 2026:* test 3D model generators for
+the buildings; then "going forward you can go with the more foundry kind
+of look"; then "we need the moon surface to look like the surface"; then
+"is it possible we use the moon globe and we get the feeling we are on it
+and not floating in space"; then, of the night view, "what is this strange
+faint circle around all structures ... pls remove it", "when we hover over
+any building we should get its name and stats", and of the horizon, "its
+looking very un natural".
+
+**Drawing only.** Nothing here touches the rules, the ledger or the
+server. The simulation, the engine bundle and every test of them are
+unchanged. The client still draws what the server says (invariant 1), and
+no model output can change a number (invariant 2): the pictures are fixed
+files made once, offline.
+
+**Buildings.** Each of the seventeen building types is a picture rendered
+from a 3D model at the game's exact angle (azimuth 45, elevation 30,
+orthographic), lit from one fixed sun. The four that grow (habitat, lodge,
+concourse, foundry) have a picture for each of levels 1 to 3, drawn by an
+image model from the level below and brought back to exact size and place
+by a plot outline in the reference. A type with no picture still falls
+back to the old flat-shaded prism. Conduits stay lines.
+
+**Ground.** One lit picture per town, built in the browser when the town
+loads from the town's own seed and crater tiles: a dust texture, crater
+shading stamps rendered in Blender with the same sun, about 300 small
+craters, and six boulder pictures on the tiles the simulation already
+marks as boulders. The land continues 64 tiles past the claim, the claim
+is a line on the ground with a post at each corner, and the view ends in
+a smooth curved horizon under the sky. The slab's cut edges are gone.
+
+**Pointer.** The building under the pointer is found from its picture,
+not only from the ground tile, for both the hover card and a click. The
+card shows the name, level, state and the live figures the inspector
+already shows.
+
+**Night.** The glow discs on the ground are removed. Lit windows should
+come from night pictures of the buildings, which do not exist yet.
+
+**Files.** Sources are in `city/src/art/`. The live build copies them to
+`web/town/art/` with a hash in each name and the page loads them from its
+own address. The practice build still packs them into its single script.
+About 2.6 MB in 36 files.
+
+**No economic value was invented.** No price, rate or amount changed.
+
+**Known gaps.** Far-side plots still show the Earth in the sky. The grid
+is very faint. Level pictures have no ground shadow. Building the ground
+costs a second or two on a slow phone. The full recipe for making more
+pictures is kept in the project notes, not in this repo.
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
