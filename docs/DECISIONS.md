@@ -2333,6 +2333,43 @@ not harder.
 has not been repeated. Agent towns also build four times faster, so
 their early growth will be quicker than those measurements say.
 
+### D90 — Lights at night
+
+*Direction from Chetan, 20 November 2026:* "yes we should do the night
+version of the game buildings".
+
+At night the town was only tinted dark, so it looked dead. Each building
+picture now has its lights: windows, portholes, lamps, furnace mouths,
+grow lamps, landing lights.
+
+**How they were made.** Each of the 25 pictures in use was put on a green
+square and given to the image model (Google Nano Banana 2.1) with the
+instruction to return the same picture at night, nothing moved. The model
+kept the outlines to within a pixel or two. From each result only what
+glows was kept: bright parts inside the building's outline, with a soft
+spread, on black, at the picture's own size. 26 images, 1.56 US dollars.
+
+**How they are shown.** The lights are a second picture added over the
+first, which is still darkened by the night tint. So the hull at night is
+the same hull as by day, and a building with its lights off matches its
+neighbours. Lights come up as the sun goes and fade when it returns.
+
+**They tell the truth.** A building is lit only if it is finished,
+connected, switched on, undamaged and has power. One that draws no power
+(tanks, arrays, the pad) is lit while the town has charge stored. A
+building put to sleep for the night goes dark, so the town at night shows
+at a glance what is running.
+
+**Also.** The selection line is no longer dimmed by the night tint.
+
+**Drawing only.** Nothing is read back from the pictures. No rule, rate
+or amount changed. The page's pictures grow from 2.6 MB to 3.3 MB.
+
+**Known gaps.** Industry sleeps at night in most towns, so furnace glow
+and greenhouse lamps are seen less than habitat windows. Lights do not
+fall on the ground or on neighbours (the ground discs tried in D87 read
+as stains). Rovers and crew keep their small drawn lamps.
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
