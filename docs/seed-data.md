@@ -4,7 +4,7 @@ Three tables. Everything in the economy descends from these.
 
 **These are first-pass values, not balanced values.** They are internally consistent and physically anchored, which is enough to build against. They will be wrong after the first simulation run, and that is expected. Tune by simulation, not by argument.
 
-**Every rate on this page is per game day**, and every duration is game time. At the 60× clock a game day is 24 real minutes, so the distinction is worth a factor of sixty. One consequence worth seeing early: the *Kestrel*'s 400 cr/game-day upkeep is 24,000 cr per real day, which makes 120,000 cr of starting cash five real days of runway with no income. See `docs/DECISIONS.md` D14.
+**Every rate on this page is per game day**, and every duration is game time. At the 240× clock (D93) a game day is 6 real minutes, so the distinction is worth a factor of 240. One consequence worth seeing early: the *Kestrel*'s 400 cr/game-day upkeep is 24,000 cr per real day, which makes 120,000 cr of starting cash five real days of runway with no income. See `docs/DECISIONS.md` D14.
 
 ---
 

@@ -56,7 +56,8 @@ def _pad(client, game, auth):
     s = json.loads(row["state"])
     s["buildings"].append({**s["buildings"][0], "uid": 999, "type": "pad",
                            "progress": 1, "connected": True, "damaged": False})
-    game.db.execute("UPDATE town SET state = ? WHERE rowid = ?", (json.dumps(s), row["rowid"]))
+    # the grant for a first pad (D93) is settled, so these tests are about the market and nothing else
+    game.db.execute("UPDATE town SET state = ?, pad_grant = 0 WHERE rowid = ?", (json.dumps(s), row["rowid"]))
     return auth
 
 
@@ -170,6 +171,66 @@ def test_a_nearly_full_disk_holds_the_world_and_says_so(tmp_path, routes):
     assert server.free_bytes(g) > 0
     assert not server.disk_low(g, minimum=1)
     assert server.disk_low(g, minimum=10**18)
+    g.db.close()
+
+
+def test_old_ledger_history_leaves_the_live_file_after_each_hour(tmp_path, routes, monkeypatch):
+    """The ticker's archive step (D93): the live file stops growing, no
+    balance moves, and a failure in it never stops the world."""
+    import threading
+
+    from api import server
+    from sim import game as simgame
+
+    g = Game.open(str(tmp_path / "world.db"), now=T0, routes=routes,
+                  threadsafe=True, warmup_ticks=0)
+    for _ in range(30):
+        g.step()                                   # a game day and more: checkpointed
+    ledger = g.world.ledger
+    held = {r[0]: r[1] for r in g.db.execute(
+        "SELECT account_id || '/' || asset, amount FROM balance_checkpoint")}
+    made = ledger.credits_in_existence()
+    assert server.archive_dir(g) == str(tmp_path / "archive")
+    ticker = server.Ticker(lambda: g, threading.RLock())
+    ticker.archive(g)
+    assert not (tmp_path / "archive").exists(), "nothing is old enough yet: nothing is written"
+
+    monkeypatch.setattr(simgame, "ARCHIVE_KEEP_TXNS", 2_000)
+    monkeypatch.setattr(simgame, "ARCHIVE_STEP_TXNS", 1_500)
+    waiting = g.archive_backlog()
+    assert waiting > 1_500
+    ticker.archive(g)
+    assert g.archive_backlog() == waiting - 1_500, "a step at a time"
+    while g.archive_backlog():
+        before = g.archive_backlog()
+        ticker.archive(g)
+        if g.archive_backlog() == before:
+            break                                  # the rest is newer than the checkpoint
+    assert (tmp_path / "archive" / "ledger-000001.db").stat().st_size > 0
+    assert {r[0]: r[1] for r in g.db.execute(
+        "SELECT account_id || '/' || asset, amount FROM balance_checkpoint")} == held
+    assert ledger.credits_in_existence() == made
+    assert ledger.verify_checkpoints() == []
+    ledger.assert_conserved()
+    for _ in range(26):                            # and the world goes on as before
+        g.step()
+        ticker.archive(g)
+    ledger.assert_conserved()
+    assert ledger.verify_checkpoints() == []
+    assert g.db.execute("PRAGMA foreign_key_check").fetchall() == []
+
+    # a broken archive folder is logged and the world is not held up
+    monkeypatch.setattr(server, "ARCHIVE_DIR", str(tmp_path / "world.db" / "nope"))
+    for _ in range(26):
+        g.step()
+    ticker.archive(g)
+    g.step()
+    ledger.assert_conserved()
+    monkeypatch.setattr(server, "ARCHIVE_DIR", "off")
+    assert server.archive_dir(g) is None
+    if ticker.tidying:
+        ticker.tidying.join(timeout=10)
+    server.tidy_archives(str(tmp_path / "archive"), 10**12)
     g.db.close()
 
 
@@ -298,9 +359,17 @@ def test_the_list_of_towns_is_public(client, game, monkeypatch):
     assert len(offers) == 3
     assert client.post("/api/town/found", headers=other,
                        json={"choice": 7}).status_code == 400
+    # each is in its morning, with most of its day ahead (D93)
+    assert all(o["light"] > 200 for o in offers)
+    # a place that was never offered founds nothing
+    assert client.post("/api/town/found", headers=other,
+                       json={"choice": 1, "at": [12.3, 45.6]}).status_code == 400
+    want = offers[1]
     chosen = client.post("/api/town/found", headers=other,
-                         json={"choice": 1}).json()["meta"]["plot"]
-    assert chosen == offers[1]
+                         json={"choice": 0, "at": [want["lat"], want["lon"]]}
+                         ).json()["meta"]["plot"]
+    assert chosen == {k: v for k, v in want.items() if k != "light"}, \
+        "where the choice is decides, not its place in the list"
 
 
 def test_found_a_town_and_build_in_it(client, game):

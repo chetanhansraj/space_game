@@ -38,12 +38,13 @@ def test_curves_are_reproducible(de421):
         assert a.dv_total == b.dv_total
 
 
-def test_the_sixty_times_factor_lives_in_exactly_one_module():
-    """Invariant 5: the 60x clock rate appears in clock.py and nowhere else.
+def test_the_clock_rate_lives_in_exactly_one_module():
+    """Invariant 5: the clock's rate appears in clock.py and nowhere else.
 
     Scattering the rate is how a codebase ends up with two subtly different
     notions of how fast the world runs. Scan the package for any module-level
-    constant assigned the value 60 and assert clock.py owns the only one.
+    constant assigned the rate's value and assert clock.py owns the only one.
+    The rate was 60 until D93 and is 240 since.
     """
     import pathlib
     import re
@@ -51,9 +52,9 @@ def test_the_sixty_times_factor_lives_in_exactly_one_module():
     import orbital
     from orbital.clock import TIME_RATE
 
-    assert TIME_RATE == 60
+    assert TIME_RATE == 240
 
-    pattern = re.compile(r"^[A-Z][A-Z0-9_]*\s*=\s*60\b", re.MULTILINE)
+    pattern = re.compile(rf"^[A-Z][A-Z0-9_]*\s*=\s*{TIME_RATE}\b", re.MULTILINE)
     root = pathlib.Path(orbital.__file__).parent
     offenders = [
         path.relative_to(root).as_posix()

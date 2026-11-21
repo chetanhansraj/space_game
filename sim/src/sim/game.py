@@ -32,11 +32,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
 
+from market import archive
 from market.book import ASK, BID, OrderBook
 from market.db import connect, transaction
 from market.errors import MarketError
 from market.money import CREDIT
-from orbital.clock import DISPLAY_OFFSET_YEARS, real_seconds
+from orbital.clock import DISPLAY_OFFSET_YEARS, TIME_RATE, real_seconds
 
 from . import TICKS_PER_GAME_DAY, persist, schema
 from .basegame import BaseOps
@@ -51,7 +52,7 @@ from .shocks import Event
 _UTC = _dt.timezone.utc
 
 #: One tick is one game hour. How long that is in real seconds is the
-#: clock's business, not ours -- the 60x factor lives in orbital.clock only.
+#: clock's business, not ours -- the factor lives in orbital.clock only.
 TICK_REAL_SECONDS = real_seconds(3_600)
 
 DEFAULT_SEED = 20260904
@@ -86,6 +87,18 @@ ARRIVAL_SALE_FLOOR_PERCENT = 90
 
 #: Fold the ledger into its balance cache once a game day.
 CHECKPOINT_EVERY_TICKS = TICKS_PER_GAME_DAY
+
+#: The newest transactions that always stay in the live file; older ones
+#: are moved to the archive (market/archive.py, D93). Measured, the world
+#: writes about 400 transactions an hour, so this is about a real day of
+#: history at hand for whoever is debugging, in a live file of well under
+#: a gigabyte. An operating number, not an economic one.
+ARCHIVE_KEEP_TXNS = 2_400_000
+#: The most transactions moved in one step. A step runs after each hour and
+#: holds the world's one lock while it does, so it is kept to a fraction of
+#: a second (measured, D93); this is still twelve hours' worth every hour,
+#: so a backlog of any size is worked off and never grows.
+ARCHIVE_STEP_TXNS = 5_000
 
 NODE_NAMES = {
     "shackleton_depot": "Shackleton Depot",
@@ -149,10 +162,17 @@ class Game(BaseOps, TownOps):
     node_names = NODE_NAMES
     arrears_cap = ARREARS_CAP
 
-    def __init__(self, db, world, launch_real: _dt.datetime) -> None:
+    def __init__(self, db, world, launch_real: _dt.datetime,
+                 tick_anchor: _dt.datetime | None = None) -> None:
         self.db = db
         self.world = world
+        #: The sky's origin: where the ephemerides stood at tick zero. It is
+        #: set once at world creation and never moves.
         self.launch_real = launch_real
+        #: The real instant from which ticks are counted at the clock's
+        #: present speed. The same as ``launch_real`` until the speed
+        #: changes; see ``_settle_clock``.
+        self.tick_anchor = tick_anchor or launch_real
         self.board = ContractBoard(world, db)
         self._saved = persist.dumps(world)
         #: Bumped on every committed change, so readers can cache views.
@@ -189,7 +209,9 @@ class Game(BaseOps, TownOps):
                 if port not in world.books:
                     world.books[port] = OrderBook(db, world.ledger, port)
             launch = _dt.datetime.fromisoformat(cls._meta(db, "launch_real"))
-            return cls(db, world, launch)
+            game = cls(db, world, launch)
+            game._settle_clock(now)
+            return game
 
         now = (now or _dt.datetime.now(tz=_UTC)).astimezone(_UTC)
         launch = now - _dt.timedelta(seconds=warmup_ticks * TICK_REAL_SECONDS)
@@ -206,9 +228,15 @@ class Game(BaseOps, TownOps):
                                  founded, memo="Ark development fund stores")
             db.executemany(
                 "INSERT INTO world_meta (key, value) VALUES (?, ?)",
-                [("launch_real", launch.isoformat()), ("seed", str(seed))])
+                [("launch_real", launch.isoformat()), ("seed", str(seed)),
+                 ("time_rate", str(TIME_RATE)),
+                 ("tick_anchor", launch.isoformat()),
+                 # a world founded under the one Sun has no towns to move
+                 # onto it (towngame._to_one_sun)
+                 ("one_sun", "0")])
             game = cls.__new__(cls)
             game.db, game.world, game.launch_real = db, world, launch
+            game.tick_anchor = launch
             game.board = ContractBoard(world, db)
             game.version = 0
             text = game._write_snapshot()
@@ -218,20 +246,53 @@ class Game(BaseOps, TownOps):
         return game
 
     @staticmethod
-    def _meta(db, key: str) -> str:
-        return db.execute("SELECT value FROM world_meta WHERE key = ?",
-                          (key,)).fetchone()["value"]
+    def _meta(db, key: str, default: str | None = None) -> str:
+        row = db.execute("SELECT value FROM world_meta WHERE key = ?",
+                         (key,)).fetchone()
+        if row is None and default is not None:
+            return default
+        return row["value"]
+
+    def _settle_clock(self, now: _dt.datetime | None = None) -> None:
+        """Count ticks at the clock's present speed, without a jump.
+
+        A world records the speed it has been running at. If the clock's
+        speed is a different one now (D93: 60x to 240x), counting the hours
+        since launch at the new speed would say the world is years behind
+        and it would run them all at once. So the count is re-anchored: the
+        hour the world has reached is the hour that is due at this moment,
+        and the next one follows a tick's length later. No hour is run twice
+        and none is skipped. The sky is not touched: it is counted in ticks
+        from ``launch_real``, which does not move.
+
+        A world from before the speed was recorded ran at 60.
+        """
+        now = (now or _dt.datetime.now(tz=_UTC)).astimezone(_UTC)
+        rate = int(self._meta(self.db, "time_rate", "60"))
+        anchor = _dt.datetime.fromisoformat(self._meta(
+            self.db, "tick_anchor", self.launch_real.isoformat()))
+        if rate != TIME_RATE:
+            anchor = now - _dt.timedelta(
+                seconds=self.world.tick * TICK_REAL_SECONDS)
+        with transaction(self.db):
+            for key, value in (("time_rate", str(TIME_RATE)),
+                               ("tick_anchor", anchor.isoformat())):
+                self.db.execute(
+                    "INSERT INTO world_meta (key, value) VALUES (?, ?) "
+                    "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                    (key, value))
+        self.tick_anchor = anchor
 
     # -- the clock -------------------------------------------------------
 
     def due_tick(self, now: _dt.datetime | None = None) -> int:
         """The tick the world should be at, by the wall clock."""
         now = now or _dt.datetime.now(tz=_UTC)
-        elapsed = (now - self.launch_real).total_seconds()
+        elapsed = (now - self.tick_anchor).total_seconds()
         return max(0, int(elapsed // TICK_REAL_SECONDS))
 
     def tick_starts_at(self, tick: int) -> _dt.datetime:
-        return self.launch_real + _dt.timedelta(seconds=tick * TICK_REAL_SECONDS)
+        return self.tick_anchor + _dt.timedelta(seconds=tick * TICK_REAL_SECONDS)
 
     def sky_time(self, tick: int | None = None) -> _dt.datetime:
         """Where the ephemerides are evaluated. One tick is one game hour."""
@@ -299,6 +360,25 @@ class Game(BaseOps, TownOps):
             if world.tick % CHECKPOINT_EVERY_TICKS == 0:
                 world.ledger.checkpoint()
         return events
+
+    def archive_step(self, folder: str, keep_txns: int = None,
+                     max_txns: int = None):
+        """Move one batch of old ledger history out of the live file.
+
+        Called between hours, never inside one (market/archive.py). Nothing
+        the world computes with is touched: balances come from the
+        checkpoint, prices from the newest trades, and both stay. Returns
+        what was moved, which is nothing when nothing is old enough.
+        """
+        return archive.archive_step(
+            self.db, archive.current_file(folder),
+            keep_txns=ARCHIVE_KEEP_TXNS if keep_txns is None else keep_txns,
+            max_txns=ARCHIVE_STEP_TXNS if max_txns is None else max_txns)
+
+    def archive_backlog(self, keep_txns: int = None) -> int:
+        """Transactions old enough to leave the live file and still in it."""
+        return archive.backlog(
+            self.db, ARCHIVE_KEEP_TXNS if keep_txns is None else keep_txns)
 
     def catch_up(self, now: _dt.datetime | None = None,
                  limit: int | None = None) -> int:

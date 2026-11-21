@@ -13,7 +13,7 @@
 
 import { BUILDINGS } from './sim/buildings';
 import { steward, Style } from './steward';
-import { State, Intent, Plot, ground, lightHours, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
+import { State, Intent, Plot, ground, hoursToSunset, isNight, hoursToSunrise, setSun, topUp, createState, apply, tick, refresh, TICK, PRICES, population, tierOf, working } from './sim/sim';
 
 const summary = (s: State) => {
   const pop = population(s);
@@ -28,6 +28,15 @@ const summary = (s: State) => {
 };
 const reply = (s: State, extra: object = {}) =>
   JSON.stringify({ state: JSON.stringify(s), credits: s.materials, summary: summary(s), ...extra });
+
+/**
+ * What the world says of the hour, put into a town before its rules run: `noon`, hours since the
+ * Sun was highest over the town (see setSun), and `pace`, game hours in a real minute.
+ */
+function under(s: State, w: { noon?: number; pace?: number }): void {
+  if (typeof w.noon === 'number') setSun(s, w.noon);
+  if (typeof w.pace === 'number' && w.pace > 0) s.pace = w.pace;
+}
 
 const whole = (v: unknown, lo: number, hi: number) => typeof v === 'number' && Number.isInteger(v) && v >= lo && v < hi;
 
@@ -47,14 +56,21 @@ function malformed(s: State, it: any): string | null {
 }
 
 (globalThis as any).Town = {
-  /** A new town on untouched ground. `plot` is the ground's six readings as JSON (Plot in sim.ts). */
-  create(seed: number, credits: number, plot?: string): string {
+  /**
+   * A new town on untouched ground. `plot` is the ground's six readings as JSON (Plot in sim.ts).
+   * `world` is what the world says of the hour, as JSON: see `tick`. With it the town is founded
+   * under the Sun as it stands, not at a sunrise of its own.
+   */
+  create(seed: number, credits: number, plot?: string, world?: string): string {
     const s = createState(seed | 0);
     if (plot) {   // the ground it stands on; without one, the reference ground
       s.plot = JSON.parse(plot) as Plot;
       ground(s);
-      const first = s.alerts[0];   // the landing is announced before the ground is known
-      if (first) first.msg = `Touchdown${s.plot.name ? `: ${s.plot.name}` : ''}. Sunset in ${Math.round(lightHours())} hours.`;
+    }
+    if (world) under(s, JSON.parse(world));
+    if (plot || world) {
+      const first = s.alerts[0];   // the landing is announced before the ground and the hour are known
+      if (first) first.msg = `Touchdown${s.plot?.name ? `: ${s.plot.name}` : ''}. ${isNight(s.t) ? `Sunrise in ${Math.round(hoursToSunrise(s.t))} hours.` : `Sunset in ${Math.round(hoursToSunset(s.t))} hours.`}`;
     }
     s.materials = credits;
     refresh(s);
@@ -85,10 +101,13 @@ function malformed(s: State, it: any): string | null {
    * With `wear` set, the buildings also use goods from the yard as spare parts: the reply says how
    * many whole kilograms were `used`, counted the same way, and how many Earth `landed` because the
    * yard had none, which the town has already paid for at `importAt` credits a kilogram.
+   *
+   * `world` is `{noon, pace}`: where the Sun stands over this town and how fast the world runs.
    */
-  tick(state: string, hours: number, credits: number, yard?: string): string {
+  tick(state: string, hours: number, credits: number, yard?: string, world?: string): string {
     const s = JSON.parse(state) as State;
     s.materials = credits;
+    if (world) under(s, JSON.parse(world));
     if (yard) {
       // What is really in the yard is what the ledger holds, plus the part of a kilogram made and
       // not yet handed over, less the part of one used and not yet taken.
@@ -126,6 +145,14 @@ function malformed(s: State, it: any): string | null {
     }, style ? JSON.parse(style) as Style : {});
     if (s.phase === 'playing') hour(s, !!keep);
     return JSON.stringify({ intents });
+  },
+
+  /** Fill the town's batteries, once, when the world moved every town onto the one Sun. */
+  topup(state: string, world?: string): string {
+    const s = JSON.parse(state) as State;
+    if (world) under(s, JSON.parse(world));
+    topUp(s);
+    return reply(s);
   },
 
   /** What the rest of the world needs to know about a town, without reading its whole state. */

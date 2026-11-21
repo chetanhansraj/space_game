@@ -209,9 +209,12 @@ class Ledger:
 
         Returns every (account, asset, cached, true) that disagrees -- which
         must always be an empty list. Slow on purpose: it reads the whole
-        history. For tests and for audits, never for the tick.
+        history still in this file. For tests and for audits, never for
+        the tick.
         """
         mark = self._mark()
+        # The truth is every posting up to the mark: those still here, and
+        # the sum of those that have left for the archive (migration 4).
         rows = self.db.execute(
             "SELECT account_id, asset, SUM(c) AS cached, SUM(t) AS truth"
             " FROM ("
@@ -219,6 +222,8 @@ class Ledger:
             "  FROM balance_checkpoint"
             "  UNION ALL"
             "  SELECT account_id, asset, 0, amount FROM posting WHERE id <= ?"
+            "  UNION ALL"
+            "  SELECT account_id, asset, 0, amount FROM archive_total"
             ") GROUP BY account_id, asset HAVING SUM(c) != SUM(t)",
             (mark,),
         ).fetchall()

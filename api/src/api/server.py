@@ -36,6 +36,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from market import archive as ledger_archive
 from sim.game import TICK_REAL_SECONDS, Game, GameError, Player
 from voice import render_event, render_letter, speaker
 
@@ -119,8 +120,14 @@ class YardSellIn(BaseModel):
 
 
 class PlotChoice(BaseModel):
-    """Which of the plots it was offered a company founds its town on."""
+    """Which of the plots it was offered a company founds its town on.
+
+    ``at`` is the chosen plot's latitude and longitude. The offered plots
+    follow the sunrise, so a screen says where its choice is as well as
+    which it was.
+    """
     choice: int = Field(default=0, ge=0, le=9)
+    at: tuple[float, float] | None = None
 
 
 class YardPolicyIn(BaseModel):
@@ -184,6 +191,40 @@ def disk_low(game: Game, minimum: int | None = None) -> bool:
                                         else minimum)
 
 
+#: Old ledger history is moved out of the live file into this folder, beside
+#: the world unless told otherwise; "off" keeps everything in the live file.
+#: Compressed archives are kept until the folder passes the cap, and then
+#: the oldest go: that is the point at which old history is let go for good,
+#: so copy them off the machine first if they are wanted. D93.
+ARCHIVE_DIR = os.environ.get("SOLAR_ARCHIVE_DIR", "")
+ARCHIVE_CAP_BYTES = int(float(os.environ.get("SOLAR_ARCHIVE_CAP_GB", "6")) * 1e9)
+ARCHIVE_TIDY_SECONDS = 600
+
+
+def archive_dir(game: Game) -> str | None:
+    """Where this world's archives go, or None if it keeps none."""
+    if ARCHIVE_DIR.lower() in ("off", "0", "no"):
+        return None
+    if ARCHIVE_DIR:
+        return ARCHIVE_DIR
+    row = game.db.execute("PRAGMA database_list").fetchone()
+    path = row["file"] if row else ""
+    return os.path.join(os.path.dirname(path), "archive") if path else None
+
+
+def tidy_archives(folder: str, cap_bytes: int) -> None:
+    """Compress the archive files that are finished and keep the folder under
+    its size. Touches no database, so it runs beside the world, not in it."""
+    try:
+        packed = ledger_archive.compress_closed(folder)
+        gone = ledger_archive.enforce_cap(folder, cap_bytes)
+        if packed or gone:
+            log.info("ledger archive: compressed %d, removed %d oldest",
+                     len(packed), len(gone))
+    except Exception:
+        log.exception("could not tidy the ledger archive in %s", folder)
+
+
 class _Hold(Exception):
     """Internal: skip this turn of the ticker loop without counting a failure."""
 
@@ -207,6 +248,33 @@ class Ticker(threading.Thread):
         self.failures = 0
         self.held = False
         self.warned = 0.0
+        self.tidied = 0.0
+        self.tidying: threading.Thread | None = None
+
+    def archive(self, game: Game) -> None:
+        """After an hour: move a little old history out of the live file.
+
+        Never allowed to stop the world: a failure here is logged and the
+        hours go on. Nothing is removed from the live file unless the step
+        completes (market/archive.py).
+        """
+        folder = archive_dir(game)
+        if not folder:
+            return
+        try:
+            if game.archive_backlog() > 0:
+                game.archive_step(folder)
+        except Exception:
+            log.exception("ledger archive step failed at tick %d",
+                          game.world.tick)
+        now = time.monotonic()
+        if now - self.tidied > ARCHIVE_TIDY_SECONDS and os.path.isdir(folder) \
+                and not (self.tidying and self.tidying.is_alive()):
+            self.tidied = now
+            self.tidying = threading.Thread(
+                target=tidy_archives, args=(folder, ARCHIVE_CAP_BYTES),
+                name="archive-tidy", daemon=True)
+            self.tidying.start()
 
     def run(self) -> None:
         while not self.halt.is_set():
@@ -227,6 +295,7 @@ class Ticker(threading.Thread):
                     if game.world.tick < due:
                         game.step()
                         self.failures = 0
+                        self.archive(game)
                         continue
                     wait = (game.tick_starts_at(game.world.tick + 1)
                             .timestamp() - time.time())
@@ -316,7 +385,10 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
                     "behind": game.due_tick() - game.world.tick,
                     "disk_free_gb": None if free is None
                     else round(free / 1e9, 1),
-                    "holding_for_disk": disk_low(game)}
+                    "holding_for_disk": disk_low(game),
+                    # old ledger history still waiting to leave the live file
+                    "archive_backlog": game.archive_backlog()
+                    if archive_dir(game) else None}
 
     @app.get("/api/world")
     def world():
@@ -559,6 +631,7 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
     # knows about the town beside it.
 
     def town_reply(player: Player, meta: dict) -> Response:
+        the_game().town_seen(player)   # the owner is here: the watch stands down
         state = the_game().town_state(player)
         return Response(
             content='{"meta":' + json.dumps(meta) + ',"state":'
@@ -586,14 +659,16 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
                    player: Player = Depends(player_for)):
         with lock:
             return town_reply(player, the_game().found_town(
-                player, body.choice if body else 0))
+                player, body.choice if body else 0,
+                body.at if body else None))
 
     @app.post("/api/town/refound")
     def town_refound(body: PlotChoice | None = None,
                      player: Player = Depends(player_for)):
         with lock:
             return town_reply(player, the_game().refound_town(
-                player, body.choice if body else 0))
+                player, body.choice if body else 0,
+                body.at if body else None))
 
     @app.post("/api/town/intent")
     def town_intent(body: TownIntent, player: Player = Depends(player_for)):

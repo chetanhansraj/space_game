@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import math
 
+from sim import sun
+
 from orbital.frames import equatorial_to_ecliptic
 
 AU = 149_597_870_700.0
@@ -34,21 +36,10 @@ BODIES = (
 def moon_phase(jd: float) -> dict:
     """The Moon's phase, and where on it the Sun is overhead.
 
-    Low-precision series (Meeus, ch. 47, leading terms only), good to about a
-    degree -- a terminator a degree out of place is not something anyone can
-    see on a globe. The sub-solar longitude follows from the elongation: new
-    moon puts the Sun over the far side (180), full moon over the near side
-    (0), first quarter over the eastern limb (+90).
+    Both come from ``sim.sun``, which is also what every town keeps its day
+    by, so the globe's light and a town's sunrise are the same Sun.
     """
-    d = jd - 2_451_545.0
-    moon_l = 218.316 + 13.176396 * d
-    moon_m = math.radians(134.963 + 13.064993 * d)
-    moon_lon = moon_l + 6.289 * math.sin(moon_m)
-    sun_g = math.radians(357.528 + 0.9856003 * d)
-    sun_lon = (280.460 + 0.9856474 * d + 1.915 * math.sin(sun_g)
-               + 0.020 * math.sin(2 * sun_g))
-    elongation = (moon_lon - sun_lon) % 360.0
-    subsolar = (180.0 - elongation + 540.0) % 360.0 - 180.0
+    elongation, subsolar = sun.elongation(jd), sun.subsolar_lon(jd)
     illuminated = (1 - math.cos(math.radians(elongation))) / 2
     names = ("new", "waxing crescent", "first quarter", "waxing gibbous",
              "full", "waning gibbous", "last quarter", "waning crescent")

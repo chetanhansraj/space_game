@@ -5,7 +5,7 @@
 import { BUILDINGS, BUILD_MENU, BuildingType, ZONES, ZONE_COST } from '../sim/buildings';
 import { MISSIONS } from '../sim/missions';
 import { FOUNDRY_KG, Plot, PlotKey,
-  State, Building, LUNAR_DAY, SHUTTLE_EVERY, TIERS, aliveCount, dayNumber, hoursToSunrise, hoursToSunset,
+  State, Building, LUNAR_DAY, SHUTTLE_EVERY, TIERS, aliveCount, dayNumber, lightHours, hoursToSunrise, hoursToSunset,
   PRICES, needs, bedsOf, habAt, jobsOf, drawOf, isNight, nightCover, nightNeed, phaseOf, population, support, tierOf,
 } from '../sim/sim';
 import { ORES, dusty, eventLine, rawTiles, repairCost, richOf } from '../sim/world';
@@ -36,7 +36,7 @@ export interface Handlers {
   caretaker?(on: boolean): void;
 }
 /** A hired caretaker, as the server reports it. Whole credits. */
-export interface Caretaker { on: boolean; fee: number; paid: number; kcr: number; }
+export interface Caretaker { on: boolean; fee: number; paid: number; kcr: number; /** The crew's own watch while the owner is away, in real time. */ watch?: { after_minutes: number; for_hours: number }; }
 /** A live town's yard as the server reports it. Kilograms and whole credits; the page only shows it. */
 export interface Yard {
   held_kg: number; cap_kg: number; lot_kg: number; anchor: number; kcr: number;
@@ -267,9 +267,11 @@ export class Hud {
     const f = s.flows, night = isNight(s.t), ph = phaseOf(s.t);
     $('phase').textContent = night ? 'Night' : 'Day';
     $('phase').className = night ? 'night' : 'day';
-    $('countdown').textContent = s.phase !== 'playing' ? 'Mission over' : night ? `Sunrise in ${num(hoursToSunrise(s.t))} h` : `Sunset in ${num(hoursToSunset(s.t))} h`;
+    // On the shared world the hours are the world's, so say what they are on a watch as well.
+    const real = (h: number) => s.pace ? ` · ${Math.max(1, Math.round(h / s.pace))} min` : '';
+    $('countdown').textContent = s.phase !== 'playing' ? 'Mission over' : night ? `Sunrise in ${num(hoursToSunrise(s.t))} h${real(hoursToSunrise(s.t))}` : `Sunset in ${num(hoursToSunset(s.t))} h${real(hoursToSunset(s.t))}`;
     $('hour').textContent = `Lunar day ${dayNumber(s.t)} · hour ${num(ph)} of ${LUNAR_DAY}`;
-    this.moon(ph, night);
+    this.moon(ph, night, s.plot?.lon, s.plot?.lat);
     this.time0 = s.t === 0;
     const ev = eventLine(s), evEl = $('event');
     evEl.hidden = !ev; if (ev) { evEl.textContent = ev.text; evEl.dataset.tone = ev.tone; }
@@ -326,19 +328,23 @@ export class Hud {
   }
 
   /** The Moon as Earth sees it. The synodic month is the lunar day, so the shadow line crosses the base at sunrise and sunset. */
-  private moon(ph: number, night: boolean) {
+  private moon(ph: number, night: boolean, lon = 23.5, lat = 1) {
     const key = Math.floor(ph);
     if (key === this.moonKey) return;
     this.moonKey = key;
-    const BASE_LON = 23.5, R = 34;
-    let sun = BASE_LON + 90 - (360 / LUNAR_DAY) * ph;          // longitude under the Sun, east positive
+    const R = 34;
+    let sun = lon + (360 / LUNAR_DAY) * (lightHours() / 2 - ph);   // longitude under the Sun, east positive: overhead here at the middle of the day
     sun = ((sun + 180) % 360 + 360) % 360 - 180;
     const lit = (1 + Math.cos(sun * Math.PI / 180)) / 2, rx = Math.abs(Math.cos(sun * Math.PI / 180)) * R;
     const east = sun >= 0;                                       // Sun to the east: the right limb is lit, the Moon is waxing
     // the dark part: the unlit limb, closed by the shadow line (half an ellipse)
     const limb = east ? 0 : 1, bulge = (east ? lit > 0.5 : lit < 0.5) ? 1 : 0;
     ($('moon-shade') as unknown as SVGPathElement).setAttribute('d', `M 0 ${-R} A ${R} ${R} 0 0 ${limb} 0 ${R} A ${rx.toFixed(2)} ${R} 0 0 ${bulge} 0 ${-R} Z`);
-    $('moon-base').setAttribute('class', night ? 'night' : '');
+    const base = $('moon-base'), rad = Math.PI / 180;     // the town, where it stands on the face Earth sees; a far-side town is not on it
+    base.setAttribute('class', night ? 'night' : '');
+    base.setAttribute('cx', (R * Math.sin(lon * rad) * Math.cos(lat * rad)).toFixed(1));
+    base.setAttribute('cy', (-R * Math.sin(lat * rad)).toFixed(1));
+    base.style.display = Math.abs(lon) < 90 ? '' : 'none';
     $('moon-name').textContent = lit < 0.03 ? 'New Moon' : lit > 0.97 ? 'Full Moon' : Math.abs(lit - 0.5) < 0.04 ? (east ? 'First quarter' : 'Last quarter') : `${east ? 'Waxing' : 'Waning'} ${lit < 0.5 ? 'crescent' : 'gibbous'}`;
   }
 
@@ -504,7 +510,7 @@ export class Hud {
       const pi = PRICES.indexOf(s.price);
       const y = ui.yard, c = ui.caretaker;
       const care = c ? `<h3>Caretaker</h3><div class="prices"><span>${num(c.fee / c.kcr, 1)} an hour</span><button type="button" data-care="1" aria-pressed="${c.on}">Hired</button><button type="button" data-care="0" aria-pressed="${!c.on}">None</button></div>
-        <p class="txt">Looks after the town while you are away: repairs, air, water, food and power for the night. Builds nothing new and signs nothing.${c.paid ? ` Paid ${num(c.paid / c.kcr)} so far.` : ''}</p>` : '';
+        <p class="txt">${c.watch ? `When you have been away ${c.watch.after_minutes} minutes your own crew keeps watch, for nothing, for ${c.watch.for_hours} hours: repairs, air, water, food and power for the night. A caretaker does the same after that, for as long as they are paid. Neither builds anything new or signs anything.` : 'Looks after the town while you are away: repairs, air, water, food and power for the night. Builds nothing new and signs nothing.'}${c.paid ? ` Paid ${num(c.paid / c.kcr)} so far.` : ''}</p>` : '';
       html = `${head('Money')}${y ? this.yardHtml(y) : ''}<p class="sub">${num(Math.floor(s.materials))} credits · per hour</p>
         <dl class="budget">${y ? '' : `<div><dt>Foundries</dt><dd>${money(e.foundry)}</dd></div>`}<div><dt>Rent</dt><dd>${money(e.rent)}</dd></div><div><dt>Visitors</dt><dd>${money(e.visitors)}</dd></div><div><dt>Concourses</dt><dd>${money(e.shops)}</dd></div><div><dt>Earth grant</dt><dd>${money(e.grant)}</dd></div><div><dt>Upkeep</dt><dd>${money(-f.upkeep)}</dd></div><div class="net"><dt>Net an hour</dt><dd>${money(f.income)}</dd></div></dl>
         <div class="prices"><span>Prices</span>${['Low', 'Fair', 'High'].map((n, i) => `<button type="button" data-price="${i}" aria-pressed="${i === pi}">${n}</button>`).join('')}</div>

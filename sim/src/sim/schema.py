@@ -195,6 +195,18 @@ MIGRATIONS: list[tuple[int, str]] = [
         ALTER TABLE town ADD COLUMN plot TEXT NOT NULL DEFAULT '{}';
         """,
     ),
+    (
+        8,
+        """
+        -- The faster clock (D93). `pad_grant` is what the Ark paid a
+        -- company when its first landing pad came into work: empty until
+        -- that is settled, so it is paid once however many crews are sent.
+        -- `seen_tick` is the hour the company's owner was last at the town,
+        -- to within a few minutes; the crew keeps watch while they are away.
+        ALTER TABLE town ADD COLUMN pad_grant INTEGER;
+        ALTER TABLE town ADD COLUMN seen_tick INTEGER;
+        """,
+    ),
 ]
 
 

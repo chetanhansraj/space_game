@@ -28,8 +28,8 @@ Every credit paid out by an agent corporation must have been earned by that corp
 **4. Transfers are read from precomputed tables, never solved on request.**
 The orbital service generates transfer costs across a grid of node pairs and departure dates on a schedule. Route queries are lookups. Never call a Lambert solver in a request handler.
 
-**5. One clock, 60×, shared by everyone.**
-One real minute is one game hour. There is no per-player time rate, no pausing, no offline freeze. Ships burn, outposts produce and prices move while players are away.
+**5. One clock, 240×, shared by everyone.**
+Fifteen real seconds is one game hour. There is no per-player time rate, no pausing, no offline freeze. Ships burn, outposts produce and prices move while players are away. There is also one Sun: every town's day and night are where it stands over that town, from `sim/src/sim/sun.py`, the same Sun that lights the globe. See `docs/DECISIONS.md` D93.
 
 **6. Patched conics, never n-body.**
 Two-body arcs stitched at sphere-of-influence boundaries. Deterministic and reproducible. N-body integration buys nothing perceivable and costs determinism.
@@ -68,9 +68,10 @@ Enforced at signup. Alt accounts farming themselves is the classic killer of pla
 
 - **Money is integer credits.** Never floats. One credit is one gigajoule of delivered energy. Trade is commonly quoted in kcr and Mcr; store base units.
 - **Mass is kilograms** in the database, displayed in tonnes.
-- **All times are game time**, stored as UTC instants with the conversion in one place. Never scatter the 60× factor — it lives in `orbital/src/orbital/clock.py` and a test asserts no other module defines it. Every rate in `docs/seed-data.md` is per game day.
-- **Sky time is not game date.** Ephemerides are evaluated at a clock that starts at the real launch instant and runs 60×; the fictional 22nd-century calendar is a display offset and never enters a computation. See `docs/DECISIONS.md` D3.
-- **Every economic mutation is an append-only ledger entry.** Balances are derived, never edited. If you cannot reconstruct a player's balance from the ledger, the ledger is wrong.
+- **All times are game time**, stored as UTC instants with the conversion in one place. Never scatter the 240× factor — it lives in `orbital/src/orbital/clock.py` and a test asserts no other module defines it. Every rate in `docs/seed-data.md` is per game day.
+- **Sky time is not game date.** Ephemerides are evaluated at a clock that starts at the real launch instant and advances one hour a tick; the fictional 22nd-century calendar is a display offset and never enters a computation. See `docs/DECISIONS.md` D3.
+- **Every economic mutation is an append-only ledger entry.** Balances are derived, never edited. If you cannot reconstruct a player's balance from the ledger, the ledger is wrong. Old entries leave the live file only through `market/archive.py`, which copies them to an archive file first and keeps their sum (D93); nothing else may remove or change a posting.
+- **What a person must answer is counted in real minutes; what the world does is counted in game hours.** Offers, contract deadlines and the crew's watch are derived from the clock, so they survive a change of rate (D93).
 - **Migrations are forward-only.** The world is persistent and cannot be reset once live.
 
 ---

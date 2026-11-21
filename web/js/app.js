@@ -227,7 +227,7 @@
       ${jobs || '<div class="note">None. The JOBS tab has work with the money already in escrow.</div>'}
       <h3>Charter</h3>
       <div class="row"><span>Fee</span><b>${cr(me.upkeep_per_day)} / game day</b></div>
-      <div class="note">Paid at game midnight — every 24 real minutes. Docking fees are paid at launch.</div>`;
+      <div class="note">Paid at game midnight, every ${Math.round(24 * (S.world?.tick_seconds || 15) / 60)} real minutes. Docking fees are paid at launch.</div>`;
     $("#findShip").onclick = () => { if (Scene.view() !== "moon") setView("moon"); Scene.focusShip(); };
     bindJobs($("#company"));
     drawClock();

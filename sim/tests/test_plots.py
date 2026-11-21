@@ -152,14 +152,15 @@ def test_a_company_chooses_one_of_its_three_and_only_those():
     g = Game.open(":memory:", now=T0, routes=default_routes())
     person, _ = g.signup("Tranquility Co")
     offers = g.town_meta(person)["offers"]
-    assert offers == towngame.plot_offers(person.id) and len(offers) == 3
+    assert offers == g.plot_offers(person.id) and len(offers) == 3
     for bad in (3, -1, 1.0, True, "2"):
         with pytest.raises(GameError):
             g.found_town(person, bad)
     assert g._town_row(person.id) is None, "a refused choice founds nothing"
     meta = g.found_town(person, 2)
-    assert meta["plot"] == offers[2] and "offers" not in meta
-    assert json.loads(g.town_state(person))["plot"] == offers[2]
+    chosen = {k: v for k, v in offers[2].items() if k != "light"}
+    assert meta["plot"] == chosen and "offers" not in meta
+    assert json.loads(g.town_state(person))["plot"] == chosen
     g.db.close()
 
 
@@ -213,7 +214,8 @@ def test_a_company_is_given_its_ground_once_and_keeps_it():
     person, _ = g.signup("Tranquility Co")
     meta = g.found_town(person)
     plot = meta["plot"]
-    assert plot == towngame.plot_for(person.id)
+    assert plot == {k: v for k, v in g.plot_offers(person.id)[0].items()
+                    if k != "light"}
     assert total(plot) == pytest.approx(BUDGET, abs=0.005)
     assert json.loads(g.town_state(person))["plot"] == plot
     assert meta["league"][0]["plot"] == plot
@@ -248,7 +250,8 @@ def test_a_town_from_before_plots_plays_on_as_it_was(tmp_path):
     g = Game.open(path, now=T0, routes=default_routes())
     person, _ = g.signup("Old Ground Ltd")
     g.found_town(person)
-    g.db.execute("ALTER TABLE town DROP COLUMN plot")
+    for column in ("plot", "pad_grant", "seen_tick"):
+        g.db.execute(f"ALTER TABLE town DROP COLUMN {column}")
     g.db.execute("DELETE FROM sim_schema_version WHERE version >= 7")
     g.db.commit()
     g.db.close()
