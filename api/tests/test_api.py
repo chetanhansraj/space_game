@@ -8,6 +8,7 @@ that a refusal from the game comes back as a readable 400 rather than a 500.
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -45,6 +46,18 @@ def _join(client, name="Test Freight"):
                                          "access_code": "ark-2190"})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}
+
+
+def _pad(client, game, auth):
+    """Found the company's town and stand a working landing pad in it, which is
+    what opens the market to a company (D92)."""
+    assert client.post("/api/town/found", headers=auth).status_code == 200
+    row = game.db.execute("SELECT rowid, state FROM town ORDER BY rowid DESC LIMIT 1").fetchone()
+    s = json.loads(row["state"])
+    s["buildings"].append({**s["buildings"][0], "uid": 999, "type": "pad",
+                           "progress": 1, "connected": True, "damaged": False})
+    game.db.execute("UPDATE town SET state = ? WHERE rowid = ?", (json.dumps(s), row["rowid"]))
+    return auth
 
 
 def test_the_world_is_public(client):
@@ -94,8 +107,35 @@ def test_the_first_session(client):
     assert "unread" in away
 
 
-def test_a_refusal_is_a_readable_400(client):
+def test_the_market_is_watched_by_all_and_traded_from_a_pad(client, game):
+    """Anyone sees the market. Buying, selling, flying and taking work wait
+    for a town with a working landing pad, and the server is what says so."""
     auth = _join(client)
+    assert client.get("/api/market/shackleton_depot").status_code == 200       # no sign-in, no pad
+    assert client.get("/api/contracts").status_code == 200
+    for path, body in (("/api/buy", {"asset": "ICE", "tonnes": 1, "price": 900}),
+                       ("/api/sell", {"asset": "ICE", "tonnes": 1, "price": 1}),
+                       ("/api/dispatch", {"destination": "peary_ridge"})):
+        r = client.post(path, headers=auth, json=body)
+        assert r.status_code == 400 and "found your town" in r.json()["detail"], r.text
+    r = client.post("/api/contracts/1/accept", headers=auth)
+    assert r.status_code == 400 and "found your town" in r.json()["detail"]
+    assert client.post("/api/town/found", headers=auth).status_code == 200     # a town, but no pad yet
+    r = client.post("/api/dispatch", headers=auth, json={"destination": "peary_ridge"})
+    assert r.status_code == 400 and "working landing pad" in r.json()["detail"]
+    me = client.get("/api/me", headers=auth).json()
+    assert me["ship"]["location"] == "shackleton_depot"                        # nothing moved
+    row = game.db.execute("SELECT rowid, state FROM town ORDER BY rowid DESC LIMIT 1").fetchone()
+    s = json.loads(row["state"])
+    s["buildings"].append({**s["buildings"][0], "uid": 999, "type": "pad",
+                           "progress": 1, "connected": True, "damaged": False})
+    game.db.execute("UPDATE town SET state = ? WHERE rowid = ?", (json.dumps(s), row["rowid"]))
+    r = client.post("/api/dispatch", headers=auth, json={"destination": "peary_ridge"})
+    assert r.status_code == 200, r.text
+
+
+def test_a_refusal_is_a_readable_400(client, game):
+    auth = _pad(client, game, _join(client))
     r = client.post("/api/dispatch", headers=auth,
                     json={"destination": "shackleton_depot"})
     assert r.status_code == 400
@@ -106,7 +146,7 @@ def test_a_refusal_is_a_readable_400(client):
 
 
 def test_fly_somewhere_and_hear_about_it(client, game):
-    auth = _join(client)
+    auth = _pad(client, game, _join(client))
     r = client.post("/api/dispatch", headers=auth,
                     json={"destination": "peary_ridge"})
     assert r.status_code == 200, r.text
@@ -339,7 +379,7 @@ def test_the_yard_is_shown_and_its_door_is_shut_until_trade_opens(client, game):
     assert r.json()["meta"]["yard"]["parts"]["buy"] is False
     assert r.json()["meta"]["yard"]["parts"]["max_price"] == 60_000
 
-    # Selling and loading wait for a landing pad and eight people.
+    # Selling and loading wait for a working landing pad.
     for path, body in (("/api/town/sell", {"tonnes": 1, "price": 45_000}),
                        ("/api/town/load", {"tonnes": 1})):
         r = client.post(path, headers=who, json=body)

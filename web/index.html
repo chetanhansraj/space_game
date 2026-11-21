@@ -61,9 +61,10 @@ button{cursor:pointer}
 #townCard #townStats small{font-size:10.5px}
 .lockchip{font-family:var(--mono);font-size:10.5px;color:#fde68a;letter-spacing:.04em}
 .lockchip:empty{display:none}
-/* Inside the town page. Looking is free; the market is for a town that has earned it. */
+/* Inside the town page. */
 body.embed #townBtn{border-color:rgba(251,191,36,.6);background:rgba(251,191,36,.14)}
-body.lookonly #right,body.lookonly #left,body.lookonly #cashChip,body.lookonly #inboxBtn,body.lookonly #baseBtn{display:none!important}
+/* Watching only: the market is all there to read; the buttons that trade in it wait for a landing pad. */
+body.watching [data-act],body.watching [data-launch],body.watching [data-accept]{opacity:.38;filter:saturate(.3);cursor:not-allowed}
 
 /* top bar */
 #top{position:fixed;left:12px;right:12px;top:12px;display:flex;align-items:center;gap:14px;
@@ -388,7 +389,7 @@ table.mkt tr.open td{background:rgba(6,182,212,.05)}
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/OrbitControls.js"></script>
-<script src="js/scene.js?v=20261121"></script>
-<script src="js/app.js?v=20261121"></script>
+<script src="js/scene.js?v=20261121b"></script>
+<script src="js/app.js?v=20261121b"></script>
 </body>
 </html>

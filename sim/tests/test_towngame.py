@@ -97,8 +97,7 @@ def test_founding_lands_the_city_builders_crew_with_the_companys_wallet(game):
     assert cash(game, DEV_FUND) == fund - TOWN_GRANT and minted(game) == made
     assert s["materials"] == pytest.approx((before + TOWN_GRANT) / KCR)
     assert meta["founded"] and meta["summary"]["population"] == 4
-    assert meta["trade"] == {"open": False, "pad": False, "population": 4,
-                             "needs_population": 8}
+    assert meta["trade"] == {"open": False, "pad": False, "population": 4}
     assert "town_charter" in [m["kind"] for m in game.inbox(player)]
 
 
@@ -341,8 +340,7 @@ def test_trade_opens_with_a_pad_and_eight_people(game, town):
                            "progress": 1, "connected": True, "damaged": False})
     game.db.execute("UPDATE town SET state = ?", (json.dumps(s),))
     trade = game.town_meta(town)["trade"]
-    assert trade == {"open": True, "pad": True, "population": 10,
-                     "needs_population": 8}
+    assert trade == {"open": True, "pad": True, "population": 10}
 
 
 def test_an_old_company_with_nothing_left_can_still_found_a_town(game):

@@ -2413,7 +2413,8 @@ It is not a true continuous zoom and cannot be: the town's bend is far
 tighter than the Moon's (D88), and its craters are invented where the
 globe's are mapped. The dissolve hides the swap.
 
-**The market stays shut to a town that has not earned it.** A town
+**The market stays shut to a town that has not earned it** (changed the
+same day by D92: the market is shown to all). A town
 without a pad and eight people rises to a Moon it can only look at: the
 port, company and credits panels are hidden and a line says when the
 market opens. This is a lock on the screen, as the old button was. What
@@ -2428,6 +2429,61 @@ the town list it already published is what the globe draws.
 once and only the button rises (a pinch does not). The dissolve replaces
 a mostly dark ball with a sunlit globe. The trade panels appear all at
 once on arrival. Checked on a local world, not on the live account.
+
+### D92 — A landing pad opens the market, and everyone may watch it
+
+*Direction from Chetan, 21 November 2026,* on seeing the look-only Moon of
+D91 from his own town, which has a landing pad and four people: "the
+market should be visible to all lets not loose that, itll get people
+really interested in the game, when they get a landing pad then they can
+trade, my town has a landing pad but nothing lands there, or market open
+for me".
+
+**The rule now.** A company may trade when its town has a working landing
+pad. Nothing else is asked.
+
+- *What it replaces.* D71 asked for a pad and eight people. The eight was
+  Claude's number, listed for his review; this is the review. It kept a
+  town with a pad shut out for want of a head count the player could not
+  see a reason for.
+- *What it covers.* The town's yard (selling and loading, by hand and by
+  standing order), and the company's ship: buying, selling, launching and
+  taking a contract. Before this the ship could trade from the first
+  minute by opening the Moon page at its own address, and D91 hid the
+  market on one screen only. One rule in one place now: the server
+  refuses, with a sentence that says what to build. Delivering or dropping
+  a contract already held is never refused.
+- *What everyone sees.* All of it: prices, routes, jobs, the feed, every
+  town. Nothing is hidden from a company without a pad. A line says it is
+  watching and what opens trading, and the buttons are greyed.
+
+**What did not change.** Buildings begin to wear parts (D82) when a town
+has a pad and has once reached eight people, exactly as before. Opening
+the market earlier was not allowed to bring that cost forward: a small
+town with a new pad trades, and is not yet charged for wear.
+
+**What it means in play.**
+- A new company's ship stays docked until its town has a pad. The path is
+  found the town, build the pad, trade.
+- A pad that is broken or cut off shuts the market until it works again.
+- A company whose town was lost trades again once the new crew has a pad.
+- Lunar Ark's own town has a pad, so it trades as soon as this is live.
+- House towns sell from the day their pad stands, which is earlier than
+  the 120 game day run (D83 to D86) measured. Not re-measured.
+
+**"Nothing lands there."** Looked at on his town: the pad is finished,
+connected and powered, and shuttle 1 has landed. Two things hide it. A
+shuttle comes every 60 game hours, which is once a real hour, and is on
+the pad for 11 of them. And it brings people only to a free bed: his one
+Habitat Module holds his four crew, so it brought water and food and
+nobody. The landing report now says so in words: every bed is taken,
+build another Habitat or zone Habitat land. The interval itself is left
+alone and is item 28 below.
+
+**Checked.** 415 server tests pass, one of them new: the market read
+without a pad or a sign-in, every trading route refused without a pad and
+allowed with one. In a browser on a local world a town with no pad saw
+the whole market and was refused a purchase with the sentence above.
 
 ## Still open — needs you
 
@@ -2496,11 +2552,15 @@ Deliberately not decided, because these are yours.
     is worth anyone's time.
 25. **Assigned or chosen** — D84. *Answered 18 November: three options,
     the player chooses one. Built, D85.*
+28. **How often the shuttle comes** — D92. Every 60 game hours, which is
+    once a real hour, on the pad for 11. Since build times were quartered
+    (D89) it is the slow thing in a town. Shortening it is not only pace:
+    each landing brings free water and food and a turn of paying visitors,
+    so four times the shuttles is four times of each. Say how often you
+    want one, and whether what it carries should shrink to match.
 27. **Should the Moon page be look-only by its own address too?** — D91.
-    Risen from a town below a pad and eight people, the market is hidden.
-    Opened by its address, the same company can still fly its ship and
-    trade, as it always could. Closing that would be a rule, not a screen:
-    say if a company should have no market at all until its town earns it.
+    *Resolved by D92:* everyone watches, and trading waits for a landing
+    pad wherever the page is opened from.
 26. **How much the ground should matter** — D84. Up to 2.5 times either
     way. Play a plot and say whether it feels like your own ground or
     like a handicap.

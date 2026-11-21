@@ -16,7 +16,7 @@ from sim.earth import ACCOUNT as EARTH
 from sim.game import DEV_FUND, STARTING_GRANT, Game, GameError
 from sim.persist import default_routes
 from sim.towngame import (HOUSE, HOUSE_EVERY_DAYS, HOUSE_RECALL_DEBT,
-                          HOUSE_RETURN_DAYS, TOWN_START, TRADE_POPULATION)
+                          HOUSE_RETURN_DAYS, TOWN_START)
 
 T0 = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
 DAY = 24
@@ -180,7 +180,7 @@ def test_the_steward_plays_them_and_they_grow(moon):
     assert set(towns) == set(house(moon)) and len(towns) >= 5
     first = moon.town_engine.summary(towns[HOUSE[0][0]]["state"])
     assert first["phase"] == "playing" and first["buildings"] > 10
-    assert first["population"] >= TRADE_POPULATION
+    assert first["population"] >= 8 and first["pad"]     # grown, and trading: a working pad opens the market (D92)
     assert sum(r["faults"] for r in towns.values()) == 0
 
 

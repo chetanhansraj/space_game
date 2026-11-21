@@ -428,25 +428,33 @@ def create_app(game: Game | None = None, *, db_path: str | None = None,
             the_game().mark_read(player, body.upto)
         return {"ok": True}
 
+    # Anyone may watch the market. Buying, selling, flying and taking work
+    # are for a company whose town has a working landing pad: the game
+    # decides (trade_clearance), these only ask it first. Finishing or
+    # dropping work already taken is never refused.
     @app.post("/api/buy")
     def buy(body: TradeIn, player: Player = Depends(player_for)):
         with lock:
+            the_game().trade_clearance(player)
             return the_game().buy(player, body.asset, body.tonnes, body.price)
 
     @app.post("/api/sell")
     def sell(body: TradeIn, player: Player = Depends(player_for)):
         with lock:
+            the_game().trade_clearance(player)
             return the_game().sell(player, body.asset, body.tonnes, body.price)
 
     @app.post("/api/dispatch")
     def dispatch(body: DispatchIn, player: Player = Depends(player_for)):
         with lock:
+            the_game().trade_clearance(player)
             return the_game().dispatch(player, body.destination,
                                        body.sell_on_arrival)
 
     @app.post("/api/contracts/{cid}/accept")
     def accept(cid: int, player: Player = Depends(player_for)):
         with lock:
+            the_game().trade_clearance(player)
             return the_game().accept(player, cid)
 
     @app.post("/api/contracts/{cid}/abandon")

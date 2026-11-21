@@ -136,9 +136,22 @@
 
   // -- the player ---------------------------------------------------------------
   // -- towns ------------------------------------------------------------------
+  // Signed in, the town's own page of the ledger says more: every town, and whether this company may trade yet.
+  // Anyone may watch the market. A company trades once its town has a working landing pad; the server decides that,
+  // and this page only says so and greys the buttons.
   async function loadTowns() {
-    try { const r = await api("/towns"); S.towns = r.towns; Scene.setTowns(r.towns, S.me ? S.me.name : S.mine); }
-    catch (e) { /* the next one will do */ }
+    try {
+      if (S.token) {
+        const m = (await api("/town")).meta;
+        S.towns = m.league || [];
+        S.clear = !!(m.founded && m.trade && m.trade.open);
+        S.clearWhy = !m.founded ? "Watching only · found your town and build a landing pad to trade"
+          : "Watching only · build a landing pad in your town to trade";
+      } else { S.towns = (await api("/towns")).towns; S.clear = true; }
+      Scene.setTowns(S.towns, S.me ? S.me.name : S.mine);
+      document.body.classList.toggle("watching", !S.clear);
+      $("#lockChip").textContent = S.clear ? "" : S.clearWhy;
+    } catch (e) { /* the next one will do */ }
   }
   function goDown() {
     if (EMBED) { $("#townCard").classList.add("hidden"); up({ say: "down" }); return; }
@@ -541,8 +554,6 @@
       if (m.say === "arrive") {
         at = m; S.mine = m.company;
         if (S.asleep) { S.asleep = false; Scene.sleep(false); loadWorld().catch(() => {}); loadTowns(); if (S.token) loadMe().catch(() => {}); }
-        document.body.classList.toggle("lookonly", !!m.locked);
-        $("#lockChip").textContent = m.locked ? `Looking only · the market opens to a town with a landing pad and ${m.needs} people` : "";
         if (Scene.view() !== "moon") setView("moon");
         document.querySelectorAll(".overlay").forEach((o) => { if (o.id !== "intro") o.classList.add("hidden"); });
         if (S.towns) Scene.setTowns(S.towns, S.me ? S.me.name : S.mine);
