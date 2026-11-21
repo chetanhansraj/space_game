@@ -795,7 +795,8 @@ function tickShuttle(s: State, dt: number) {
     const parts = [movers ? `${movers} new resident${movers > 1 ? 's' : ''}` : '', guests ? `${guests} visitors` : '', gone ? `${gone} visitors heading home` : ''].filter(Boolean);
     pushAlert(s, 'good', `Shuttle ${sh.flight} has landed with water and food${parts.length ? ': ' + parts.join(', ') : ''}.`
       + (!safe ? ' Earth held back all passengers until the base is stable.'
-        : turnedAway > 0 ? ` Earth held back ${turnedAway} more: the base can only support ${cap.limit} people. The limit is ${cap.why}.` : ''));
+        : turnedAway > 0 ? ` Earth held back ${turnedAway} more: the base can only support ${cap.limit} people. The limit is ${cap.why}.`
+        : !movers && !guests && beds === 0 ? ' Nobody came to stay: every bed is taken. Build another Habitat Module, or zone Habitat land, and the next shuttle brings people.' : ''));
   } else if (sh.phase === 'landed') { sh.phase = 'launching'; sh.timer = 3; }
   else { sh.phase = 'away'; sh.timer = 0; s.nextShuttle = s.t + SHUTTLE_EVERY; }
 }
