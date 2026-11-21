@@ -83,6 +83,8 @@ async function boot(hot: any) {
   const say = (msg: string, ms = 2600) => { ui.hint = msg; hintUntil = performance.now() + ms; };
 
   // ----- the shared world -----
+  // Rising to the Moon: u is how far the town has pulled back (0 the town, 1 the ball), alpha how far the globe has faded in.
+  const rise = { frame: null as HTMLIFrameElement | null, ready: false, up: false, waited: false, dir: 0, u: 0, alpha: 0, pulls: 0, pulled: 0 };
   let meta: Meta | null = null, pending = 0, serverT = 0, rate = PRACTICE_RATE, chain: Promise<unknown> = Promise.resolve();
   /** Take the server's word for the town. Whatever was drawn before is replaced. */
   const adopt = (r: Reply) => {
@@ -251,7 +253,15 @@ async function boot(hot: any) {
   cv.addEventListener('pointercancel', e => { pts.delete(e.pointerId); down = null; painting = false; });
   cv.addEventListener('pointerleave', () => { if (!painting) hover = null; look = null; mouse = null; });
   cv.addEventListener('contextmenu', e => { e.preventDefault(); ui.tool = null; hover = null; });
-  cv.addEventListener('wheel', e => { e.preventDefault(); const p = local(e); view.zoomAt(p.x, p.y, e.deltaY < 0 ? 1.12 : 1 / 1.12); }, { passive: false });
+  cv.addEventListener('wheel', e => {
+    e.preventDefault(); const p = local(e);
+    if (LIVE && e.deltaY > 0 && view.atFurthest && rise.dir === 0 && !rise.up) {   // as far out as the town goes: keep pulling to leave it
+      const now = performance.now(); rise.pulls = now - rise.pulled < 1400 ? rise.pulls + 1 : 1; rise.pulled = now;
+      if (rise.pulls >= 4) { rise.pulls = 0; riseToMoon(); } else if (rise.pulls === 2) say('Keep pulling back to rise to the Moon.', 2200);
+      return;
+    }
+    view.zoomAt(p.x, p.y, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+  }, { passive: false });
 
   window.addEventListener('keydown', e => {
     if (!running || helpOpen || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -318,7 +328,8 @@ async function boot(hot: any) {
         tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, mouse.cx + 18)) + 'px';
         tip.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, mouse.cy + 18)) + 'px';
       } else if (!tip.hidden) { tip.hidden = true; tipKey = ''; } }
-    view.frame(s, ui.selected, ui.tool, hover, ok, now, running && s.phase === 'playing' ? ui.speed : 0, ui.overlay);
+    if (rise.dir !== 0 || rise.u > 0) riseStep(dt);
+    if (!rise.up) view.frame(s, ui.selected, ui.tool, hover, ok, now, running && s.phase === 'playing' ? ui.speed : 0, ui.overlay);
     if (now - lastHud > 150) { lastHud = now; hud.update(s, ui); }
     if (running && s.phase === 'playing' && now - lastSave > 5000) { lastSave = now; save(s); }
     requestAnimationFrame(frame);
@@ -334,6 +345,55 @@ async function boot(hot: any) {
   if (!LIVE) window.__game = { get state() { return s; }, ui, view, send };
   requestAnimationFrame(frame);
 
+  // ----- rising to the Moon and coming back down -----
+  // The Moon and its market are another page of the same world. It is opened inside this one, behind the town. The town
+  // pulls back until its land is a ball; that page stands its camera where the same ball is seen from the same side;
+  // the two are dissolved together; then that page draws back to its own view. Coming down is the same in reverse.
+  function moonSay(m: Record<string, unknown>) { rise.frame?.contentWindow?.postMessage({ ark: true, ...m }, location.origin); }
+  function moonArrive() {
+    const plot = (meta as any)?.plot, t = meta?.trade;
+    if (!plot || !rise.ready) return;
+    moonSay({ say: 'arrive', lat: plot.lat, lon: plot.lon, rho: view.ballRadius, company: meta!.company, locked: !t?.open, needs: t?.needs_population ?? 8 });
+  }
+  function moonFrame() {
+    if (rise.frame) return;
+    const f = document.createElement('iframe');
+    f.id = 'moonframe'; f.src = '/?embed=1'; f.title = 'The Moon'; f.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(f); rise.frame = f;
+  }
+  function riseToMoon() {
+    if (!LIVE || rise.dir !== 0 || rise.up) return;
+    if (!meta?.founded || !(meta as any).plot) { say('Found the town first.', 3000); return; }
+    ui.tool = null; ui.selected = null; hover = null;
+    moonFrame(); moonArrive(); rise.dir = 1;
+  }
+  function riseStep(dt: number) {
+    const f = rise.frame; if (!f) return;
+    const sm = (a: number, b: number, x: number) => { const k = x <= a ? 0 : x >= b ? 1 : (x - a) / (b - a); return k * k * (3 - 2 * k); };
+    rise.u = Math.max(0, Math.min(1, rise.u + rise.dir * dt / 1.8));
+    view.rise(rise.u);
+    const want = rise.ready ? sm(0.5, 1, rise.u) : 0;                          // if the Moon is still loading, wait as the ball
+    rise.alpha += Math.max(-dt / 0.4, Math.min(dt / 0.4, want - rise.alpha));
+    f.style.opacity = String(rise.alpha);
+    f.style.visibility = rise.alpha > 0 ? 'visible' : 'hidden';
+    if (rise.dir === 1 && rise.u >= 1 && !rise.ready && !rise.waited) { rise.waited = true; say('Rising to the Moon…', 4000); }
+    if (rise.dir === 1 && rise.u >= 1 && rise.alpha >= 0.999) {                // the globe has the screen: hand over
+      rise.dir = 0; rise.up = true; f.style.pointerEvents = 'auto'; f.removeAttribute('aria-hidden'); f.focus(); moonSay({ say: 'settle' });
+    }
+    if (rise.dir === -1 && rise.u <= 0 && rise.alpha <= 0.001) { rise.dir = 0; view.riseEnd(); moonSay({ say: 'sleep' }); }   // out of sight, it rests
+  }
+  if (LIVE) window.addEventListener('message', ev => {
+    if (ev.origin !== location.origin || !ev.data || !ev.data.ark || ev.source !== rise.frame?.contentWindow) return;
+    const m = ev.data;
+    if (m.say === 'loaded') { rise.ready = true; if (rise.dir === 1) moonArrive(); }
+    else if (m.say === 'down' && rise.up) moonSay({ say: 'depart' });         // it flies back to where the ball is seen from
+    else if (m.say === 'departed' && rise.up) {
+      rise.up = false; rise.dir = -1; rise.waited = false;
+      const f = rise.frame!; f.style.pointerEvents = 'none'; f.setAttribute('aria-hidden', 'true'); window.focus();
+      resync();
+    }
+  });
+
   /** The live town: sign-in check, the town if there is one, and the door to the Moon. */
   async function enterWorld() {
     document.querySelector('.speed')?.remove();
@@ -348,17 +408,14 @@ async function boot(hot: any) {
     try { first = await api('/town'); } catch (err) { card('Cannot reach the world', String((err as Error).message || err), '/', 'Go to the Moon'); return; }
     adopt(first);
 
-    // The door up to the Moon and the market, which opens when the town can use it.
+    // The way up to the Moon. Looking is free from the first hour; the market there opens when the town has earned it.
     const help = document.getElementById('btn-help');
     const moon = document.createElement('button');
     moon.type = 'button'; moon.id = 'btn-moon'; moon.textContent = 'Moon';
+    moon.title = 'Rise to the Moon: see your town on it, and every other town';
     help?.parentElement?.insertBefore(moon, help);
-    moon.addEventListener('click', () => {
-      const t = meta?.trade;
-      if (t?.open) { location.href = '/'; return; }
-      say(t ? `The market opens to a town with a working landing pad and ${t.needs_population} people. You have ${t.population}${t.pad ? '' : ' and no pad yet'}.` : 'Found the town first.', 5200);
-    });
-    window.setInterval(() => { moon.title = meta?.trade?.open ? 'Rise to the Moon and the market' : 'The market opens with a landing pad and a town of eight'; moon.classList.toggle('locked', !meta?.trade?.open); }, 1000);
+    moon.addEventListener('click', riseToMoon);
+    moon.addEventListener('pointerenter', () => { if (meta?.founded) moonFrame(); }, { once: true });   // start loading it before it is asked for
 
     if (meta!.founded && first.state) begin(first.state);
     else {

@@ -183,6 +183,15 @@ const UP = 32 * Math.SQRT2 * Math.cos(Math.PI / 6);   // screen pixels for one t
 const SUN = (() => { const l = Math.hypot(0.42, 0.62, 0.6); return [0.42 / l, 0.62 / l, 0.6 / l]; })();
 const LEVEL = SUN[2] / (SUN[2] + 0.5);
 
+// Seen from so far that the whole bent land is on the screen, it is a ball. These are its sizes in the town's screen
+// units at a scale of one, measured from the middle of the claim: how far it reaches to each side, above and below.
+// The claim is not in the middle of the ball but near its top, as a place is when a globe is seen from above it.
+export const BALL = {
+  side: (CAP + BEND) * 32 * Math.SQRT2,
+  above: (CAP + BEND * 0.5) * 16 * Math.SQRT2 - BEND * (1 - Math.cos(Math.PI / 6)) * UP,
+  below: (CAP + BEND * 0.5) * 16 * Math.SQRT2 + BEND * (1 - Math.cos(Math.PI * 5 / 6)) * UP,
+};
+
 // How bright bent ground looks next to level ground. Moon dust does not darken toward the edge of the disc the way a
 // matt ball does (the full Moon is as bright at its rim as at its centre), so this follows the dust, not the ball.
 // Far round the bend, past what the pictures cover, the land falls into shadow.

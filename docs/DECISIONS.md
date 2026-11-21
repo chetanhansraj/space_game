@@ -2370,6 +2370,65 @@ and greenhouse lamps are seen less than habitat windows. Lights do not
 fall on the ground or on neighbours (the ground discs tried in D87 read
 as stains). Rovers and crew keep their small drawn lamps.
 
+### D91 — Rising from the town to the Moon
+
+*Direction from Chetan, 21 November 2026.* Asked whether there was a
+transition from the town to the trade game's whole Moon, he was told
+there was only a door: a button that loaded the other page, locked until
+the town had a pad and eight people. Four things were put to him. His
+answer: "i think its a yes for all the views you asked me", the choice
+between scrolling and a button "which ever you feel is better", and
+"continuous zoom out from town to globe is not a deal breaker you can be
+smart about it too and make that transition work".
+
+**The four, and what is built.**
+
+1. *Looking is free from the first hour.* Built. Any founded town can
+   rise to the Moon.
+2. *Every town is on the globe.* Built: a lit diamond at each town's
+   plot, the player's own in gold with a beam, and a card for any town
+   (who, where, people, standing, buildings, age, tonnes sold). Visiting
+   another town's streets is not built yet.
+3. *Scroll or button* (left to Claude). Both. The Moon button always
+   works. Scrolling out past the furthest zoom does nothing for one
+   pull, says so on the second, and rises on the fourth, so the town is
+   not left by accident. On the globe, low over your own town, three
+   more pulls inward go down; so does the TOWN button and the town's
+   card.
+4. *Choosing a plot on the globe.* Not built yet.
+
+**How the transition works.** The two views are two pages, drawn by two
+different engines, and stay so. The Moon page is opened inside the town
+page, out of sight. The town pulls back past its furthest zoom until its
+bent land (D88) is a ball in the middle of the screen with the town near
+its top. The Moon page is told where the town's plot is and how big that
+ball was drawn, and stands its camera where the real Moon looks the
+same: the same size, the plot sixty degrees up from the middle. The two
+pictures are dissolved into each other while they agree, then the Moon
+page draws back to its own view and takes the mouse. Going down is the
+same in reverse. Nothing reloads, and the second time is instant. While
+out of sight the Moon page neither draws nor asks the server anything.
+
+It is not a true continuous zoom and cannot be: the town's bend is far
+tighter than the Moon's (D88), and its craters are invented where the
+globe's are mapped. The dissolve hides the swap.
+
+**The market stays shut to a town that has not earned it.** A town
+without a pad and eight people rises to a Moon it can only look at: the
+port, company and credits panels are hidden and a line says when the
+market opens. This is a lock on the screen, as the old button was. What
+the server refuses (a town selling from its yard before it qualifies) is
+unchanged, and so is the Moon page opened by
+its own address.
+
+**No rule changed.** No rate, price or amount. The server is untouched:
+the town list it already published is what the globe draws.
+
+**Known gaps.** Not tried on a phone, where two 3D pages are open at
+once and only the button rises (a pinch does not). The dissolve replaces
+a mostly dark ball with a sunlit globe. The trade panels appear all at
+once on arrival. Checked on a local world, not on the live account.
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -2437,6 +2496,11 @@ Deliberately not decided, because these are yours.
     is worth anyone's time.
 25. **Assigned or chosen** — D84. *Answered 18 November: three options,
     the player chooses one. Built, D85.*
+27. **Should the Moon page be look-only by its own address too?** — D91.
+    Risen from a town below a pad and eight people, the market is hidden.
+    Opened by its address, the same company can still fly its ship and
+    trade, as it always could. Closing that would be a rule, not a screen:
+    say if a company should have no market at all until its town earns it.
 26. **How much the ground should matter** — D84. Up to 2.5 times either
     way. Play a plot and say whether it feels like your own ground or
     like a handicap.
