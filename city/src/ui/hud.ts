@@ -43,7 +43,7 @@ export interface Yard {
   make_kg_per_hour: number; foundries: number; full: boolean;
   bid: number | null; last: number | null; sell: boolean; min_price: number;
   sold_kg: number; sales: number; sold_today: number; sales_today: number; sold_yesterday: number; sales_yesterday: number;
-  open: boolean; pad: boolean; needs: number;
+  open: boolean; pad: boolean;
   /** The town's own port, where the best bid after freight is, and what a tonne costs to carry there. */
   port?: string; bid_port?: string | null; freight?: number; freight_paid?: number;
   /** Spare parts: what the buildings take from the yard, what a standing sale keeps back for them, and Earth's price when it is empty. */
@@ -445,7 +445,7 @@ export class Hud {
     const making = y.full ? 'Yard full: the foundries have stopped' : y.foundries === 0 ? 'No foundry yet. Zone land for Industry'
       : y.make_kg_per_hour > 0 ? `Making ${num(y.make_kg_per_hour)} kg an hour` : 'Foundries resting';
     const sold = (kg: number, cr: number) => (kg ? `${t(kg, 0)} · +${num(cr / y.kcr)}` : 'nothing');
-    const gate = !y.open ? `<p class="txt">Nothing leaves the yard until the town has ${y.pad ? '' : 'a working landing pad and '}${y.needs} people. What is made waits here.</p>` : '';
+    const gate = !y.open ? `<p class="txt">Nothing leaves the yard until the town has a working Landing Pad. What is made waits here.</p>` : '';
     const acts = y.open ? `<div class="prices"><span>As made</span><button type="button" data-yard="sell" aria-pressed="${y.sell}">Sell</button><button type="button" data-yard="hold" aria-pressed="${!y.sell}">Hold</button></div>
       <div class="acts" style="margin-bottom:8px">${spare >= 1 && y.bid !== null && y.bid >= y.min_price ? `<button type="button" class="primary" data-yard="now">Sell ${spare} t now</button>` : ''}${y.ship.here && whole >= 1 && y.ship.room_kg >= y.lot_kg ? `<button type="button" data-yard="load">Load ${Math.min(whole, Math.floor(y.ship.room_kg / y.lot_kg))} t into your ship</button>` : ''}</div>` : '';
     return `<h3>Yard · manufactured goods</h3><p class="sub">${t(y.held_kg)} of ${t(y.cap_kg, 0)} · ${esc(making)}</p>

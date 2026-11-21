@@ -45,7 +45,7 @@ function offerPlots(): void {
   });
 }
 
-interface Meta { founded: boolean; tick: number; tick_seconds: number; wallet?: number; company: string; summary?: { phase: string }; trade?: { open: boolean; pad: boolean; population: number; needs_population: number } }
+interface Meta { founded: boolean; tick: number; tick_seconds: number; wallet?: number; company: string; summary?: { phase: string }; trade?: { open: boolean; pad: boolean; population: number } }
 interface Reply { meta: Meta; state: State | null }
 
 const token = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
@@ -91,7 +91,7 @@ async function boot(hot: any) {
     const was = ui.yard;
     meta = r.meta; rate = 1 / (meta.tick_seconds || 60);
     const y = (meta as any).yard, tr = (meta as any).trade;
-    ui.yard = y ? { ...y, kcr: (meta as any).kcr || 1000, open: !!tr?.open, pad: !!tr?.pad, needs: tr?.needs_population ?? 8 } : null;
+    ui.yard = y ? { ...y, kcr: (meta as any).kcr || 1000, open: !!tr?.open, pad: !!tr?.pad } : null;
     const ck = (meta as any).caretaker;
     ui.caretaker = ck ? { ...ck, kcr: (meta as any).kcr || 1000 } : null;
     ui.league = (meta as any).league ?? null; ui.company = (meta as any).company; ui.plot = (meta as any).plot ?? null; plotOffers = (meta as any).offers ?? null;
@@ -351,9 +351,9 @@ async function boot(hot: any) {
   // the two are dissolved together; then that page draws back to its own view. Coming down is the same in reverse.
   function moonSay(m: Record<string, unknown>) { rise.frame?.contentWindow?.postMessage({ ark: true, ...m }, location.origin); }
   function moonArrive() {
-    const plot = (meta as any)?.plot, t = meta?.trade;
+    const plot = (meta as any)?.plot;
     if (!plot || !rise.ready) return;
-    moonSay({ say: 'arrive', lat: plot.lat, lon: plot.lon, rho: view.ballRadius, company: meta!.company, locked: !t?.open, needs: t?.needs_population ?? 8 });
+    moonSay({ say: 'arrive', lat: plot.lat, lon: plot.lon, rho: view.ballRadius, company: meta!.company });
   }
   function moonFrame() {
     if (rise.frame) return;
@@ -408,7 +408,7 @@ async function boot(hot: any) {
     try { first = await api('/town'); } catch (err) { card('Cannot reach the world', String((err as Error).message || err), '/', 'Go to the Moon'); return; }
     adopt(first);
 
-    // The way up to the Moon. Looking is free from the first hour; the market there opens when the town has earned it.
+    // The way up to the Moon. Looking is free from the first hour; trading there waits for a landing pad.
     const help = document.getElementById('btn-help');
     const moon = document.createElement('button');
     moon.type = 'button'; moon.id = 'btn-moon'; moon.textContent = 'Moon';
