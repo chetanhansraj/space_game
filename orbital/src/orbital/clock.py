@@ -1,23 +1,28 @@
 """The one clock.
 
-Invariant 5: one simulation clock, 60x real time, shared by everyone. The 60x
-factor appears in this module and nowhere else in the repository. If you find
-yourself writing `* 60` anywhere outside this file, stop.
+Invariant 5: one simulation clock, shared by everyone. How fast it runs is
+TIME_RATE, below, and that number appears in this module and nowhere else in
+the repository. If you find yourself writing the factor anywhere outside
+this file, stop.
+
+It ran at 60x until D93 and runs at 240x since: one game hour is fifteen real
+seconds. A world that was running when the number changed carries on from
+the hour it had reached; see ``sim.game.Game`` for how.
 
 Three distinct times, deliberately separated because conflating them is the
 bug that would be hardest to find later:
 
   real time   Wall clock. What the server's OS thinks.
-  sky time    What instant the ephemerides are evaluated at. Advances at 60x
-              real time from world launch. This is what determines where the
+  sky time    What instant the ephemerides are evaluated at. Advances at
+              TIME_RATE times real time from world launch. This is what determines where the
               planets actually are.
   game date   The fictional calendar shown to players. Sky time plus a fixed
               cosmetic offset. Never used in a computation.
 
 Why sky time starts at the real launch instant rather than at the fictional
 year 2190: ephemeris kernels have finite coverage. Starting the sky at the
-real present and running it forward at 60x means DE440 (valid to 2650) gives
-roughly ten real years of runway, and DE441 effectively unlimited. Starting
+real present and running it forward at 240x means DE440 (valid to 2650) gives
+roughly two and a half real years of runway, and DE441 effectively unlimited. Starting
 the sky in 2190 would burn 164 years of coverage before the first player
 logs in, and would force asteroid elements to be propagated across a span
 where two-body propagation is no longer accurate to arcminutes.
@@ -33,7 +38,9 @@ from dataclasses import dataclass
 from .constants import DAY, JD_J2000
 
 #: Game seconds per real second. The only place this number exists.
-TIME_RATE = 60
+#: 60 until D93; 240 since, so that a lunar night is an hour and a half of
+#: a player's evening and not six hours of it.
+TIME_RATE = 240
 
 #: Cosmetic offset applied to sky time to produce the displayed game calendar.
 #: 164 years places a sky time of 2026 in the fictional year 2190.

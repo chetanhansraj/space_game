@@ -76,14 +76,16 @@ def test_zero_distance_is_free():
     assert hop.tof == 0.0
 
 
-def test_transit_times_are_minutes_of_real_time():
-    """The bible says lunar hops take minutes. At the 60x clock that means a
-    game-time flight of roughly an hour. Assert the design intent holds."""
+def test_transit_times_are_short_in_real_time():
+    """The bible says lunar hops are quick: a game-time flight of roughly an
+    hour, which a player sits through. At the 240x clock (D93) that is well
+    under a minute of real time. Assert the design intent holds in both."""
     from orbital.clock import real_seconds
 
     for a in SITES:
         for b in SITES:
             if a is b:
                 continue
-            real_minutes = real_seconds(suborbital_hop(a, b).tof) / 60
-            assert 0.3 < real_minutes < 3.0, real_minutes
+            tof = suborbital_hop(a, b).tof
+            assert 18 * 60 < tof < 180 * 60, tof / 3600
+            assert 4 < real_seconds(tof) < 50, real_seconds(tof)

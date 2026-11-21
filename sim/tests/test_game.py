@@ -154,6 +154,37 @@ def test_a_reopened_world_is_the_one_that_stopped(tmp_path, routes):
     again.world.ledger.assert_conserved()
 
 
+def test_a_world_keeps_its_hour_when_the_clock_changes_speed(tmp_path, routes):
+    """The clock went from 60x to 240x (D93) under a world that was running.
+    Opened at the new speed, a world written at the old one must be exactly
+    on time at the hour it had reached: no flood of hours to catch up, none
+    skipped, and the sky where it was."""
+    path = str(tmp_path / "world.db")
+    g = Game.open(path, now=T0, routes=routes)
+    for _ in range(7):
+        g.step()
+    sky = g.sky_time()
+    # As a server from before the speed was recorded left it.
+    g.db.execute("DELETE FROM world_meta WHERE key IN ('time_rate', 'tick_anchor')")
+    g.db.close()
+
+    later = T0 + dt.timedelta(days=3)
+    again = Game.open(path, now=later, routes=routes)
+    assert again.world.tick == 7 and again.due_tick(later) == 7
+    assert again.catch_up(later) == 0
+    assert again.sky_time() == sky and again.launch_real == T0
+    tick = game_mod.TICK_REAL_SECONDS
+    assert again.due_tick(later + dt.timedelta(seconds=tick - 1)) == 7
+    assert again.due_tick(later + dt.timedelta(seconds=tick * 3 + 1)) == 10
+    anchor = again.tick_anchor
+    again.db.close()
+
+    # Opened again at the same speed, nothing is re-anchored.
+    third = Game.open(path, now=later + dt.timedelta(hours=1), routes=routes)
+    assert third.tick_anchor == anchor
+    third.db.close()
+
+
 def test_catching_up_runs_every_missed_hour(game):
     later = T0 + dt.timedelta(seconds=game_mod.TICK_REAL_SECONDS * 5 + 1)
     assert game.due_tick(later) == 5
