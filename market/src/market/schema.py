@@ -165,6 +165,60 @@ MIGRATIONS: list[tuple[int, str]] = [
         INSERT INTO checkpoint_mark (id, through_posting) VALUES (1, 0);
         """,
     ),
+    (
+        4,
+        """
+        -- Old history leaves the live file (market/archive.py). A world at
+        -- the faster clock writes most of a gigabyte a day, on a disk it
+        -- shares, and nothing in the game reads a posting once it is in
+        -- the checkpoint. So transactions past a horizon are copied whole
+        -- into archive files beside the world and then removed from here.
+        --
+        -- The ledger stays append-only in the sense that matters: nothing
+        -- is ever changed, and nothing leaves that has not first been
+        -- written to an archive and summed into `archive_total`.
+        --
+        -- `archive_total` is the sum of every posting that has left, by
+        -- account and asset: with the postings still here it is the whole
+        -- truth a balance is checked against (Ledger.verify_checkpoints).
+        -- Written only by the archive step, in the same transaction that
+        -- removes the postings it sums.
+        CREATE TABLE archive_total (
+            account_id TEXT NOT NULL,
+            asset      TEXT NOT NULL,
+            amount     INTEGER NOT NULL,
+            PRIMARY KEY (account_id, asset)
+        ) WITHOUT ROWID;
+
+        -- Every transaction up to and including `through_txn` has been
+        -- archived, with all its postings. `through_seq` is how far the
+        -- order book has been looked through for closed orders to move.
+        CREATE TABLE archive_mark (
+            id          INTEGER PRIMARY KEY CHECK (id = 1),
+            through_txn INTEGER NOT NULL,
+            through_seq INTEGER NOT NULL
+        );
+        INSERT INTO archive_mark (id, through_txn, through_seq) VALUES (1, 0, 0);
+
+        -- The one way a posting can leave: its transaction is at or below
+        -- the archive mark. Anything else still fails loudly, as before.
+        DROP TRIGGER posting_is_append_only_delete;
+        CREATE TRIGGER posting_is_append_only_delete
+        BEFORE DELETE ON posting
+        WHEN OLD.txn_id > (SELECT through_txn FROM archive_mark WHERE id = 1)
+        BEGIN
+            SELECT RAISE(ABORT, 'the ledger is append-only: postings cannot be deleted');
+        END;
+
+        -- Removing a transaction, an order or an escrow account makes the
+        -- database check that nothing still points at it. Without these
+        -- each check is a scan of the whole table.
+        CREATE INDEX idx_trade_txn   ON trade (txn_id);
+        CREATE INDEX idx_trade_buy   ON trade (buy_order_id);
+        CREATE INDEX idx_trade_sell  ON trade (sell_order_id);
+        CREATE INDEX idx_book_escrow ON book_order (escrow_id);
+        """,
+    ),
 ]
 
 
