@@ -31,7 +31,7 @@ import type { Texture as Tex } from './pixi';
 import { ART, Art } from '../art/art';
 import { BUILDINGS, BuildingType, ZONES } from '../sim/buildings';
 import { ORES } from '../sim/world';
-import { State, GROUND, SIZE, sunFactor, population, LUNAR_DAY, HALF } from '../sim/sim';
+import { State, GROUND, SIZE, sunFactor, population, LUNAR_DAY, phaseOf, lightHours } from '../sim/sim';
 
 const TW = 64, TH = 32;
 // Zoomed far out, a picture is drawn many times smaller than it was made. Smaller copies are kept ready so it does not sparkle.
@@ -359,8 +359,8 @@ export class View {
 
     // light: quick dawn and dusk, warm near the horizon, blue-black at night
     // Daylight comes up fast after sunrise; a short twilight either side of the night keeps the cut from being abrupt.
-    const ph = s.t % LUNAR_DAY, sun = sunFactor(s.t);
-    const light = ph < HALF ? Math.min(1, 0.35 + sun * 10) : Math.max(0, 0.35 * (1 - (ph - HALF) / 8), 0.35 * (1 - (LUNAR_DAY - ph) / 8));
+    const ph = phaseOf(s.t), day = lightHours(), sun = sunFactor(s.t);
+    const light = ph < day ? Math.min(1, 0.35 + sun * 10) : Math.max(0, 0.35 * (1 - (ph - day) / 8), 0.35 * (1 - (LUNAR_DAY - ph) / 8));
     const tint = light < 0.5 ? mix(0x4c5a86, 0xffcf9a, light * 2) : mix(0xffcf9a, 0xffffff, (light - 0.5) * 2);
     this.terrain.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
     const dark = 1 - light;

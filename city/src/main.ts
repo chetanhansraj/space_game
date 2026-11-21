@@ -25,14 +25,20 @@ let plotOffers: any[] | null = null;
  * The three plots a company may choose between, shown above the button that founds the town.
  * Drawn again whenever a founding or new-crew dialog is open and the server still offers a choice.
  */
+/** A line above the plots when a lost town's own ground is not in its morning: wait for it, or take new ground. */
+let plotNote = '';
 function offerPlots(): void {
   const offers = plotOffers, acts = document.querySelector('#modal.show .acts');
-  if (!offers || offers.length < 2 || !acts || document.querySelector('#modal .plots')) return;
+  if (!offers || offers.length < 2 || !acts) return;
+  // The plots on offer are where it is morning, and the morning moves: when the list has changed, draw the new one.
+  const sig = offers.map(p => `${p.lat},${p.lon}`).join('|') + plotNote, old = document.querySelector('#modal .plots') as HTMLElement | null;
+  if (old && old.dataset.sig === sig) return;
+  if (old) { old.remove(); plotChoice = 0; }
   const keys: [string, string][] = [['sun', 'Sun'], ['ice', 'Ice'], ['metal', 'Iron'], ['glass', 'Aluminium'], ['he3', 'Helium-3'], ['view', 'Outlook']];
   const box = document.createElement('div');
-  box.className = 'plots';
-  box.innerHTML = '<h3>Choose your ground</h3><p>Three plots, each worth the same in all. What differs is what each is good for. The ground is yours for good.</p><div class="row">' + offers.map((p, i) =>
-    `<button type="button" class="plot" data-i="${i}" aria-pressed="${i === plotChoice}"><b>${p.name}</b><small>${Math.abs(p.lat).toFixed(1)}° ${p.lat >= 0 ? 'N' : 'S'}, ${Math.abs(p.lon).toFixed(1)}° ${p.lon >= 0 ? 'E' : 'W'} · night ${p.dark} h</small>`
+  box.className = 'plots'; box.dataset.sig = sig;
+  box.innerHTML = `<h3>Choose your ground</h3><p>${plotNote || 'Three plots where it is morning now, each worth the same in all. What differs is what each is good for.'} The list moves on with the sunrise.</p><div class="row">` + offers.map((p, i) =>
+    `<button type="button" class="plot" data-i="${i}" aria-pressed="${i === plotChoice}"><b>${p.name}</b><small>${Math.abs(p.lat).toFixed(1)}° ${p.lat >= 0 ? 'N' : 'S'}, ${Math.abs(p.lon).toFixed(1)}° ${p.lon >= 0 ? 'E' : 'W'} · night ${p.dark} h${p.light ? ` · ${p.light} h of light left` : ''}</small>`
     + keys.map(([k, n]) => `<span><i>${n}</i><u><s style="width:${Math.round(p[k] * 100)}%"></s></u></span>`).join('') + '</button>').join('') + '</div>';
   // The choice comes first: above the briefing's list if there is one, so it is seen without scrolling.
   const list = document.querySelector('#modal.show ol');
@@ -85,6 +91,7 @@ async function boot(hot: any) {
   // ----- the shared world -----
   // Rising to the Moon: u is how far the town has pulled back (0 the town, 1 the ball), alpha how far the globe has faded in.
   const rise = { frame: null as HTMLIFrameElement | null, ready: false, up: false, waited: false, dir: 0, u: 0, alpha: 0, pulls: 0, pulled: 0 };
+  let padGrant: number | null | undefined;   // what the Ark has paid for the first landing pad: undefined until the server has been heard once
   let meta: Meta | null = null, pending = 0, serverT = 0, rate = PRACTICE_RATE, chain: Promise<unknown> = Promise.resolve();
   /** Take the server's word for the town. Whatever was drawn before is replaced. */
   const adopt = (r: Reply) => {
@@ -93,7 +100,12 @@ async function boot(hot: any) {
     const y = (meta as any).yard, tr = (meta as any).trade;
     ui.yard = y ? { ...y, kcr: (meta as any).kcr || 1000, open: !!tr?.open, pad: !!tr?.pad } : null;
     const ck = (meta as any).caretaker;
-    ui.caretaker = ck ? { ...ck, kcr: (meta as any).kcr || 1000 } : null;
+    ui.caretaker = ck ? { ...ck, kcr: (meta as any).kcr || 1000, watch: (meta as any).watch } : null;
+    const rel = (meta as any).relief;
+    plotNote = rel ? `It is not morning on your old ground. The Sun rises there in ${rel.hours} hours, about ${rel.minutes} minutes: wait for it and the new crew lands there. Or choose new ground and land now.` : '';
+    const pg = (meta as any).pad_grant as number | null | undefined;
+    if (padGrant === null && pg) say(`The Ark has paid ${Math.round(pg / ((meta as any).kcr || 1000))} credits for your first landing pad. The first shuttle is on its way.`, 8000);
+    padGrant = pg ?? null;
     ui.league = (meta as any).league ?? null; ui.company = (meta as any).company; ui.plot = (meta as any).plot ?? null; plotOffers = (meta as any).offers ?? null;
     const place = document.getElementById('place'); if (place && ui.plot?.name) place.textContent = ui.plot.name;   // the town's own ground, not the first one this game was set on
     // A sale made while nobody was pressing anything: say so, once, in the town's own money.
@@ -108,6 +120,23 @@ async function boot(hot: any) {
     serverT = s.t; acc = 0;
   };
   const resync = () => api('/town').then(r => { if (!pending) adopt(r); }).catch(() => { /* the next poll will try again */ });
+  /** The first briefing of a town not yet founded, with the plots on offer. */
+  const founding = () => {
+    hud.briefing(null);
+    plotOffers = (meta as any)?.offers ?? null;
+    offerPlots();
+    const secs = Math.round(meta?.tick_seconds || 60), keys = document.querySelector('#modal .keys');
+    if (keys) keys.textContent = `This is the real town. It keeps the world's time, one game hour every ${secs} seconds, the same for everyone, under the one Sun: your day and your night are where it stands over your ground. It cannot be paused or sped up, and it goes on while you are away. Its money is your company's. The lander's air lasts about 160 hours, which is ${Math.round(160 * secs / 60)} minutes: get power and air standing first.`;
+    const go = document.getElementById('m-new'); if (go) go.textContent = 'Found the town';
+  };
+  /** A founding or a new crew the server refused: open the dialog again, with why. */
+  const reopen = (why: string) => {
+    if (!meta) return;
+    if (!meta.founded) founding(); else if (s.phase === 'lost') hud.ending(s); else return;
+    offerPlots();
+    const acts = document.querySelector('#modal.show .acts');
+    if (acts) { const p = document.createElement('p'); p.className = 'lede'; p.textContent = why; acts.parentElement!.insertBefore(p, acts); }
+  };
 
   const send = (it: Intent) => {
     const first = s.t === 0;
@@ -164,7 +193,10 @@ async function boot(hot: any) {
       if (!LIVE) { begin(resume ? load() : null); return; }
       // Founding a town, or sending a new crew to one that fell silent. Never a restart of a living one.
       const lost = meta?.founded && s.phase === 'lost';
-      api(lost ? '/town/refound' : '/town/found', { choice: plotChoice }).then(r => { adopt(r); begin(s); }, err => { say(String(err.message || err), 5000); resync(); });
+      // Where the chosen plot is goes with the choice: the list follows the sunrise, and its order alone could name other ground.
+      const pick = plotOffers && plotOffers.length > 1 ? plotOffers[plotChoice] : null;
+      api(lost ? '/town/refound' : '/town/found', { choice: plotChoice, ...(pick ? { at: [pick.lat, pick.lon] } : {}) }).then(r => { adopt(r); begin(s); },
+        err => { const why = String(err.message || err); say(why, 8000); resync().then(() => reopen(why)); });
     },
     help: () => {
       if (!running || ended) return; heldSpeed = ui.speed; ui.speed = 0; helpOpen = true; hud.briefing(null, true);
@@ -418,14 +450,7 @@ async function boot(hot: any) {
     moon.addEventListener('pointerenter', () => { if (meta?.founded) moonFrame(); }, { once: true });   // start loading it before it is asked for
 
     if (meta!.founded && first.state) begin(first.state);
-    else {
-      hud.briefing(null);
-      plotOffers = (meta as any).offers ?? null;
-      offerPlots();
-      const keys = document.querySelector('#modal .keys');
-      if (keys) keys.textContent = 'This is the real town. It keeps the world\'s time, one game hour a real minute, the same for everyone. It cannot be paused or sped up, and it goes on while you are away. Its money is your company\'s. The lander\'s air lasts about 160 hours: get power and air standing first.';
-      const go = document.getElementById('m-new'); if (go) go.textContent = 'Found the town';
-    }
+    else founding();
     // Ask the server how things stand, and take its word, every few seconds.
     window.setInterval(offerPlots, 1500);   // a town from before plots that fell silent chooses its ground when a new crew is sent
     window.setInterval(() => {
