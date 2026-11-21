@@ -5,8 +5,7 @@ What is being defended, worst first.
 1. Making goods makes no money. A foundry's hour puts kilograms in the yard
    and not one credit anywhere. Credits arrive only when a buyer with money
    of its own pays for the goods, and exactly as many as it paid.
-2. Nothing leaves the yard until the town has earned the market: a landing
-   pad and eight people.
+2. Nothing leaves the yard until the town has a working landing pad.
 3. A yard that is full stops the foundries. Unsold goods are not quietly
    thrown away and are not quietly paid for.
 4. The owner's instruction is kept: hold means hold, and a floor is a floor.
@@ -27,7 +26,7 @@ from sim.earth import ACCOUNT as EARTH
 from sim.game import DEV_FUND, Game, GameError
 from sim.persist import default_routes
 from sim.town import Engine
-from sim.towngame import (TOWN_NODE, TRADE_POPULATION, YARD_ASSET, YARD_KG)
+from sim.towngame import TOWN_NODE, YARD_ASSET, YARD_KG
 
 T0 = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
 TONNE = 1_000
@@ -58,7 +57,7 @@ def play(g, player, hours):
 
 @pytest.fixture(scope="module")
 def played(tmp_path_factory, routes):
-    """A world file holding one town, played to the morning it can trade.
+    """A world file holding one town, played until it is trading and grown.
 
     Played once and copied for each test, because growing a town takes
     hundreds of real hours of rules and every test wants to start from one.
@@ -73,9 +72,10 @@ def played(tmp_path_factory, routes):
         g.found_town(player)
     finally:
         towngame.town_seed = drawn
-    for _ in range(40):
+    for _ in range(40):                 # a pad opens the market (D92); these tests want a town grown enough to wear parts too
         play(g, player, 10)
-        if g.town_meta(player)["trade"]["open"]:
+        meta = g.town_meta(player)
+        if meta["trade"]["open"] and meta["yard"]["parts"]["wear"]:
             break
     meta = g.town_meta(player)
     assert meta["trade"]["open"], "the steward never opened trade"
@@ -204,7 +204,7 @@ def test_nothing_leaves_the_yard_before_the_town_can_trade(routes):
     player = g.player(player.id)
     account = stock(g, player, 3 * TONNE)
     assert not g.town_meta(player)["trade"]["open"]
-    with pytest.raises(GameError, match=f"landing pad and {TRADE_POPULATION}"):
+    with pytest.raises(GameError, match="working landing pad"):
         g.town_sell(player, 1, ANCHOR)
     with pytest.raises(GameError, match="landing pad"):
         g.town_load(player, 1)
@@ -377,15 +377,18 @@ def test_a_town_from_before_yards_gains_one(played, tmp_path, routes):
     g.db.close()
 
 
-def test_the_size_to_trade_is_passed_once(routes):
-    """A town that shrinks keeps its place at the port. One that never grew
-    has none, and nothing leaves without a working pad. D81."""
+def test_a_working_pad_opens_the_market_and_size_starts_the_wear(routes):
+    """A working landing pad is the whole of the gate: head count has no say
+    (D92). Head count still starts the wear on a town's buildings (D82), once,
+    and a town that shrinks goes on wearing."""
     g = Game.open(":memory:", now=T0, routes=routes)
     book: dict = {}
-    assert not g._trade_open({"pad": True, "population": 7}, book)
-    assert not g._trade_open({"pad": False, "population": 8}, book)
+    assert not g._trade_open({"pad": False, "population": 40}, book)
+    assert g._trade_open({"pad": True, "population": 4}, book)          # small, and trading
+    assert "trading" not in book                                        # and not yet wearing
     assert g._trade_open({"pad": True, "population": 8}, book)
-    assert g._trade_open({"pad": True, "population": 4}, book)
+    assert book["trading"] is True
+    assert g._trade_open({"pad": True, "population": 4}, book) and book["trading"] is True
     assert not g._trade_open({"pad": False, "population": 4}, book)
     g.db.close()
 

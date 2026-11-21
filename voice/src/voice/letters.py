@@ -318,8 +318,8 @@ def _town_charter(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
         "standing before then, and enough stored to last a night that is "
         "two weeks long. The town keeps its own time, the same as "
         "everyone's, and it does not wait for you.",
-        f"When it has a working landing pad and {d['trade_population']} "
-        "people, the market is open to it.",
+        "Anyone may watch the market. When the town has a working landing "
+        "pad, it is open to it, and to your ship.",
         "Yusuf Brandt, Ark Development Office",
     ])
 

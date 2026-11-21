@@ -75,12 +75,13 @@ TOWN_GRANT = 40_000
 #: a new company would not get: anyone can have 160,000 cr from the same
 #: fund by founding one. *Invented*, D78.
 TOWN_START = 160_000
+#: A town's buildings begin to wear parts once it has a working landing pad
+#: and has reached this many people: the city builder's "Base" tier (D82).
+#: Until D92 this was also the size a town needed before it could trade.
+WEAR_POPULATION = 8
 #: How long the lander's air lasts, in game hours. The rules own this number
 #: (city/src/sim); it is repeated here only for the letters.
 LANDER_HOURS = 160
-#: A town may use the market once it has a working landing pad and this
-#: many people: the city builder's "Base" tier. D71.
-TRADE_POPULATION = 8
 
 
 #: Every town stands on the equatorial flats, so its goods come to market at
@@ -500,14 +501,37 @@ class TownOps:
             book["day"] = day
 
     def _trade_open(self, summary: dict, book: dict) -> bool:
-        """May goods leave the yard? A working pad, and a town that has
-        once been big enough to trade. The size is a milestone, passed
-        once: a town that shrinks keeps its place at the port, because a
-        town that could no longer sell could never pay its way back (D81).
+        """May the town trade? A working landing pad, and nothing else (D92).
+
+        It used to need eight people as well (D71). That number was invented,
+        and it kept a town with a pad standing on it shut out of the market.
+        A pad is something a player builds and can see; a head count was not.
+
+        The head count still marks one thing, as it did: a town with a pad
+        that has once reached it is a going concern, and from then on its
+        buildings wear parts (D82). That is passed once and kept in the book,
+        so a town that shrinks does not stop wearing. A small town with a new
+        pad may trade and is not yet charged for wear.
         """
-        if summary["population"] >= TRADE_POPULATION:
+        if summary["pad"] and summary["population"] >= WEAR_POPULATION:
             book["trading"] = True
-        return bool(summary["pad"] and book.get("trading"))
+        return bool(summary["pad"])
+
+    def trade_clearance(self, player) -> None:
+        """Refuse unless this company's town has a working landing pad.
+
+        The market is for everyone to watch and for a town with a pad to
+        use: its own yard, and its company's ship. One rule for both, held
+        here and not in a screen (D92). House companies are played by the
+        steward inside the world and do not come this way.
+        """
+        row = self._town_row(player.id)
+        if row is None or row["lost_tick"] is not None:
+            raise GameError("The market is open to watch. To trade in it, "
+                            "found your town and build a landing pad.")
+        if not self.town_engine.summary(row["state"])["pad"]:
+            raise GameError("The market is open to watch. To trade in it, "
+                            "your town needs a working landing pad.")
 
     def _yard_sell(self, player, account: str, book: dict, qty_kg: int,
                    limit: int, now: str):
@@ -566,7 +590,7 @@ class TownOps:
         if not self._trade_open(summary, self._yard_book(row)):
             raise GameError(
                 "Nothing leaves the yard until the town has a working "
-                f"landing pad and {TRADE_POPULATION} people.")
+                "landing pad.")
         return row
 
     def town_sell(self, player, qty_t: int, limit: int) -> dict:
@@ -718,8 +742,7 @@ class TownOps:
              json.dumps(plot, sort_keys=True)))
         if not player.house:
             self._message(player.id, "ark_development_office", "town_charter",
-                          {"company": player.name, "grant": grant,
-                           "trade_population": TRADE_POPULATION})
+                          {"company": player.name, "grant": grant})
         return Event(
             tick=tick, kind="town_founded", subject=player.id,
             detail=f"{player.name} founded a town on the lunar equator",
@@ -1152,8 +1175,7 @@ class TownOps:
             summary=summary,
             trade={"open": self._trade_open(summary, self._yard_book(row)),
                    "pad": bool(summary["pad"]),
-                   "population": summary["population"],
-                   "needs_population": TRADE_POPULATION},
+                   "population": summary["population"]},
             yard=self._yard_view(player, row, summary),
             caretaker={"on": bool(row["caretaker"]), "fee": CARETAKER_FEE,
                        "paid": row["caretaker_paid"]},
