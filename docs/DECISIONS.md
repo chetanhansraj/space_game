@@ -2485,6 +2485,222 @@ without a pad or a sign-in, every trading route refused without a pad and
 allowed with one. In a browser on a local world a town with no pad saw
 the whole market and was refused a purchase with the sentence above.
 
+### D93 — One clock at 240x, one Sun, and what had to change with them
+
+*Direction from Chetan, 21 November 2026:* "honestly game feels very slow
+from building developing to shuttles coming is slow, people now days wont
+wait around so long we need to figure it out, also keep one sun one time".
+Then, on the measured options: "Let's go with 240x + One Sun + immediate
+first shuttle on pad completion + morning plots for new towns + one-time
+battery top-up at the switch", with three conditions: keep the timers a
+person must answer in real minutes and make a night's sleep safe, pay a
+small sum at the first pad, and ship the ledger archive in the same change.
+
+**Measured first, at the old 60x** (the steward playing, three seeds, real
+minutes): first foundry 35, landing pad 50, first shuttle 75, eight people
+about 3 hours, twenty people 12.5 hours, credits near nothing for 5 hours,
+and every night 5.9 hours long. Build time was already quartered (D89) and
+was not the slow part. The clock was.
+
+**1. The clock runs at 240x.** One game hour is 15 real seconds, a game
+day 6 real minutes, a lunar day 2 hours 57 minutes, a night on the plains
+88 minutes. This replaces invariant 5's number, which was his (D64 and
+open item 11 said it could change "for the whole world at once"). It is
+still one clock: no per-player rate, no pause.
+
+- The factor still lives only in `orbital/src/orbital/clock.py`
+  (`TIME_RATE`), and a test still says so.
+- *A running world does not jump.* The hour a world is at used to be
+  worked out from its launch instant. At a new rate that would put a
+  world five weeks old 180 game days into its own future. The world now
+  keeps a `tick_anchor` in `world_meta`: the instant from which its hours
+  are counted at the present rate. The first time a world is opened at a
+  rate it was not written at, the anchor is set so that the hour it is at
+  is the hour it stays at, and it runs on from there four times as fast.
+- *The sky does not move.* Sky time is still launch instant plus one hour
+  a tick (D3), so the planets and the Sun are where they were.
+- Every rate in `seed-data.md` is per game day and none was changed. In
+  real time everything is four times as fast: income, upkeep, charter
+  fees, Earth's spending, ship transits. Relative to each other nothing
+  moved.
+
+**2. One Sun.** Until now each town kept a day of its own, counted from a
+sunrise at its founding, while the globe was lit by the real Sun. Two towns
+side by side could be in noon and midnight, and neither matched the Moon
+he was looking at.
+
+- `sim/src/sim/sun.py` is the one place the Sun's position comes from
+  (Meeus's leading terms, good to about a degree). The globe's lighting
+  (`api/sky.py`) and every town ask it.
+- Each hour the server tells a town's rules where the Sun stands over the
+  town's longitude (`noon`, hours since it was highest). The rules put
+  the middle of the town's daylight there. A polar town's long day and a
+  plains town's half day both have the Sun highest at their noon.
+- The Moon does not turn evenly, so the town's hour is corrected by a few
+  minutes each hour. A correction backwards is held over an hour if it
+  would carry the town back across its sunrise, sunset or sunset warning,
+  so each is announced once.
+- A town from before plots (D84) has no place of its own and keeps time
+  by the Flats, where every town used to be.
+- The practice game (`city/` on its own) has no world and is unchanged: a
+  town there is founded at its own sunrise.
+
+**3. A crew only lands in the morning.** The first night is what a new
+town is built against. Under one Sun a plot chosen blind could be an hour
+from dark.
+
+- A new company is offered three plots that are in their morning now: at
+  most `MORNING = 90` hours past sunrise when it lands. The list holds
+  for `OFFER_HOLD = 60` game hours (15 real minutes), then moves on with
+  the sunrise. *Both numbers invented.* Measured: a crew landed even 150
+  hours after sunrise survives its first night under the steward.
+- The three are still different kinds of ground (D85) as far as the
+  morning allows. The poles always have a morning somewhere, the plains
+  only while the sunrise is over the near side, so over a lunar day every
+  kind comes up, but not every kind every hour.
+- The screen sends where its chosen plot is, not only which of the three
+  it was, so a list that has moved on cannot found a town on ground
+  nobody looked at. A plot from the list before is still good while it is
+  still morning there.
+- House companies are chartered, and relief crews sent to them, only in
+  their own ground's morning. On a new world the seven now arrive over
+  one lunar day instead of fourteen game days.
+- **A lost town's new crew** lands on the company's own ground if it is
+  morning there. If it is not, the company is told how long until sunrise
+  in hours and in real minutes, and may either wait or take new ground
+  from the three on offer and land now. *This softens D85's "the ground
+  is yours for good"*: it is yours for as long as you keep it. Made under
+  the pace direction, because the alternative was a wait of up to two and
+  a half real hours to play again. Say if you would rather the ground
+  never changed.
+
+**4. The switch.** A world that was running on towns' own days is moved
+onto the Sun once (`towngame._to_one_sun`, guarded by `one_sun` in
+`world_meta`). Its time of day jumps to the true one, so some towns wake
+in a night they had no warning of. Every living town's batteries are
+filled, once. It is energy, not credits. Rehearsed on a world written by
+the previous code at 60x with seven house towns and three player towns of
+different ages: the hour did not jump, six towns found themselves in the
+night, and all ten were alive a lunar day later with nobody at them.
+
+**5. The first shuttle leaves when the first pad is finished,** not a game
+day later. A pad rebuilt later still waits a day. The interval after that
+is unchanged at 60 game hours, which is now 15 real minutes: open item 28
+is answered by the clock, not by more shuttles, so the free water, food
+and visitors each one brings did not multiply.
+
+**6. A grant for the first pad.** `PAD_GRANT = 40,000` credits (40 town
+credits, the size of the founding grant; *invented*), paid once per
+company when its first landing pad comes into work, however many crews it
+sends.
+
+- *Where it comes from.* The Ark's development fund, by transfer, like
+  the founding grant. No credit is created, so no new sink is owed
+  (invariant 7). If the fund cannot pay it waits until it can.
+- *Who does not get it.* The towns the world runs (invariant 3), and
+  towns whose pad already stood at the switch, which are past what it is
+  for.
+- *It is on top of the mission.* The rules already pay 40 town credits
+  when the pad mission is done, as they pay for every mission, and that
+  was in the measurement that found the dry stretch. This is a second 40,
+  from the Ark, in the company's account.
+- *What it does, measured at 240x:* pad at 11 to 14 real minutes, first
+  shuttle at once, first new resident at 23 to 33 minutes with the grant
+  against 40 to 69 without, twenty people in under an hour and a half.
+
+**7. What a person must answer is counted in real minutes.**
+
+- A town's offer stays open `OFFER_MINUTES = 40` real minutes (160 game
+  hours now; it was 70 game hours, which would have been 17 minutes).
+  *Invented, inside the 30 to 45 he asked for.* The rules are told the
+  world's pace so they can size this; nothing else in them reads it.
+- A trade contract's deadline is 72 real minutes, as D46 set it,
+  whatever the rate: 288 game hours now.
+- *Left in game hours, on purpose:* the deadline of a deal once signed
+  (160 to 220 game hours, 40 to 55 real minutes). It measures work the
+  town has to do, and the town works in game hours.
+- *There was never an insolvency rule for players.* No rule takes a
+  town for debt, and charter arrears are capped at 30 fee-days (D78),
+  which a night's sleep now reaches. Nothing was added.
+
+**8. The crew keeps watch.** Asked for as "safe overnight grace so
+sleeping 8 hours (80 game days) doesn't unfairly wipe a healthy town".
+Measured: left alone for eight real hours a grown town survives, a small
+one does not always. With the caretaker's rules at the controls all of
+them do.
+
+- When a company's owner has not been at their town for `WATCH_AFTER`
+  (10 real minutes), the crew does each hour what a caretaker would: what
+  is urgent, and nothing that grows the town or signs anything. It is
+  paid for by the town like anything else it builds. There is no wage.
+- It lasts `WATCH_FOR` (12 real hours) from when the owner left. After
+  that the town is alone unless a caretaker is hired. *Both invented.*
+- "At their town" means any request to the town with the owner's key,
+  written down at most every five real minutes so that looking stays a
+  read.
+- A hired caretaker is paid only for hours the crew is not on watch.
+  **The caretaker's wage is unchanged at 200 cr a game hour,** which is
+  now four times as dear by the real hour. That is yours: see open
+  item 29.
+
+**9. Old history leaves the live ledger file.** D49 said this needed a
+design before a public world. At 240x it needs it now: measured, the world
+writes 149 KB an hour, which is about 860 MB a real day against 28 GB
+free and a world that stops at 3 (D51).
+
+- *What moves.* After each hour, transactions older than the newest
+  2,400,000 (about a real day) are copied whole into an archive file
+  beside the world (`data/archive/ledger-000001.db`, plain SQLite) and
+  then removed from the live file, with their postings, the trades they
+  settled, the closed orders nothing still names and those orders' empty
+  escrow accounts. At most 5,000 transactions a step, which took about a
+  tenth of a second, so the 12 GB already there is worked off over a day
+  or so without holding an hour up.
+- *What never moves.* Any posting not yet in the balance checkpoint; any
+  open order; the newest 64 trades at each market for each commodity,
+  which the price and the chart are read from.
+- *Why no balance can change.* A balance is the checkpoint plus the
+  postings after it (migration 3), and only postings already in the
+  checkpoint leave. The sum of everything that has left is kept in
+  `archive_total`, and `verify_checkpoints` proves the cache against
+  that plus what is still here.
+- *The order of the two writes.* The copy is committed before anything is
+  removed. A crash between them leaves rows in both places, and the next
+  step is told they are already archived. The other order could lose
+  history; this one cannot. Tested by killing it there.
+- *Still append-only.* A trigger still refuses any change to a posting,
+  and any removal of one whose transaction is above the archive mark.
+- *The property test* now archives at random moments with almost nothing
+  held back, and checks after every step that every transaction and
+  posting ever written is in exactly one of the two files and that no
+  balance moved.
+- *The live file does not shrink.* SQLite reuses the space; the file
+  stops growing at about its present size. Shrinking it is a one-off
+  rebuild with the world stopped, not done here.
+- **Where history is finally let go.** Finished archive files are
+  compressed (about 4.4 to 1, measured) and kept until the folder passes
+  `SOLAR_ARCHIVE_CAP_GB` (6 by default), then the oldest are removed.
+  That is roughly a month of full history on the server. Past it the
+  balances are still exact, but the individual entries exist only if
+  somebody copied the files off the machine. This is the one place the
+  rule "you can reconstruct any balance from the ledger" now has an age
+  limit, and it is the price of a finite disk. See open item 30.
+
+**What the faster clock also quartered, and was not changed.** Named so
+they are not found by surprise:
+
+- Earth's purse (open item 16) empties four times as fast by the
+  calendar: weeks, not months.
+- The ephemeris window (D3): sky time now reaches the end of DE440 in
+  about two and a half real years, not ten.
+- The older base game's rule that a resident leaves after 12 unmet game
+  hours (D64) is now three real minutes. The base game was left alone.
+
+**Checked.** 438 server tests pass, 23 of them new: the Sun, morning
+plots, the switch, the pad grant, the watch, and the archive. The city's
+bot test passes. The switch and the archive were each rehearsed on a
+world file written by the previous code.
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -2499,7 +2715,9 @@ Deliberately not decided, because these are yours.
    terminal still carry the older eyeballed values.
 7. **Real identity before a public launch** — D48. How should a person prove
    they are one person: email, a Google or Apple sign-in, something else?
-8. **Ledger archival before a public launch** — D49.
+8. **Ledger archival before a public launch** — D49. *Built, D93:* old
+   history leaves the live file every hour. What is left to decide is
+   item 30.
 3. **"Heavy hulls only"** for hard burns — undefined threshold.
 5. **Starting cash against first-outpost cost** — 120,000 cr against
    2,565,000 cr, and see D14 on runway. `seed-data.md` already flags this.
@@ -2508,11 +2726,8 @@ Deliberately not decided, because these are yours.
 9. **The base's money** — D59 and D60. Lease and wear rates, payroll, the
    lease cap and the bonuses were all invented and tuned on a fresh world.
    Play it on the live one and say what feels too slow or too easy.
-11. **The clock rate itself** — D64. One game hour a real minute was set
-    for a trading game. A town on it sees a shuttle every 24 real minutes
-    and, on the flats, a night of nearly six real hours. If the town feels
-    slow once it is lived in, the rate can change, but for the whole world
-    at once.
+11. **The clock rate itself** — D64. *Answered 21 November: 240x, for
+    the whole world at once. Built, D93.*
 12. **The first sitting** — D72. On the world's clock a new crew has two
     hours forty minutes of lander air, and the first night falls about six
     real hours after founding. That is tense, which may be right, or it may
@@ -2552,12 +2767,24 @@ Deliberately not decided, because these are yours.
     is worth anyone's time.
 25. **Assigned or chosen** — D84. *Answered 18 November: three options,
     the player chooses one. Built, D85.*
-28. **How often the shuttle comes** — D92. Every 60 game hours, which is
-    once a real hour, on the pad for 11. Since build times were quartered
-    (D89) it is the slow thing in a town. Shortening it is not only pace:
-    each landing brings free water and food and a turn of paying visitors,
-    so four times the shuttles is four times of each. Say how often you
-    want one, and whether what it carries should shrink to match.
+28. **How often the shuttle comes** — D92. *Answered by the clock, D93:*
+    still every 60 game hours, which is now every 15 real minutes, and the
+    first one leaves the moment the first pad is finished.
+29. **What a caretaker costs** — D79, D93. 200 cr a game hour, unchanged,
+    so four times as dear by the real hour as it was: a real day away past
+    the crew's free watch is 576,000 cr. Quarter it, leave it, or price it
+    by the real hour?
+30. **How long the full ledger is kept** — D93. The server keeps about a
+    month of compressed archives (6 GB) and then drops the oldest. Balances
+    stay exact for ever; the entries behind them do not. If you want every
+    entry kept, the archives need somewhere to go: a bigger disk, or a
+    copy pulled off the server on a schedule.
+31. **Ground for good, or ground until it is lost** — D85, D93. A company
+    whose town died in the dark may now take new ground rather than wait
+    for its sunrise. Say if the old ground should be the only ground.
+32. **The numbers D93 invented** — morning 90 hours, list held 60, offers
+    open 40 real minutes, first-pad grant 40,000, watch after 10 minutes
+    for 12 hours. Play it and say what is too generous or too tight.
 27. **Should the Moon page be look-only by its own address too?** — D91.
     *Resolved by D92:* everyone watches, and trading waits for a landing
     pad wherever the page is opened from.

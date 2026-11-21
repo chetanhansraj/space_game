@@ -2,7 +2,7 @@
 
 A persistent, asynchronous, multiplayer space economy. Players operate a firm — hauling cargo, speculating on commodities, and eventually owning extraction outposts across the Moon, Mars and the asteroid belt. The world is populated by autonomous agents who trade whether or not any human is online.
 
-Real orbital mechanics, deterministic economy, one shared clock at 60× real time.
+Real orbital mechanics, deterministic economy, one shared clock at 240× real time.
 
 ## Documentation
 
@@ -72,7 +72,7 @@ SOLAR_DB=data/world.db SOLAR_OPEN_SIGNUP=1 .venv/bin/python -m api
 
 Open http://127.0.0.1:8000. The first start runs a game week of history
 (about ten seconds) so the markets have prices; after that the world keeps
-time with the wall clock, one game hour per real minute, and catches up on any
+time with the wall clock, one game hour every fifteen real seconds, and catches up on any
 hours it missed while stopped. Founding a company needs either
 `SOLAR_ACCESS_CODE` (an invitation code) or, for playing on your own machine,
 `SOLAR_OPEN_SIGNUP=1`; with neither, signup is closed. To put it on a server,
