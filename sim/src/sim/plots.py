@@ -30,8 +30,11 @@ those maps changes only ``pattern`` and nothing that calls it. D84.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import math
+
+from . import sun
 
 KEYS = ("sun", "ice", "metal", "glass", "he3", "view")
 #: What every plot's six readings add up to: a half each, which is the
@@ -239,18 +242,88 @@ def kind_of(lat: float, lon: float) -> str:
 OFFERS = 3
 
 
-def offers_for(token: str) -> list[dict]:
-    """The plots a company may choose between: each a different kind of ground.
+#: A new crew is only ever landed in a place's morning: at most this many
+#: hours after its sunrise, so that it has most of a day to get ready for
+#: its first night. The first night is what a new town is built against,
+#: and under the one Sun (D93) a place chosen blind could be an hour from
+#: dark. *Invented*, D93: a quarter of the usual day.
+MORNING = 90
+#: Hours one set of three plots stays on offer before the sunrise has moved
+#: on and three new ones are drawn. Long enough to read three cards and
+#: choose; the offered ground is early enough in its morning that it is
+#: still morning when the hold ends. *Invented*, D93.
+OFFER_HOLD = 60
 
-    Drawn from the company's name, so asking twice shows the same three.
-    Three of the four kinds, starting from one the name picks, so that
-    the choice is always between really different ground and, over many
-    companies, every kind is offered equally often.
+
+def in_morning(plot: dict, jd: float) -> bool:
+    """Is it still morning at this plot?"""
+    return sun.phase(plot["lon"], plot["dark"], jd) <= MORNING
+
+
+def offers_for(token: str, jd: float | None = None, tick: int = 0
+               ) -> list[dict]:
+    """The plots a company may choose between.
+
+    Without a sky (``jd`` is None) they are drawn from the company's name
+    alone: three of the four kinds of ground, starting from one the name
+    picks, the same three however often it asks.
+
+    With one, they are drawn where it is morning (D93): the sunrise line
+    sweeps the Moon once a lunar day and the offered ground follows it.
+    A set holds for OFFER_HOLD hours, then three new plots are drawn from
+    the name and the hour. As many different kinds of ground as have their
+    morning now are offered; the poles always do, the plains only while
+    the sunrise is over the near side.
     """
-    first = hashlib.sha256(f"kind:{token}".encode()).digest()[0]
-    return [plot_at(*place_for(f"{token}:{turn}",
-                               KINDS[(first + turn) % len(KINDS)]))
-            for turn in range(OFFERS)]
+    if jd is None:
+        first = hashlib.sha256(f"kind:{token}".encode()).digest()[0]
+        return [plot_at(*place_for(f"{token}:{turn}",
+                                   KINDS[(first + turn) % len(KINDS)]))
+                for turn in range(OFFERS)]
+    watch, into = divmod(int(tick), OFFER_HOLD)
+    return [dict(p) for p in _morning_offers(token, watch,
+                                             round(jd - into / 24.0, 6))]
+
+
+@functools.lru_cache(maxsize=1024)
+def _morning_offers(token: str, watch: int, jd: float) -> tuple[dict, ...]:
+    first = hashlib.sha256(f"kind:{token}:{watch}".encode()).digest()[0]
+    order = [KINDS[(first + turn) % len(KINDS)] for turn in range(len(KINDS))]
+    out: list[dict] = []
+    for again in range(6):              # one of each kind, then more of those that have a morning
+        # The poles always have a morning somewhere. Left to the turn they
+        # would fill every spare place, so past the first pass they go last.
+        for kind in (order if again == 0 else
+                     [k for k in order if k != "polar"] + ["polar"]):
+            place = _morning_place(f"{token}:{watch}:{kind}:{again}", kind, jd)
+            if place is None:
+                continue
+            plot = plot_at(*place)
+            if all((plot["lat"], plot["lon"]) != (o["lat"], o["lon"]) for o in out):
+                out.append(plot)
+            if len(out) == OFFERS:
+                return tuple(out)
+    return tuple(out)
+
+
+def _morning_place(token: str, kind: str, jd: float
+                   ) -> tuple[float, float] | None:
+    """A place of this kind of ground that is early in its morning at ``jd``,
+    drawn from a name, or None if no ground of that kind is."""
+    early = MORNING - OFFER_HOLD        # hours past sunrise, at most, when the hold begins
+    under = sun.subsolar_lon(jd)
+    for turn in range(3000):
+        digest = hashlib.sha256(f"morning:{token}:{turn}".encode()).digest()
+        u = int.from_bytes(digest[:8], "big") / 2 ** 64
+        v = int.from_bytes(digest[8:16], "big") / 2 ** 64
+        lat = round(math.degrees(math.asin(2.0 * u - 1.0)), 1)
+        dark = dark_hours(lat)
+        rise = -(sun.LUNAR_DAY - dark) / 2 / sun.LUNAR_DAY * 360.0   # the Sun's angle from noon at this place's sunrise
+        lon = under + rise + v * early / sun.LUNAR_DAY * 360.0
+        lon = round((lon + 540.0) % 360.0 - 180.0, 1)
+        if kind_of(lat, lon) == kind and sun.phase(lon, dark, jd) <= early:
+            return lat, lon
+    return None
 
 
 def place_for(token: str, kind: str | None = None) -> tuple[float, float]:

@@ -33,6 +33,7 @@ from dataclasses import dataclass
 
 from market.db import transaction
 from market.money import CREDIT
+from orbital.clock import game_seconds
 
 from .firms import Role
 from .shocks import Event
@@ -47,10 +48,12 @@ MAX_OPEN_PER_NODE = 3
 #: Chance, per node per check, that a firm short of something posts a job.
 POST_CHANCE = 0.5
 
-#: Game hours from posting to deadline. Three game days is 72 real minutes:
-#: long enough to take on a return from the tab, short enough that an
-#: accepted job is a commitment rather than an option held forever.
-DEADLINE_TICKS = 72
+#: Game hours from posting to deadline: 72 real minutes of them, whatever
+#: the clock's rate. Long enough to take on a return from the tab, short
+#: enough that an accepted job is a commitment rather than an option held
+#: forever. A deadline is something a person has to meet, so it is counted
+#: in the time a person lives in and not in the world's (D93).
+DEADLINE_TICKS = max(1, round(game_seconds(72 * 60) / 3_600))
 
 #: Paid over the local going rate, in percent, for guaranteed supply.
 PREMIUM_PERCENT = 12

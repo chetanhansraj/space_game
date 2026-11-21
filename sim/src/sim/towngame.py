@@ -46,8 +46,9 @@ from market.book import ASK, BID
 from market.db import transaction
 from market.errors import MarketError
 from market.money import CREDIT
+from orbital.clock import game_seconds, to_jd
 
-from . import TICKS_PER_GAME_DAY, plots
+from . import TICKS_PER_GAME_DAY, plots, sun
 from .earth import ACCOUNT as EARTH
 from .errors import GameError
 from .routes import NODE_ANCHOR
@@ -205,28 +206,75 @@ HOUSE_RETURN_DAYS = 7
 #: town in debt from building, so past this it would only sit there owing
 #: more. Measured: towns that recover never owed half of it. D81.
 HOUSE_RECALL_DEBT = TOWN_START
+
+
+def _ticks_in(real_seconds: float) -> int:
+    """Whole game hours in a stretch of real time, at the world's one rate."""
+    return max(1, round(game_seconds(real_seconds) / 3_600))
+
+
+#: Game hours in a real minute, for the town's rules to size the waits a
+#: person must answer (city/src/sim/contracts.ts OFFER_MINUTES).
+PACE = game_seconds(60) / 3_600
+#: What the Ark pays a company when its first landing pad comes into work,
+#: once. Building to the pad empties a new company's account, and nothing
+#: comes back until ships can land: measured, a careful owner sat near
+#: nothing from the pad to well after the first shuttle. This is not new
+#: money. It leaves the Ark's development fund, which is finite, like the
+#: founding grant it is the size of. *Invented*, D93.
+PAD_GRANT = TOWN_GRANT
+#: An owner who has not been at their town for this long is away, and the
+#: crew keeps watch: each hour they do what is urgent and nothing else, as
+#: a caretaker would, without the wage. Ten real minutes. *Invented*, D93.
+WATCH_AFTER = _ticks_in(10 * 60)
+#: How long the crew keeps watch before the town is on its own: twelve real
+#: hours, a night's sleep and a morning. At the world's pace that is four
+#: lunar days, which an unwatched young town does not always survive
+#: (measured, D93). Past it a hired caretaker is what keeps a town.
+#: *Invented*, D93.
+WATCH_FOR = _ticks_in(12 * 3_600)
+#: The owner's last visit is written down at most this often: five real
+#: minutes. A visit is a read, and this keeps reads from becoming writes.
+SEEN_EVERY = _ticks_in(5 * 60)
 #: The order of a town's standing, for saying when it has grown. The rules
 #: own the names (city/src/sim TIERS); only their order is repeated here.
 TIER_RANK = {"Outpost": 0, "Base": 1, "Colony": 2, "Town": 3}
 
 
-def plot_offers(player_id: str) -> list[dict]:
+def plot_offers(player_id: str, jd: float | None = None, tick: int = 0
+                ) -> list[dict]:
     """The ground a company may found its town on.
 
     A house company stands where it is named for, so it has one. Anyone
-    else is shown three plots of three different kinds, drawn from their
-    company's id, and chooses one (D85). The same company is always shown
-    the same three.
+    else is shown three plots and chooses one (D85). Given the sky
+    (``jd``), they are three where it is morning now, and they change as
+    the sunrise moves on (D93); without it, three drawn from the company's
+    id alone.
     """
     if player_id in HOUSE_PLACE:
         return [plots.plot_at(*HOUSE_PLACE[player_id])]
-    return plots.offers_for(player_id)
+    return plots.offers_for(player_id, jd, tick)
 
 
-def plot_for(player_id: str, choice: int = 0) -> dict:
-    """The plot a company chose. Once founded it keeps it through every
-    crew it sends: the ground is theirs."""
-    offers = plot_offers(player_id)
+def plot_for(player_id: str, choice: int = 0, jd: float | None = None,
+             tick: int = 0, at: tuple[float, float] | None = None) -> dict:
+    """The plot a company chose, of those it was offered.
+
+    ``at`` is where the chosen plot is, if the company said: the list moves
+    on with the sunrise, and a choice made by its place in the list could
+    land on ground the company never looked at. A plot offered in the last
+    list is still good while it is still morning there.
+    """
+    offers = plot_offers(player_id, jd, tick)
+    if at is not None:
+        older = (plot_offers(player_id, jd - plots.OFFER_HOLD / 24.0,
+                             tick - plots.OFFER_HOLD)
+                 if jd is not None and tick >= plots.OFFER_HOLD else [])
+        for plot in offers + [p for p in older if plots.in_morning(p, jd)]:
+            if (plot["lat"], plot["lon"]) == (round(at[0], 1), round(at[1], 1)):
+                return plot
+        raise GameError("The sunrise has moved on from that ground. "
+                        "Choose one of the plots on offer now.")
     if isinstance(choice, bool) or not isinstance(choice, int) \
             or not 0 <= choice < len(offers):
         raise GameError("Choose one of the plots you were offered.")
@@ -250,6 +298,58 @@ class TownOps:
         if self._town_engine is None:
             self._town_engine = Engine()
         return self._town_engine
+
+    # -- the one Sun (D93) -------------------------------------------------
+
+    def _sun_jd(self) -> float:
+        """The sky's own date, which is where the Sun is asked for."""
+        return to_jd(self.sky_time())
+
+    def _town_lon(self, plot: dict) -> float:
+        """The longitude a town keeps time by. A town from before plots is
+        at the Flats, where every town used to be."""
+        if "lon" in plot:
+            return plot["lon"]
+        return self.world.routes.registry[NODE_ANCHOR[TOWN_NODE]].site.lon_deg
+
+    def _town_dark(self, plot: dict) -> float:
+        return plot.get("dark", sun.LUNAR_DAY / 2)
+
+    def _world_hour(self, plot: dict) -> dict:
+        """What the world tells a town's rules of the hour: where the Sun
+        stands over it, and how fast the one clock runs."""
+        noon = sun.hours_since_noon(self._town_lon(plot), self._sun_jd())
+        return {"noon": round(noon, 3), "pace": PACE}
+
+    def _morning(self, plot: dict) -> bool:
+        """Is it morning there: early enough in the day to land a crew?"""
+        return sun.phase(self._town_lon(plot), self._town_dark(plot),
+                         self._sun_jd()) <= plots.MORNING
+
+    def _to_sunrise(self, plot: dict) -> int:
+        """Whole hours until the Sun next rises there."""
+        phase = sun.phase(self._town_lon(plot), self._town_dark(plot),
+                          self._sun_jd())
+        return math.ceil(sun.LUNAR_DAY - phase)
+
+    def plot_offers(self, player_id: str) -> list[dict]:
+        """The plots on offer to a company this hour, each with the hours of
+        daylight it has left."""
+        jd = self._sun_jd()
+        out = []
+        for plot in plot_offers(player_id, jd, self.world.tick):
+            light = (sun.LUNAR_DAY - plot["dark"]
+                     - sun.phase(plot["lon"], plot["dark"], jd))
+            out.append({**plot, "light": max(0, round(light))})
+        return out
+
+    def _chosen_plot(self, player_id: str, choice: int, at) -> dict:
+        if at is not None:
+            try:
+                at = (float(at[0]), float(at[1]))
+            except (TypeError, ValueError, IndexError):
+                raise GameError("Choose one of the plots you were offered.")
+        return plot_for(player_id, choice, self._sun_jd(), self.world.tick, at)
 
     # -- storage ---------------------------------------------------------
 
@@ -421,11 +521,15 @@ class TownOps:
             row = self.db.execute(
                 "SELECT remaining_kg, status FROM book_order WHERE id = ?",
                 (last["id"],)).fetchone()
-            if row["status"] == "OPEN":
+            # An order closed long enough ago may have left for the ledger
+            # archive (market/archive.py). Then it is closed, its escrow was
+            # empty, and what it bought was counted when it was open.
+            if row is not None and row["status"] == "OPEN":
                 self.world.books[last.get("port", TOWN_NODE)].cancel(
                     last["id"], now)
             left = ledger.balance(account, CREDIT)
-            book["bought_kg"] += last["kg"] - row["remaining_kg"]
+            book["bought_kg"] += (last["kg"] - row["remaining_kg"]
+                                  if row is not None else 0)
             book["spent"] += last["funded"] - left
         left = ledger.balance(account, CREDIT)
         if left > 0:
@@ -711,12 +815,17 @@ class TownOps:
 
     # -- founding ----------------------------------------------------------
 
-    def found_town(self, player, choice: int = 0) -> dict:
-        """Land four people at sunrise on the plot the company chose, of the
-        three it was offered. One town per company."""
+    def found_town(self, player, choice: int = 0, at=None) -> dict:
+        """Land four people, in the morning, on the plot the company chose
+        of the three it was offered. One town per company.
+
+        ``at`` is the chosen plot's latitude and longitude, which a screen
+        sends with its choice so that a list that has moved on with the
+        sunrise cannot found a town on ground nobody chose.
+        """
         if self._town_row(player.id) is not None:
             raise GameError("Your company already has a town.")
-        plot = plot_for(player.id, choice)    # refuses a choice not offered
+        plot = self._chosen_plot(player.id, choice, at)   # refuses one not offered
         with self._mutation():
             self._log([self._found_town(player, self.world.game_time(), plot)])
         return self.town_meta(player)
@@ -732,9 +841,10 @@ class TownOps:
                             grant, kind="grant", game_time=now,
                             ref=player.id, memo="town founding grant")
         seed = town_seed(player.id)
-        plot = plot_for(player.id) if plot is None else plot
+        if plot is None:
+            plot = plot_for(player.id, 0, self._sun_jd(), tick)
         made = self._engine_call("create", seed, self._town_wallet(player, 0),
-                                 plot)
+                                 plot, self._world_hour(plot))
         self.db.execute(
             "INSERT INTO town (player_id, founded_tick, seed, attempt, "
             "state, plot) VALUES (?, ?, ?, 0, ?, ?)",
@@ -745,10 +855,11 @@ class TownOps:
                           {"company": player.name, "grant": grant})
         return Event(
             tick=tick, kind="town_founded", subject=player.id,
-            detail=f"{player.name} founded a town on the lunar equator",
+            detail=f"{player.name} founded a town at {plot['name']}"
+                   if plot.get("name") else f"{player.name} founded a town",
             data={"player": player.id, "company": player.name})
 
-    def refound_town(self, player, choice: int = 0) -> dict:
+    def refound_town(self, player, choice: int = 0, at=None) -> dict:
         """Send a new crew to a town that has fallen silent.
 
         The new crew lands with stores: a company that has less than the
@@ -760,12 +871,28 @@ class TownOps:
 
         Nothing above the floor is given, so a company with money pays for
         its own second start, and what was built and lost stays lost.
+
+        A crew lands in the morning or not at all (D93). If it is morning
+        on the company's own ground the crew goes there. If it is not, the
+        company may wait for its sunrise, or say where (``at``) among the
+        plots on offer now and take new ground: nobody is made to sit out
+        a night to play again.
         """
         row = self._town(player)
         if self.town_engine.summary(row["state"])["phase"] != "lost":
             raise GameError("Your town is still alive.")
-        # A town from before plots chooses its ground now, once.
-        plot = json.loads(row["plot"] or "{}") or plot_for(player.id, choice)
+        plot = json.loads(row["plot"] or "{}")
+        if not plot:
+            # A town from before plots chooses its ground now, once.
+            plot = self._chosen_plot(player.id, choice, at)
+        elif not self._morning(plot):
+            if at is None:
+                hours = self._to_sunrise(plot)
+                raise GameError(
+                    f"It is not morning on your ground. The Sun rises there "
+                    f"in {hours} hours, about {self._real_minutes(hours)} "
+                    "minutes. Wait for it, or choose new ground to land now.")
+            plot = self._chosen_plot(player.id, choice, at)
         with self._mutation():
             self._refound_town(player, row, self.world.game_time(), plot)
         return self.town_meta(player)
@@ -791,12 +918,13 @@ class TownOps:
                             ref=player.id, memo="town relief crew stores")
         else:
             relief = 0
-        # The ground is the company's own and does not change with the crew.
-        # A town from before plots is given its ground now.
+        # The ground is the company's own unless it chose new ground to
+        # land in daylight. A town from before plots is given its ground now.
         if plot is None:
-            plot = json.loads(row["plot"] or "{}") or plot_for(player.id)
+            plot = json.loads(row["plot"] or "{}") or plot_for(
+                player.id, 0, self._sun_jd(), self.world.tick)
         made = self._engine_call("create", seed, self._town_wallet(player, 0),
-                                 plot)
+                                 plot, self._world_hour(plot))
         self.db.execute(
             "UPDATE town SET state = ?, seed = ?, attempt = ?, "
             "founded_tick = ?, owed = 0, carry = 0, lost_tick = NULL, "
@@ -808,6 +936,11 @@ class TownOps:
             self._message(player.id, "ark_development_office", "town_relief",
                           {"company": player.name, "relief": relief,
                            "hours": LANDER_HOURS})
+
+    @staticmethod
+    def _real_minutes(hours: float) -> int:
+        """Game hours as whole real minutes, for telling a person how long."""
+        return max(1, round(hours / PACE))
 
     def _engine_call(self, name: str, *args):
         try:
@@ -945,6 +1078,10 @@ class TownOps:
                         "SELECT 1 FROM player WHERE name = ?",
                         (name,)).fetchone():
                     continue
+                # A crew lands in the morning. A company whose ground is in
+                # the afternoon or the dark waits, and the next is asked.
+                if not self._morning(plots.plot_at(*HOUSE_PLACE[pid])):
+                    continue
                 try:
                     self._charter_office_open()
                 except GameError:
@@ -978,7 +1115,8 @@ class TownOps:
         for row in self.db.execute(
                 "SELECT t.* FROM town t JOIN player p ON p.id = t.player_id "
                 "WHERE p.house = 1 AND t.lost_tick IS NOT NULL").fetchall():
-            if tick - row["lost_tick"] >= wait:
+            if tick - row["lost_tick"] >= wait and self._morning(
+                    json.loads(row["plot"] or "{}")):
                 player = self.player(row["player_id"])
                 try:
                     with transaction(self.db):
@@ -1028,6 +1166,11 @@ class TownOps:
         """Every town's hour, inside the world's. One failure stops one town."""
         events: list[Event] = []
         try:
+            self._to_one_sun()
+        except Exception:
+            log.exception("the move to the one Sun failed at tick %d",
+                          self.world.tick)
+        try:
             events += self._house_business(now)
         except Exception:
             log.exception("house business failed at tick %d", self.world.tick)
@@ -1048,10 +1191,96 @@ class TownOps:
                                 "WHERE player_id = ?", (row["player_id"],))
         return events
 
+    def _to_one_sun(self) -> None:
+        """Once, when a world moves onto the one Sun (D93): fill every
+        living town's batteries.
+
+        Until now each town kept a day of its own, counted from its
+        founding. From this hour its day is the Sun's, so some towns wake
+        to find it is suddenly night, having had no warning to store for
+        it. A full battery is the warning they did not get. It is energy,
+        not credits, and it is given once.
+
+        A company whose pad already stands is past what the pad grant is
+        for, so that is marked as settled without paying it.
+        """
+        if self.db.execute("SELECT 1 FROM world_meta WHERE key = 'one_sun'"
+                           ).fetchone():
+            return
+        for row in self.db.execute(
+                "SELECT * FROM town WHERE lost_tick IS NULL").fetchall():
+            plot = json.loads(row["plot"] or "{}")
+            try:
+                filled = self.town_engine.topup(row["state"],
+                                                self._world_hour(plot))
+            except TownError as exc:
+                log.error("%s", exc)
+                continue
+            self.db.execute(
+                "UPDATE town SET state = ?, pad_grant = CASE WHEN ? THEN 0 "
+                "ELSE pad_grant END WHERE player_id = ?",
+                (filled.state, 1 if filled.summary["pad"] else 0,
+                 row["player_id"]))
+        self.db.execute(
+            "INSERT INTO world_meta (key, value) VALUES ('one_sun', ?)",
+            (str(self.world.tick),))
+
+    def town_seen(self, player) -> None:
+        """The owner is at their town. Written down every few minutes at
+        most; the crew's watch is counted from it (WATCH_AFTER)."""
+        row = self._town_row(player.id)
+        if row is None:
+            return
+        tick = self.world.tick
+        if row["seen_tick"] is None or tick - row["seen_tick"] >= SEEN_EVERY:
+            with transaction(self.db):
+                self.db.execute(
+                    "UPDATE town SET seen_tick = ? WHERE player_id = ?",
+                    (tick, player.id))
+
+    def _on_watch(self, row) -> bool:
+        """Is the crew keeping watch this hour? From when the owner has been
+        gone WATCH_AFTER, for WATCH_FOR. A town whose owner has never been
+        seen at it (one from before the watch, or one the world runs) has
+        none: there is nobody for the crew to be standing in for."""
+        if row["seen_tick"] is None:
+            return False
+        away = self.world.tick - row["seen_tick"]
+        return WATCH_AFTER <= away < WATCH_AFTER + WATCH_FOR
+
+    def _pad_grant(self, player, row, summary: dict, now: str) -> None:
+        """Pay a company for its first working landing pad, once (PAD_GRANT).
+
+        From the Ark's fund, which is finite: if it cannot pay this hour
+        the grant waits. Not paid to the towns the world runs, whose money
+        has to be earned (invariant 3).
+        """
+        if row["pad_grant"] is not None or not summary["pad"]:
+            return
+        if player.house:
+            paid = 0
+        else:
+            ledger = self.world.ledger
+            if ledger.balance(self.dev_fund_account, CREDIT) < PAD_GRANT:
+                return
+            ledger.transfer(self.dev_fund_account, player.account, CREDIT,
+                            PAD_GRANT, kind="grant", game_time=now,
+                            ref=player.id, memo="first landing pad grant")
+            self._message(player.id, "ark_development_office",
+                          "town_pad_grant",
+                          {"company": player.name, "grant": PAD_GRANT})
+            paid = PAD_GRANT
+        self.db.execute("UPDATE town SET pad_grant = ? WHERE player_id = ?",
+                        (paid, player.id))
+
     def _tick_town(self, row, now: str) -> list[Event]:
         player = self.player(row["player_id"])
         if player.house:
             row = self._steward_hour(player, row, now, keep=False)
+        elif self._on_watch(row):
+            # The owner is away and the crew is keeping watch: what is
+            # urgent is done, by the rules, from the town's own money.
+            row = self._steward_hour(player, row, now, keep=True)
         elif row["caretaker"]:
             row = self._caretake(player, row, now)
         ledger, account = self.world.ledger, self._yard_account(player)
@@ -1063,7 +1292,8 @@ class TownOps:
         result = self.town_engine.tick(
             row["state"], 1.0, before,
             {"cap": YARD_KG, "held": held, "wear": wear,
-             "importAt": self._parts_price() / TONNE / KCR})
+             "importAt": self._parts_price() / TONNE / KCR},
+            self._world_hour(json.loads(row["plot"] or "{}")))
         owed, carry = self._town_settle(
             player, before, result.credits, row["owed"], row["carry"], now,
             building=False)
@@ -1073,6 +1303,7 @@ class TownOps:
             "WHERE player_id = ?",
             (result.state, owed, carry, self.world.tick if lost else None,
              player.id))
+        self._pad_grant(player, row, result.summary, now)
 
         # What the foundries made this hour is cargo, at the port, on the
         # ledger. No credits are created here: it is worth what somebody
@@ -1160,11 +1391,19 @@ class TownOps:
                              - self.tick_starts_at(0)).total_seconds(),
             "founded": row is not None,
         }
-        if row is None or (row["lost_tick"] is not None
-                           and not json.loads(row["plot"] or "{}")):
+        meta["pace"] = PACE
+        plot = json.loads(row["plot"] or "{}") if row is not None else {}
+        if row is None or (row["lost_tick"] is not None and not plot):
             # nothing founded yet, or a lost town from before plots: the
             # company is shown its three plots and chooses one
-            meta["offers"] = plot_offers(player.id)
+            meta["offers"] = self.plot_offers(player.id)
+        elif row["lost_tick"] is not None and not self._morning(plot):
+            # A lost town whose ground is not in its morning: a crew can
+            # wait for the sunrise there, or land now on new ground (D93).
+            hours = self._to_sunrise(plot)
+            meta["relief"] = {"hours": hours,
+                              "minutes": self._real_minutes(hours)}
+            meta["offers"] = self.plot_offers(player.id)
         if row is None:
             return meta
         summary = self.town_engine.summary(row["state"])
@@ -1179,6 +1418,9 @@ class TownOps:
             yard=self._yard_view(player, row, summary),
             caretaker={"on": bool(row["caretaker"]), "fee": CARETAKER_FEE,
                        "paid": row["caretaker_paid"]},
+            watch={"after_minutes": self._real_minutes(WATCH_AFTER),
+                   "for_hours": round(WATCH_FOR / PACE / 60)},
+            pad_grant=row["pad_grant"],
             company=player.name, league=self.towns_view(),
             plot=json.loads(row["plot"] or "{}"))
         return meta

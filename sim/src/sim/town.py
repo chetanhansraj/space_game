@@ -79,12 +79,15 @@ class Engine:
                       int(reply.get("used") or 0),
                       float(reply.get("landed") or 0))
 
-    def create(self, seed: int, credits: float, plot: dict | None = None
-               ) -> Result:
-        """A new town. ``plot`` is the ground it stands on (sim.plots)."""
-        args = [int(seed), float(credits)]
-        if plot:
-            args.append(json.dumps(plot, sort_keys=True))
+    def create(self, seed: int, credits: float, plot: dict | None = None,
+               world: dict | None = None) -> Result:
+        """A new town. ``plot`` is the ground it stands on (sim.plots);
+        ``world`` is the hour as the world has it (see ``tick``)."""
+        args = [int(seed), float(credits),
+                json.dumps(plot, sort_keys=True) if plot else None,
+                json.dumps(world, sort_keys=True) if world else None]
+        while args and args[-1] is None:
+            args.pop()
         return self._result(self._call("create", *args))
 
     def apply(self, state: str, intent: dict, credits: float
@@ -96,7 +99,7 @@ class Engine:
         return self._result(reply), ""
 
     def tick(self, state: str, hours: float, credits: float,
-             yard: dict | None = None) -> Result:
+             yard: dict | None = None, world: dict | None = None) -> Result:
         """Advance a town. ``yard`` is ``{"cap": kg, "held": kg}``.
 
         Given a yard, the foundries make goods into it instead of being
@@ -106,11 +109,23 @@ class Engine:
         spare parts: ``Result.used`` is the whole kilograms they took from
         it, and ``Result.landed`` what Earth landed because it was empty,
         charged to the wallet at ``"importAt"`` town credits a kilogram.
+
+        ``world`` is the hour as the world has it: ``{"noon": hours since
+        the Sun was highest over the town, "pace": game hours in a real
+        minute}``. The town sets its day by the first and sizes the waits
+        a person must answer by the second.
         """
-        args = [state, float(hours), float(credits)]
-        if yard is not None:
-            args.append(json.dumps(yard))
+        args = [state, float(hours), float(credits),
+                json.dumps(yard) if yard is not None else None,
+                json.dumps(world, sort_keys=True) if world else None]
+        while args and args[-1] is None:
+            args.pop()
         return self._result(self._call("tick", *args))
+
+    def topup(self, state: str, world: dict | None = None) -> Result:
+        """Fill a town's batteries. Used once, at the move to the one Sun."""
+        args = [state] + ([json.dumps(world, sort_keys=True)] if world else [])
+        return self._result(self._call("topup", *args))
 
     def steward(self, state: str, credits: float, keep: bool = False,
                 style: dict | None = None) -> list[dict]:

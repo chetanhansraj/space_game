@@ -307,17 +307,17 @@ def _base_departure(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
 
 
 def _town_charter(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
-    return ("Your town on the equator", [
-        f"{d['company']}: four of your people are down on the lunar equator "
-        "at sunrise, with a lander, a little air and two weeks of daylight "
+    return ("Your town on the Moon", [
+        f"{d['company']}: four of your people are down on the Moon in the "
+        "morning, with a lander, a little air and most of a long day "
         "ahead of them.",
         f"This office has added {cr(d['grant'])} to your account for the "
         "founding. The town has no purse of its own: it spends from your "
         "company's account and what it earns comes back to it.",
         "The lander's canisters last about a week. Get air and power "
-        "standing before then, and enough stored to last a night that is "
-        "two weeks long. The town keeps its own time, the same as "
-        "everyone's, and it does not wait for you.",
+        "standing before then, and enough stored to last the night that "
+        "follows. There is one Sun and one clock, the same for everyone, "
+        "and neither waits for you.",
         "Anyone may watch the market. When the town has a working landing "
         "pad, it is open to it, and to your ship.",
         "Yusuf Brandt, Ark Development Office",
@@ -349,6 +349,18 @@ def _town_relief(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     ])
 
 
+def _town_pad_grant(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    return ("Your first landing pad", [
+        f"{d['company']}: your town has a working landing pad, and Earth "
+        "has cleared it. The first shuttle is already on its way.",
+        f"This office has added {cr(d['grant'])} to your account for it. "
+        "It is paid once. A town earns little until ships can land, and "
+        "the pad is what that waits for.",
+        "The market is open to you now, and to your ship.",
+        "Yusuf Brandt, Ark Development Office",
+    ])
+
+
 def _town_caretaker_left(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     return ("Your caretaker has left", [
         f"{d['company']}: the caretaker you hired for your town is paid "
@@ -362,7 +374,7 @@ def _town_caretaker_left(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
 _LETTERS = {
     "town_charter": _town_charter, "town_lost": _town_lost,
     "town_caretaker_left": _town_caretaker_left,
-    "town_relief": _town_relief,
+    "town_relief": _town_relief, "town_pad_grant": _town_pad_grant,
     "base_departure": _base_departure,
     "welcome": _welcome, "charter": _charter, "offers": _offers,
     "arrival": _arrival, "contract_paid": _contract_paid,

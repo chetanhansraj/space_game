@@ -32,6 +32,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Iterator
 
+from market import archive
 from market.book import ASK, BID, OrderBook
 from market.db import connect, transaction
 from market.errors import MarketError
@@ -86,6 +87,18 @@ ARRIVAL_SALE_FLOOR_PERCENT = 90
 
 #: Fold the ledger into its balance cache once a game day.
 CHECKPOINT_EVERY_TICKS = TICKS_PER_GAME_DAY
+
+#: The newest transactions that always stay in the live file; older ones
+#: are moved to the archive (market/archive.py, D93). Measured, the world
+#: writes about 400 transactions an hour, so this is about a real day of
+#: history at hand for whoever is debugging, in a live file of well under
+#: a gigabyte. An operating number, not an economic one.
+ARCHIVE_KEEP_TXNS = 2_400_000
+#: The most transactions moved in one step. A step runs after each hour and
+#: holds the world's one lock while it does, so it is kept to a fraction of
+#: a second (measured, D93); this is still twelve hours' worth every hour,
+#: so a backlog of any size is worked off and never grows.
+ARCHIVE_STEP_TXNS = 5_000
 
 NODE_NAMES = {
     "shackleton_depot": "Shackleton Depot",
@@ -217,7 +230,10 @@ class Game(BaseOps, TownOps):
                 "INSERT INTO world_meta (key, value) VALUES (?, ?)",
                 [("launch_real", launch.isoformat()), ("seed", str(seed)),
                  ("time_rate", str(TIME_RATE)),
-                 ("tick_anchor", launch.isoformat())])
+                 ("tick_anchor", launch.isoformat()),
+                 # a world founded under the one Sun has no towns to move
+                 # onto it (towngame._to_one_sun)
+                 ("one_sun", "0")])
             game = cls.__new__(cls)
             game.db, game.world, game.launch_real = db, world, launch
             game.tick_anchor = launch
@@ -344,6 +360,25 @@ class Game(BaseOps, TownOps):
             if world.tick % CHECKPOINT_EVERY_TICKS == 0:
                 world.ledger.checkpoint()
         return events
+
+    def archive_step(self, folder: str, keep_txns: int = None,
+                     max_txns: int = None):
+        """Move one batch of old ledger history out of the live file.
+
+        Called between hours, never inside one (market/archive.py). Nothing
+        the world computes with is touched: balances come from the
+        checkpoint, prices from the newest trades, and both stay. Returns
+        what was moved, which is nothing when nothing is old enough.
+        """
+        return archive.archive_step(
+            self.db, archive.current_file(folder),
+            keep_txns=ARCHIVE_KEEP_TXNS if keep_txns is None else keep_txns,
+            max_txns=ARCHIVE_STEP_TXNS if max_txns is None else max_txns)
+
+    def archive_backlog(self, keep_txns: int = None) -> int:
+        """Transactions old enough to leave the live file and still in it."""
+        return archive.backlog(
+            self.db, ARCHIVE_KEEP_TXNS if keep_txns is None else keep_txns)
 
     def catch_up(self, now: _dt.datetime | None = None,
                  limit: int | None = None) -> int:

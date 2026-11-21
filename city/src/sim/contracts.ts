@@ -13,6 +13,8 @@ const NATIONS = ['India', 'Japan', 'Brazil', 'Kenya', 'the Emirates', 'Canada', 
 const FIRMS = ['Selene Metals', 'Kestrel Propulsion', 'Mare Glassworks', 'Aldrin Volatiles', 'Tycho Robotics'];
 const ASHA = 0, KENJI = 1, LENA = 2, RAFAEL = 3;
 const RESERVE = 100;   // hours of breathing kept back before any oxygen is sold
+/** Real minutes an offer stays open in the world. Chetan, 21 November 2026: thirty to forty-five. */
+export const OFFER_MINUTES = 40;
 /** Contracts grow with the town: a deal worth 90 to an outpost is worth 270 to a town of sixty. */
 const scale = (s: State) => 1 + Math.min(4, Math.floor(population(s) / 15)) * 0.5;
 /** A deadline never falls in the dark, when no passenger ship flies: it slides to 60 hours after the next sunrise. */
@@ -34,7 +36,9 @@ function makeOffer(s: State): Offer | null {
   const kinds: DealKind[] = (['team', 'oxygen', 'works', 'broadcast'] as DealKind[]).filter(k => !has(k)
     && (k !== 'oxygen' || s.buildings.some(b => b.type === 'o2plant' && working(b))));
   if (!kinds.length) return null;
-  const kind = pick(s, kinds), expires = s.t + 70, k = scale(s), kg = Math.round(150 * k / 50) * 50;
+  // An offer waits for a person, so it waits in the person's time: forty real minutes in the world, however fast
+  // the world's clock runs, and never less than the seventy hours it always was.
+  const kind = pick(s, kinds), expires = s.t + Math.max(70, OFFER_MINUTES * (s.pace ?? 1)), k = scale(s), kg = Math.round(150 * k / 50) * 50;
   const pay = (n: number) => Math.round(n * k / 10) * 10;
   const fit = (h: number) => Math.round(inDaylight(s.t + h) - s.t);
   if (kind === 'team') {

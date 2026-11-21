@@ -159,6 +159,10 @@ export interface State {
   canisters: number;      // hours of CO2 scrubbing left in the lander
   crew: Crew[]; residents: number; tourists: number; mood: number; risk: number;
   rovers: Rover[]; shuttle: Shuttle; nextShuttle: number;
+  /** Hours the Sun's day stands ahead of this town's own clock (see phaseOf). Absent in the practice game. */
+  sun?: number;
+  /** Game hours in a real minute, as the world runs. Absent in the practice game. Used only to size waits a person must answer. */
+  pace?: number;
   mission: number; price: number; nextGrow: number;
   shopping: boolean;      // true when Commercial land should next get a Concourse, false for a lodge
   offer: Offer | null; deals: Deal[]; nextOffer: number; nextDeal: number;
@@ -191,7 +195,15 @@ export function rnd(s: { rng: number }): number {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 // ---------- clock ----------
-export const phaseOf = (t: number) => t % LUNAR_DAY;
+/**
+ * Where a town is in its lunar day: hours since its sunrise. A town's own clock `t` counts hours
+ * since it was founded. `SUN` is how far that clock stands from the Sun's, set from the state by
+ * `ground` like the two below. In the world it follows the one Sun over the town's longitude
+ * (root docs/DECISIONS.md D93), so every town's noon is when the Sun is over it. In the practice
+ * game there is no world, the offset is nothing, and a town is founded at its own sunrise.
+ */
+let SUN = 0;
+export const phaseOf = (t: number) => (((t + SUN) % LUNAR_DAY) + LUNAR_DAY) % LUNAR_DAY;
 /**
  * How long the Sun is up where this town stands. Across nearly all the Moon it is half the lunar
  * day. On a polar rim the Sun circles the horizon and the dark is short. The plot says how many
@@ -205,14 +217,37 @@ export function ground(s: State): void {
   const dark = Math.max(24, Math.min(HALF, s.plot?.dark ?? HALF));
   LIGHT = LUNAR_DAY - dark;
   CARRY = dark + (DARK - HALF);
+  SUN = s.sun ?? 0;
 }
+/**
+ * Set the town's day by the Sun. `noon` is hours since the Sun was highest over the town's
+ * longitude, from minus half a lunar day to plus half. The middle of the town's daylight is put
+ * there, so a polar town's long day and an equatorial town's half day both have the Sun highest
+ * at their noon. The world says this every hour, so a town's day cannot drift from the Sun's.
+ */
+export function setSun(s: State, noon: number): void {
+  ground(s);
+  const want = (((LIGHT / 2 + noon) % LUNAR_DAY) + LUNAR_DAY) % LUNAR_DAY, now = phaseOf(s.t);
+  let turn = (((want - now) % LUNAR_DAY) + LUNAR_DAY) % LUNAR_DAY;
+  if (turn > HALF) turn -= LUNAR_DAY;                       // the short way round
+  if (s.sun === undefined) { s.sun = (((want - s.t) % LUNAR_DAY) + LUNAR_DAY) % LUNAR_DAY; SUN = s.sun; return; }
+  // The Moon does not turn evenly, so the world's hour runs a few minutes fast or slow of the town's
+  // and is corrected a little every hour. A correction backwards is held over for an hour if it
+  // would carry the town back across its sunrise, its sunset or the warning before it: each of
+  // those is announced once, as the clock passes it.
+  if (turn < 0 && turn > -2) for (const edge of [0, LIGHT - 60, LIGHT]) if (now >= edge && now + turn < edge) return;
+  s.sun += turn;                                            // kept whole, not wrapped, so the count of days never steps back
+  SUN = s.sun;
+}
+/** Fill the batteries. Used once, when the world's towns were moved onto the one Sun and some woke in the dark. */
+export function topUp(s: State): void { refresh(s); s.charge = Math.max(s.charge, s.flows.battCap); }
 /** Hours of light and of dark in a lunar day here, and the hours the batteries must carry. */
 export const lightHours = () => LIGHT, darkHours = () => LUNAR_DAY - LIGHT, carryHours = () => CARRY;
 export const isNight = (t: number) => phaseOf(t) >= LIGHT;
 export const sunFactor = (t: number) => (isNight(t) ? 0 : Math.sin((Math.PI * phaseOf(t)) / LIGHT));
 export const hoursToSunset = (t: number) => LIGHT - phaseOf(t);
 export const hoursToSunrise = (t: number) => LUNAR_DAY - phaseOf(t);
-export const dayNumber = (t: number) => Math.floor(t / LUNAR_DAY) + 1;
+export const dayNumber = (t: number) => Math.floor((t + SUN) / LUNAR_DAY) + 1;
 
 // ---------- people and buildings ----------
 export const aliveCount = (s: State) => s.crew.reduce((n, c) => n + (c.alive ? 1 : 0), 0);
@@ -848,7 +883,11 @@ export function tick(s: State) {
       if (b.progress >= 1) {
         s.netDirty = true; s.rev++; s.stats.built++;
         if (b.type !== 'conduit') pushAlert(s, 'good', d.zone && s.zone[b.y * s.size + b.x] ? `A new ${d.name} has opened.` : `${d.name} complete.`);
-        if (b.type === 'pad') { s.nextShuttle = s.t + 24; pushAlert(s, 'info', 'Earth has cleared the pad. First shuttle in 24 hours.'); }
+        if (b.type === 'pad') {
+          // The first pad is what Earth has been waiting for: its first shuttle leaves at once. A pad rebuilt later waits a day.
+          if (s.shuttle.flight === 0) { s.nextShuttle = s.t; pushAlert(s, 'info', 'Earth has cleared the pad. The first shuttle is on its way.'); }
+          else { s.nextShuttle = s.t + 24; pushAlert(s, 'info', 'Earth has cleared the pad. Next shuttle in 24 hours.'); }
+        }
       }
     }
     if (b.damaged && b.repair > 0) {

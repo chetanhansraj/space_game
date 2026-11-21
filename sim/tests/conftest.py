@@ -31,7 +31,18 @@ def reference_ground():
     patch = pytest.MonkeyPatch()
     patch.setattr(towngame, "_plot_for_real", towngame.plot_for,
                   raising=False)
-    patch.setattr(towngame, "plot_for", lambda player_id, choice=0: {})
+    patch.setattr(towngame, "plot_for", lambda player_id, choice=0, *a, **k: {})
+    # And every town in the tests keeps a day of its own, from a sunrise at
+    # its founding, which is what the rules were tuned on: a test about
+    # yards or caretakers should not pass or fail by where the Sun happened
+    # to stand. Tests about the Sun itself ask for ``one_sun``.
+    patch.setattr(towngame.TownOps, "_world_hour_real",
+                  towngame.TownOps._world_hour, raising=False)
+    patch.setattr(towngame.TownOps, "_morning_real",
+                  towngame.TownOps._morning, raising=False)
+    patch.setattr(towngame.TownOps, "_world_hour",
+                  lambda self, plot: {"pace": towngame.PACE})
+    patch.setattr(towngame.TownOps, "_morning", lambda self, plot: True)
     yield
     patch.undo()
 
@@ -41,3 +52,13 @@ def real_ground(monkeypatch):
     """The Moon as it is: each company on its own plot."""
     from sim import towngame
     monkeypatch.setattr(towngame, "plot_for", towngame._plot_for_real)
+
+
+@pytest.fixture
+def one_sun(monkeypatch):
+    """The Sun as it is: every town keeps time by where it stands (D93)."""
+    from sim import towngame
+    monkeypatch.setattr(towngame.TownOps, "_world_hour",
+                        towngame.TownOps._world_hour_real)
+    monkeypatch.setattr(towngame.TownOps, "_morning",
+                        towngame.TownOps._morning_real)

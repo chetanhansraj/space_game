@@ -26,7 +26,8 @@ from sim.earth import ACCOUNT as EARTH
 from sim.game import DEV_FUND, Game, GameError
 from sim.persist import default_routes
 from sim.town import Engine
-from sim.towngame import TOWN_NODE, YARD_ASSET, YARD_KG
+from sim.towngame import (SEEN_EVERY, TOWN_NODE, WATCH_AFTER, WATCH_FOR,
+                          YARD_ASSET, YARD_KG)
 
 T0 = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
 TONNE = 1_000
@@ -115,6 +116,13 @@ def stock(g, player, kg):
         g.world.ledger.extract(account, YARD_ASSET, kg, g.world.game_time(),
                                memo="test stock")
     return account
+
+
+def surplus(g, player, tonnes=2) -> int:
+    """Kilograms that leave this many whole tonnes to spare over what the
+    town keeps back for its own parts, however big the town has grown."""
+    keep = yard(g, player)["parts"]["keep_kg"]
+    return (tonnes + -(-keep // TONNE)) * TONNE
 
 
 def state(g, player) -> dict:
@@ -243,7 +251,8 @@ def test_a_sale_is_paid_by_the_buyer_and_by_nobody_else(town):
 
 def test_the_standing_order_sells_whole_tonnes_while_the_owner_is_away(town):
     g, player = town
-    account = stock(g, player, 2 * TONNE)
+    put = surplus(g, player)
+    account = stock(g, player, put)
     sold, wallet = yard(g, player)["sold_kg"], cash(g, player.account)
     for _ in range(8):
         g.step()
@@ -251,13 +260,13 @@ def test_the_standing_order_sells_whole_tonnes_while_the_owner_is_away(town):
     assert y["sold_kg"] >= sold + TONNE
     assert y["sold_kg"] % TONNE == 0
     assert y["sales"] > 0 and y["last"] is not None
-    assert goods(g, account) == (y["made_kg"] + 2 * TONNE - y["sold_kg"]
+    assert goods(g, account) == (y["made_kg"] + put - y["sold_kg"]
                                  - y["parts"]["used_kg"])
 
 
 def test_hold_means_hold_and_a_floor_is_a_floor(town):
     g, player = town
-    account = stock(g, player, 2 * TONNE)
+    account = stock(g, player, surplus(g, player))
     held, sold = goods(g, account), yard(g, player)["sold_kg"]
     g.town_policy(player, False, ANCHOR)
     for _ in range(8):
@@ -360,10 +369,10 @@ def test_a_town_from_before_yards_gains_one(played, tmp_path, routes):
     copy = str(tmp_path / "old.db")
     shutil.copy(path, copy)
     g = Game.open(copy, routes=routes)
-    for column in ("yard", "caretaker", "caretaker_paid"):
+    for column in ("yard", "caretaker", "caretaker_paid", "plot",
+                   "pad_grant", "seen_tick"):
         g.db.execute(f"ALTER TABLE town DROP COLUMN {column}")
     g.db.execute("ALTER TABLE player DROP COLUMN house")
-    g.db.execute("ALTER TABLE town DROP COLUMN plot")
     g.db.execute("DELETE FROM sim_schema_version WHERE version >= 4")
     g.db.commit()
     g.db.close()
@@ -486,7 +495,13 @@ def test_an_empty_yard_is_filled_from_earth_at_twice_the_price(town):
     assert plain.used == 0 and plain.landed == 0
     assert stocked.landed == 0 and need - 1 <= stocked.used <= need + 1
     assert stocked.credits == pytest.approx(plain.credits, abs=1e-9)
-    assert dry.used == 0 and dry.landed == pytest.approx(need, rel=1e-6)
+    # `need` is the rate as the hour ends. A building finished inside the
+    # hour wears for only part of it, so the hour's own count may be a
+    # fraction of a kilogram under.
+    assert dry.used == 0 and need - 1 < dry.landed <= need + 1e-6
+    assert dry.landed == pytest.approx(
+        stocked.used + json.loads(stocked.state)["cargo"]["used"]
+        - json.loads(row["state"])["cargo"]["used"], abs=1e-6)
     assert plain.credits - dry.credits == pytest.approx(dry.landed * price,
                                                         abs=1e-9)
 
@@ -842,15 +857,106 @@ def test_a_caretaker_mends_what_breaks_while_the_owner_is_away(town):
     assert buildings >= len(s["buildings"])
 
 
+# -- the crew's watch (D93) ----------------------------------------------------------
+
+def broken_panel(g, player):
+    """Break a solar array and return a way to look at it."""
+    s = state(g, player)
+    target = next(b for b in s["buildings"]
+                  if b["type"] == "solar" and b["progress"] >= 1)
+    target["damaged"], target["repair"] = True, 0
+    g.db.execute("UPDATE town SET state = ? WHERE player_id = ?",
+                 (json.dumps(s), player.id))
+    g.db.commit()
+    return lambda: next(b for b in state(g, player)["buildings"]
+                        if b["uid"] == target["uid"])
+
+
+def wages(g, player) -> int:
+    return g.db.execute(
+        "SELECT COUNT(*) FROM txn t JOIN posting p ON p.txn_id = t.id "
+        "WHERE t.memo = 'town caretaker''s wage' AND p.account_id = ?",
+        (player.account,)).fetchone()[0]
+
+
+def test_the_crew_keeps_watch_once_the_owner_has_been_gone_ten_minutes(town):
+    g, player = town
+    g.town_policy(player, False, ANCHOR)
+    panel = broken_panel(g, player)
+    g.town_seen(player)                           # the owner looks in, and leaves
+    assert g._town_row(player.id)["seen_tick"] == g.world.tick
+    for _ in range(WATCH_AFTER - 1):
+        g.step()
+    assert panel()["damaged"] and panel()["repair"] == 0, \
+        "an owner who stepped out for a few minutes is still the one in charge"
+    for _ in range(14):
+        g.step()
+    assert not panel()["damaged"], "the crew mended it"
+    assert wages(g, player) == 0 and g.town_meta(player)["caretaker"]["paid"] == 0
+    watch = g.town_meta(player)["watch"]
+    assert watch == {"after_minutes": 10, "for_hours": 12}
+
+
+def test_looking_in_stands_the_watch_down_and_is_not_written_every_time(town):
+    g, player = town
+    g.town_policy(player, False, ANCHOR)
+    g.town_seen(player)
+    first = g._town_row(player.id)["seen_tick"]
+    for _ in range(SEEN_EVERY - 1):
+        g.step()
+        g.town_seen(player)
+    assert g._town_row(player.id)["seen_tick"] == first, "a read stays a read"
+    g.step()
+    g.town_seen(player)
+    assert g._town_row(player.id)["seen_tick"] == g.world.tick
+    # an owner who keeps looking in is never away, so the crew never takes over
+    panel = broken_panel(g, player)
+    for _ in range(WATCH_AFTER + 10):
+        g.step()
+        g.town_seen(player)
+    assert panel()["damaged"] and panel()["repair"] == 0
+
+
+def test_the_watch_ends_and_a_hired_caretaker_is_paid_only_outside_it(town):
+    g, player = town
+    g.town_policy(player, False, ANCHOR)
+    with g._mutation():                           # wages for the whole test
+        g.world.ledger.mint(player.account, 100_000, g.world.game_time(),
+                            memo="test: a full account")
+    g.town_caretaker(player, True)
+    g.town_seen(player)
+    tick = g.world.tick
+    for _ in range(WATCH_AFTER - 1):              # hired, and the crew not yet on watch
+        g.step()
+    assert wages(g, player) == WATCH_AFTER - 1
+    for _ in range(6):                            # on watch: the crew does it for nothing
+        g.step()
+    assert wages(g, player) == WATCH_AFTER - 1
+    # twelve real hours on, the watch is over and the caretaker is the one working
+    g.db.execute("UPDATE town SET seen_tick = ? WHERE player_id = ?",
+                 (g.world.tick - WATCH_AFTER - WATCH_FOR, player.id))
+    g.db.commit()
+    assert tick < g.world.tick
+    for _ in range(4):
+        g.step()
+    assert wages(g, player) == WATCH_AFTER - 1 + 4
+    # and with nobody hired, a town past its watch is on its own
+    g.town_caretaker(player, False)
+    panel = broken_panel(g, player)
+    for _ in range(6):
+        g.step()
+    assert panel()["damaged"] and panel()["repair"] == 0
+
+
 def test_a_town_from_before_caretakers_has_none(played, tmp_path, routes):
     path, pid = played
     copy = str(tmp_path / "old.db")
     shutil.copy(path, copy)
     g = Game.open(copy, routes=routes)
-    g.db.execute("ALTER TABLE town DROP COLUMN caretaker")
-    g.db.execute("ALTER TABLE town DROP COLUMN caretaker_paid")
+    for column in ("caretaker", "caretaker_paid", "plot", "pad_grant",
+                   "seen_tick"):
+        g.db.execute(f"ALTER TABLE town DROP COLUMN {column}")
     g.db.execute("ALTER TABLE player DROP COLUMN house")
-    g.db.execute("ALTER TABLE town DROP COLUMN plot")
     g.db.execute("DELETE FROM sim_schema_version WHERE version >= 5")
     g.db.commit()
     g.db.close()
