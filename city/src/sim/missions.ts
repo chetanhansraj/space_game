@@ -5,7 +5,7 @@
 
 import { BuildingType } from './buildings';
 import { richOf } from './world';
-import { State, LUNAR_DAY, nightNeed, population, working } from './sim';
+import { State, LUNAR_DAY, nightNeed, population, working, stormCover } from './sim';
 
 export interface Mission { who: number; say: string; goal: string; reward: number; tool?: BuildingType; zone?: number; done(s: State): boolean; }
 
@@ -83,3 +83,76 @@ export const MISSIONS: Mission[] = [
     say: 'Forty people. That is a Town on the Moon. Build it.',
     done: s => population(s) >= 40 },
 ];
+
+// ----- Mars (root docs/DECISIONS.md D94) -----
+// The same four people, on another planet. The order follows what kills a Mars town: thirst before
+// hunger before dust. Nothing comes from Earth but people, and the night is not the enemy here.
+/** Hours of dust a town is asked to be able to sit out before it is called ready: three sols. */
+export const STORM_READY = 72;
+export const MARS_MISSIONS: Mission[] = [
+  { who: 2, tool: 'solar', reward: 20, goal: 'Link a Solar Array to the command module',
+    say: 'The Sun is less than half as strong here and it sets every twelve hours. Arrays first, more of them than you would think, each touching the base or joined to it with Conduit.',
+    done: s => count(s, 'solar') >= 1 },
+  { who: 1, tool: 'habitat', reward: 30, goal: 'Build a Habitat Module',
+    say: 'The command module scrubs our air with canisters, and the canisters run out. A Habitat Module has its own life support. It needs power day and night.',
+    done: s => count(s, 'habitat', true) >= 1 },
+  { who: 3, tool: 'drill', reward: 30, goal: 'Sink an Ice Drill',
+    say: 'There is a glacier a few metres under us. No ship is bringing water, ever. What is in the tank is all there is until a drill is running.',
+    done: s => count(s, 'drill') >= 1 },
+  { who: 1, tool: 'recycler', reward: 25, goal: 'Scrub and recycle the water',
+    say: 'One drill cannot keep four people in water if we throw it away after one use. A scrubber recovers most of it and takes the perchlorate out.',
+    done: s => count(s, 'recycler') >= 1 },
+  { who: 1, tool: 'o2plant', reward: 30, goal: 'Bring a MOXIE Plant online',
+    say: 'The air outside is carbon dioxide, which is oxygen we have not split yet. A MOXIE plant does that by day. We breathe from the tank at night.',
+    done: s => count(s, 'o2plant') >= 1 },
+  { who: 1, tool: 'greenhouse', reward: 40, goal: 'Raise a Bio-Dome',
+    say: 'Nobody is sending food either. What we landed with feeds four for a while. A Bio-Dome feeds about nine, and people will want to live next to it.',
+    done: s => count(s, 'greenhouse') >= 1 },
+  { who: 0, tool: 'battery', reward: 30, goal: 'Store enough power for the night',
+    say: 'The night is only twelve hours, but life support does not stop for it. One Megapack carries a small base through with room to spare.',
+    done: s => count(s, 'habitat') >= 1 && count(s, 'battery') >= 1 && s.flows.battCap >= nightNeed(s) },
+  { who: 3, zone: 2, reward: 30, goal: 'Zone land for Industry',
+    say: 'Basalt is everywhere and it prints into parts. Zone land for Industry, downwind of where people sleep, and a contractor will put a printer on it once there are hands to run it.',
+    done: s => count(s, 'printer') >= 1 },
+  { who: 1, tool: 'habitat', reward: 30, goal: 'Build a second Habitat Module',
+    say: 'A transport brings up to eight people and every one of them needs a bed that night. The four of us fill the first module. Build another before the pad is finished, or the first ship lands with nobody aboard.',
+    done: s => count(s, 'habitat') >= 2 },
+  { who: 0, tool: 'pad', reward: 40, goal: 'Build a Landing Pad',
+    say: 'Transports come rarely and they come full: up to eight people at a time. Earth will not send one until there is a pad, beds, and air and water and food to spare. Build the pad well away from the homes.',
+    done: s => count(s, 'pad') >= 1 },
+  { who: 2, tool: 'battery', reward: 80, goal: 'Be ready to sit out three sols of dust',
+    say: 'A dust storm leaves the arrays a quarter of their power, for days. Batteries, a Wind Turbine or a Kilopower reactor: I do not mind which, but life support has to be able to run three sols without the Sun.',
+    done: s => stormCover(s) >= STORM_READY },
+  { who: 1, zone: 1, reward: 30, goal: 'Zone land for Habitat',
+    say: 'Eight people step off a transport at once and every one of them needs a bed that night. Zone Habitat land near the Bio-Dome and away from the pad, and settlers will build ahead of the ship.',
+    done: s => s.zone.filter(z => z === 1).length >= 4 },
+  { who: 3, tool: 'garage', reward: 40, goal: 'Build a Rover Bay',
+    say: 'Give me rovers and I will survey the craters for science grants, take visiting scientists out to them for a fee, and sweep the arrays after a storm in a quarter of the time.',
+    done: s => count(s, 'garage') >= 1 },
+  { who: 0, reward: 150, goal: 'Come through a dust storm',
+    say: 'The first storm will be short. Watch the storage through it. If the batteries run dry at night, the homes go cold and Earth starts pulling people out.',
+    done: s => (s.stats.hazes ?? 0) >= 1 },
+  { who: 1, reward: 40, goal: 'Welcome 8 residents',
+    say: 'They come for work and stay if it is a decent place to live. Jobs, beds, and something green outside the window.',
+    done: s => s.residents >= 8 },
+  { who: 3, zone: 3, reward: 50, goal: 'Zone land for Commercial',
+    say: 'Institutes will pay to keep scientists here, and our own people need somewhere to eat and argue. Zone Commercial land somewhere quiet, and labs and a Commons will open on it.',
+    done: s => count(s, 'lodge') + count(s, 'market') >= 1 },
+  { who: 2, tool: 'sabatier', reward: 80, goal: 'Make propellant',
+    say: 'Carbon dioxide from the air, hydrogen from our water, and out comes methane and oxygen. Every ship that ever leaves this planet burns it. It takes water, so mind the drills.',
+    done: s => count(s, 'sabatier') >= 1 },
+  { who: 0, reward: 100, goal: 'Reach 20 people',
+    say: 'Twenty people is a Colony. Past ten they expect a Commons, and then a Med-Bay.',
+    done: s => population(s) >= 20 },
+  { who: 1, tool: 'clinic', reward: 60, goal: 'Open a Med-Bay',
+    say: 'The nearest hospital is two hundred million kilometres away. A Med-Bay, and somewhere to shelter in a solar storm.',
+    done: s => count(s, 'clinic') >= 1 },
+  { who: 2, tool: 'reactor', reward: 120, goal: 'Bring a Twin Kilopower online',
+    say: 'Twenty kilowatts that does not know what weather is, and a dozen arrays we never have to sweep. Six tiles from anywhere people sleep.',
+    done: s => count(s, 'reactor') >= 1 },
+  { who: 0, reward: 400, goal: 'Reach 40 people',
+    say: 'Forty people is a Town. On Mars. Nobody has ever written that sentence and meant it.',
+    done: s => population(s) >= 40 },
+];
+/** The crew's list for the world this town stands on. */
+export const missions = (s: State): Mission[] => (s.world === 'mars' ? MARS_MISSIONS : MISSIONS);
