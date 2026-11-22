@@ -3,8 +3,8 @@
 // It returns null when nothing is urgent.
 
 import { BUILDINGS, BuildingType, ZONE_COST } from '../sim/buildings';
-import { MISSIONS } from '../sim/missions';
-import { State, darkHours, carryHours, ESSENTIAL, POWER_MARGIN, drawOf, hoursToSunrise, hoursToSunset, isNight, nightCover, population, sunFactor } from '../sim/sim';
+import { missions } from '../sim/missions';
+import { State, darkHours, carryHours, ESSENTIAL, POWER_MARGIN, drawOf, hoursToSunrise, hoursToSunset, isNight, nightCover, population, sunFactor, span, stormCover } from '../sim/sim';
 import { repairCost } from '../sim/world';
 
 export interface Advice { who: number; title: string; why: string; tool?: BuildingType; zone?: number; off?: BuildingType[]; on?: BuildingType[]; }
@@ -35,13 +35,17 @@ export function urgent(s: State): Advice | null {
     why: `We are ${r0(-s.materials)} credits down and ${f.income >= 0 ? 'earning' : 'losing'} ${Math.abs(f.income).toFixed(1)} an hour. Nothing new gets built until we are back in credit. Upkeep is ${f.upkeep.toFixed(1)} an hour: demolish what we do not use, zone Industry if people are idle, or raise prices.` };
 
   // No money and nothing coming in, early on.
-  const m = MISSIONS[s.mission];
+  const m = missions(s)[s.mission];
   const cost = m ? (m.tool ? BUILDINGS[m.tool].cost : m.zone ? ZONE_COST * 4 : 0) : 0;
   if (m && cost > cr && f.income < 0.05 && !night) return { who: RAFAEL, title: 'We are out of credits',
     why: `We have ${cr} and the next job costs ${cost}. Nothing is earning. Zone Industry so a company builds a foundry, or demolish something we can spare for a half refund.` };
 
-  if (!night && f.offline > 0 && sunFactor(s.t) > 0.6) return { who: LENA, title: 'We are short of power', tool: pick('solar'),
-    why: `The base wants ${f.demand.toFixed(1)} kW and the arrays give ${f.gen.toFixed(1)} kW, so some buildings have shut down. They have red dots. Add Solar Arrays.` };
+  if (!night && f.offline > 0 && sunFactor(s.t) > 0.6) {
+    // On Mars an array gives so little that past a handful of them a reactor is the better buy.
+    const nuclear = !BUILDINGS.drill.hidden && all('solar').length >= 8 && can('reactor') && !all('reactor').some(b => b.progress < 1);
+    return { who: LENA, title: 'We are short of power', tool: nuclear ? 'reactor' : pick('solar'),
+      why: `The base wants ${f.demand.toFixed(1)} kW and the arrays give ${f.gen.toFixed(1)} kW, so some buildings have shut down. They have red dots. ${nuclear ? 'A Twin Kilopower gives over a sol what a dozen arrays do, and the dust cannot touch it.' : 'Add Solar Arrays.'}` };
+  }
 
   if (f.exposed + f.atRisk > 0 && !night) return { who: KENJI, title: 'People have no powered bed',
     why: `${f.exposed + f.atRisk} of our ${pop} people have nowhere safe to sleep. Check that every Habitat and Lodge has power. If Habitat is wanted and blocked, the demand bars say by what.` };
@@ -55,31 +59,41 @@ export function urgent(s: State): Advice | null {
       why: `${pop} people breathe ${(pop * 0.035 * 24).toFixed(1)} kg a day, more than the plants make by day. We have ${r0(o2h)} hours left. Build another.` };
   }
   // The tank has to hold a whole night of breathing, because the plants rest in the dark.
-  const o2Night = 0.035 * pop * (darkHours() + 40) + 8;
-  if (!night && plants.length && f.o2Cap < o2Night && !all('o2tank').some(b => b.progress < 1) && (s.mission > 6 || hoursToSunset(s.t) < 200))
+  const o2Night = 0.035 * pop * (darkHours() + span(40)) + 8;
+  if (!night && plants.length && f.o2Cap < o2Night && !all('o2tank').some(b => b.progress < 1) && (s.mission > 6 || hoursToSunset(s.t) < span(200)))
     return { who: KENJI, title: 'The oxygen tank is too small for the night', tool: pick('o2tank'),
       why: `${pop} people need ${r0(o2Night)} kg to breathe until the plant has sunlight again, and we can store ${r0(f.o2Cap)} kg. An Oxygen Tank adds 240 kg.` };
 
   const wh = left(s.water, f.waterRate);
   if (wh < 60 && !exists('recycler')) return { who: KENJI, title: 'Water is running out', tool: pick('recycler'),
     why: `Water for ${r0(wh)} hours. A Water Recycler makes it last six times longer.` };
-  if (wh < 60 && exists('pad') && f.waterCap < 60 * pop && !all('watertank').some(b => b.progress < 1)) return { who: KENJI, title: 'We need more water storage', tool: pick('watertank'),
+  const mars = !BUILDINGS.drill.hidden;
+  if (mars && !night && wh < 120 && !all('drill').some(b => b.progress < 1 || !b.powered && !night)) return { who: RAFAEL, title: exists('drill') ? 'The drills cannot keep up' : 'Water is running out', tool: pick('drill'),
+    why: `Water for ${r0(wh)} hours and no ship is bringing any. ${exists('drill') ? 'Another Ice Drill, or switch the Sabatier Plant off: it drinks as much as nine people.' : 'Sink an Ice Drill into the glacier.'}` };
+  if (!mars && wh < 60 && exists('pad') && f.waterCap < 60 * pop && !all('watertank').some(b => b.progress < 1)) return { who: KENJI, title: 'We need more water storage', tool: pick('watertank'),
     why: `Water for ${r0(wh)} hours. Each shuttle brings more than we can hold. A Water Tank adds 300 kg.` };
   const fh = left(s.food, f.foodRate);
   if (fh < 60 && !night && !all('greenhouse').some(b => b.progress < 1)) return { who: KENJI, title: 'Food is running out', tool: pick('greenhouse'),
-    why: `Food for ${r0(fh)} hours with ${pop} mouths. The shuttle feeds about nine. Each Greenhouse feeds about nine more.` };
+    why: mars ? `Food for ${r0(fh)} hours with ${pop} mouths, and nobody is sending any. Each Bio-Dome feeds about nine.` : `Food for ${r0(fh)} hours with ${pop} mouths. The shuttle feeds about nine. Each Greenhouse feeds about nine more.` };
 
   // What life support will need tonight, counting buildings still going up.
   let essential = 0, steady = 0;
   for (const b of s.buildings) { const d = BUILDINGS[b.type]; if (d.priority <= ESSENTIAL) essential += drawOf(b, true); if (!d.solar) steady += d.gen; }
   const need = Math.max(0, essential - steady) * carryHours();
 
+  // A dust storm on its way, or overhead, that life support cannot sit out.
+  if (s.event && s.event.kind === 'haze' && exists('habitat')) {
+    const left = s.event.to - Math.max(s.t, s.event.from), cover = stormCover(s), soon = s.t < s.event.from;
+    if (cover < left && !all('battery').some(b => b.progress < 1)) return { who: LENA, title: soon ? 'We are not ready for the dust' : 'The batteries will not last the storm', tool: pick('battery') ?? pick('wind'),
+      why: `${soon ? `The storm is ${r0(s.event.from - s.t)} hours out and` : 'The storm'} will last ${r0(left)} hours${soon ? '' : ' more'}. Life support can run ${r0(cover)} on what does not need the Sun. Each Megapack adds 500 kWh. A Wind Turbine or the reactor gives power the dust cannot touch.` };
+  }
+
   if (!night) {
     const sunset = hoursToSunset(s.t);
     const planned = BUILDINGS.lander.battery + all('battery').length * BUILDINGS.battery.battery;
-    if (planned < need * (s.mission > 6 ? POWER_MARGIN : 1) && exists('habitat') && (s.mission > 6 || sunset < 150) && sunset > 12) {
+    if (planned < need * (s.mission > 6 ? POWER_MARGIN : 1) && exists('habitat') && (s.mission > 6 || sunset < span(150)) && sunset > span(12)) {
       const more = Math.ceil((need * POWER_MARGIN - planned) / BUILDINGS.battery.battery);
-      if (more >= 4 && sunset > 55) return { who: LENA, title: 'Build a Fission Reactor for the night', tool: pick('reactor') ?? pick('battery'),
+      if (more >= 4 && sunset > span(55)) return { who: LENA, title: 'Build a Fission Reactor for the night', tool: pick('reactor') ?? pick('battery'),
         why: `Life support draws ${(need / carryHours()).toFixed(1)} kW all night. With a safe margin that is ${r0(need * POWER_MARGIN)} kWh and we can store ${r0(planned)}. It would take ${more} more Battery Banks, or one reactor that gives 10 kW day and night.` };
       return { who: ASHA, title: `Tonight needs ${more} more Battery Bank${more > 1 ? 's' : ''}`, tool: pick('battery'),
         why: `Habitats, lodges and the recycler draw ${(need / carryHours()).toFixed(1)} kW all night. With a safe margin that is ${r0(need * POWER_MARGIN)} kWh and we can store ${r0(planned)}.` };

@@ -4,7 +4,7 @@
 // with a two-letter label. The ground is one lit picture built per town (ground.ts).
 
 import { Application, Container, Graphics, Text, Sprite, Texture, Matrix, Mesh, MeshGeometry } from './pixi';
-import { buildGround, buildLand, landNet, LANDS, BALL, GP, Stamp } from './ground';
+import { buildGround, buildLand, landNet, LANDS, BALL, GP, Stamp, SOIL } from './ground';
 // @ts-ignore
 import craterA from '../art/craterA.png';
 // @ts-ignore
@@ -28,10 +28,10 @@ import rock4 from '../art/rock4.png';
 // @ts-ignore
 import rock5 from '../art/rock5.png';
 import type { Texture as Tex } from './pixi';
-import { ART, Art } from '../art/art';
+import { ART, MARS_ART, Art } from '../art/art';
 import { BUILDINGS, BuildingType, ZONES } from '../sim/buildings';
-import { ORES } from '../sim/world';
-import { State, GROUND, SIZE, sunFactor, population, LUNAR_DAY, phaseOf, lightHours } from '../sim/sim';
+import { ORES, hazeActive } from '../sim/world';
+import { State, GROUND, SIZE, sunFactor, population, phaseOf, lightHours, dayHours, span } from '../sim/sim';
 
 const TW = 64, TH = 32;
 // Zoomed far out, a picture is drawn many times smaller than it was made. Smaller copies are kept ready so it does not sparkle.
@@ -58,6 +58,9 @@ const LOOK: Record<BuildingType, Look> = {
   garage: { top: 0x9aa3ad, hgt: 12, inset: 0.08, ink: 0x14181d },
   garden: { top: 0x3fa66a, hgt: 10, inset: 0.06, ink: 0x06220f, cap: 0xb9f0c8 },
   clinic: { top: 0xf4f1ea, hgt: 16, inset: 0.1, ink: 0x2b2a33, cap: 0xff6b6b },
+  drill: { top: 0x7fd0e8, hgt: 26, inset: 0.14, ink: 0x06202f },
+  wind: { top: 0xc8c2b4, hgt: 28, inset: 0.3, ink: 0x2b2a33 },
+  sabatier: { top: 0xe0a04a, hgt: 22, inset: 0.12, ink: 0x2a1603 },
 };
 
 const TEX = new Map<Art, Tex>();
@@ -78,7 +81,9 @@ let DUST: HTMLImageElement | null = null;          // the dust texture, once loa
 const ROCKS: Tex[] = [];
 const STAMPS: Stamp[] = [];                       // crater shading rendered in Blender, used once all four are in
 // The picture for a building at its level: the upgraded one from level 2 when there is one.
-const artOf = (b: { type: BuildingType; level?: number }): Art | undefined => { const a = ART[b.type]; if (!a || !a.levels || (b.level || 1) < 2) return a; return a.levels[Math.min((b.level || 1) - 2, a.levels.length - 1)]; };
+/** The pictures for the world of the town on screen. */
+let SET: Partial<Record<BuildingType, Art>> = ART;
+const artOf = (b: { type: BuildingType; level?: number }): Art | undefined => { const a = SET[b.type]; if (!a || !a.levels || (b.level || 1) < 2) return a; return a.levels[Math.min((b.level || 1) - 2, a.levels.length - 1)]; };
 
 const shade = (c: number, k: number) => {
   const r = Math.min(255, ((c >> 16) & 255) * k) | 0, g = Math.min(255, ((c >> 8) & 255) * k) | 0, b = Math.min(255, (c & 255) * k) | 0;
@@ -147,7 +152,7 @@ export class View {
     { const img = new Image(); img.onload = () => { DUST = img; v.drawnSeed = -1; }; img.src = regolithJpg as string; }
     { const got: (Stamp | null)[] = [null, null, null, null]; [[craterA, 0.4], [craterB, 0.425], [craterC, 0.3625], [craterD, 0.375]].forEach(([u, rim], i) => { const img = new Image(); img.onload = () => { got[i] = { img, rim: rim as number }; if (got.every(Boolean)) { STAMPS.push(...(got as Stamp[])); v.drawnSeed = -1; } }; img.src = u as string; }); }
     [rock0, rock1, rock2, rock3, rock4, rock5].forEach((u, i) => { const img = new Image(); img.onload = () => { ROCKS[i] = soft(Texture.from(img)); v.drawnSeed = -1; }; img.src = u as string; });
-    for (const a0 of Object.values(ART)) for (const a of [a0!, ...(a0!.levels || [])]) { const img = new Image(); img.onload = () => { TEX.set(a, soft(Texture.from(img))); PIC.set(a, img); v.drawnRev = -1; }; img.src = a.url; if (a.glow) { const lit = new Image(); lit.onload = () => { GLOW.set(a, soft(Texture.from(lit))); v.drawnRev = -1; }; lit.src = a.glow; } }   // an image element, because the page may not fetch
+    // the building pictures are fetched when the first town is drawn, once it is known which world it stands on (useArt)
     v.lights.blendMode = 'add';
     v.world.addChild(v.terrain, v.zones, v.heat, v.labels, v.findLabels, v.mark, v.objects, v.ghost, v.overlay, v.lights, v.fx);
     v.app.stage.addChild(v.stars, v.world);
@@ -221,8 +226,22 @@ export class View {
     return { x: Math.floor((wx / (TW / 2) + wy / (TH / 2)) / 2), y: Math.floor((wy / (TH / 2) - wx / (TW / 2)) / 2) };
   }
 
+  /** Use the pictures for this town's world, fetching them the first time. Until they arrive a building is a plain block. */
+  private artFor = '';
+  private useArt(s: State) {
+    const id = s.world ?? 'moon';
+    if (id === this.artFor) return;
+    this.artFor = id; SET = id === 'mars' ? MARS_ART : ART; this.drawnRev = -1; this.drawnSeed = -1;
+    for (const a0 of Object.values(SET)) for (const a of [a0!, ...(a0!.levels || [])]) {
+      if (TEX.has(a)) continue;
+      const img = new Image(); img.onload = () => { TEX.set(a, soft(Texture.from(img))); PIC.set(a, img); this.drawnRev = -1; }; img.src = a.url;   // an image element, because the page may not fetch
+      if (a.glow) { const lit = new Image(); lit.onload = () => { GLOW.set(a, soft(Texture.from(lit))); this.drawnRev = -1; }; lit.src = a.glow; }
+    }
+  }
+
   // ----- terrain, drawn once per site -----
   private drawTerrain(s: State) {
+    const soil = SOIL[s.world ?? 'moon'] ?? SOIL.moon, mars = s.world === 'mars';
     const g0 = this.terrain; g0.clear();
     for (const c of g0.removeChildren()) c.destroy({ children: true });   // the boulder pictures are shared, so textures are freed by hand below
     for (const t of this.groundTex.splice(0)) t.destroy(true);
@@ -231,13 +250,13 @@ export class View {
     // the next. The nearest is made now; the two far ones a moment later, so the town itself is on screen without waiting.
     const job = ++this.landJob, lands = new Container(); g0.addChild(lands);
     const lay = (i: number) => {
-      const tex = soft(Texture.from(buildLand(s, DUST, STAMPS, LANDS[i], i))); this.groundTex.push(tex);
+      const tex = soft(Texture.from(buildLand(s, DUST, STAMPS, LANDS[i], i, soil))); this.groundTex.push(tex);
       const m = new Mesh({ geometry: new MeshGeometry(landNet(n, LANDS[i])), texture: tex }); m.zIndex = -i; lands.addChild(m); lands.sortChildren();
     };
     lay(0);
     [2, 1].forEach((i, k) => setTimeout(() => { if (job === this.landJob) lay(i); }, 60 + 90 * k));
     // the ground: one lit picture seen from straight above, laid onto the tilted grid
-    const tex = soft(Texture.from(buildGround(s, DUST, STAMPS))); this.groundTex.push(tex);
+    const tex = soft(Texture.from(buildGround(s, DUST, STAMPS, soil))); this.groundTex.push(tex);
     const land = new Sprite(tex); land.setFromMatrix(new Matrix(32 / GP, 16 / GP, -32 / GP, 16 / GP, 0, 0)); g0.addChild(land);
     const g = new Graphics(); g0.addChild(g);
     // the claim's edge: a line on the ground and a post at each corner
@@ -250,7 +269,7 @@ export class View {
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
       if (s.ground[y * n + x] !== GROUND.boulder) continue;
       const noise = hash(x, y), m = iso(x + 0.5, y + 0.5), rt = ROCKS[Math.floor(noise * 6) % 6];
-      if (rt) { const sp = new Sprite(rt); sp.anchor.set(0.5, 0.82); const w = 30 + hash(y, x) * 20; sp.scale.set(w / rt.width); sp.position.set(m[0], m[1] + 4); g.ellipse(m[0] + 2, m[1] + 3, w * 0.5, w * 0.2).fill({ color: 0x000000, alpha: 0.28 }); g0.addChild(sp); }
+      if (rt) { const sp = new Sprite(rt); if (mars) sp.tint = 0xc98a6a; sp.anchor.set(0.5, 0.82); const w = 30 + hash(y, x) * 20; sp.scale.set(w / rt.width); sp.position.set(m[0], m[1] + 4); g.ellipse(m[0] + 2, m[1] + 3, w * 0.5, w * 0.2).fill({ color: 0x000000, alpha: 0.28 }); g0.addChild(sp); }
       else { const r = 5 + noise * 4; g.poly([m[0] - r, m[1] + 2, m[0] - r * 0.4, m[1] - r * 0.9, m[0] + r * 0.7, m[1] - r * 0.6, m[0] + r, m[1] + 3, m[0], m[1] + 6]).fill(0x4a4855); }
     }
     // Places rovers visit: crater names, and the 1969 landing site with its descent stage and flag.
@@ -329,7 +348,7 @@ export class View {
         }
         g.zIndex = (b.x + d.w + b.y + d.h) * 10 + 1;
         if (art && tex) {
-          if (b.level > 1 + (ART[b.type]?.levels?.length || 0)) { const m = iso(b.x + d.w / 2, b.y + d.h / 2, art.top + 10); const t = new Text({ text: 'L' + b.level, style: { fontFamily: 'Space Mono, ui-monospace, monospace', fontSize: 11, fontWeight: '700', fill: 0xffc15e, stroke: { color: 0x0b0a14, width: 3 } } }); t.anchor.set(0.5); t.position.set(m[0], m[1]); t.resolution = 2; g.addChild(t); }
+          if (b.level > 1 + (SET[b.type]?.levels?.length || 0)) { const m = iso(b.x + d.w / 2, b.y + d.h / 2, art.top + 10); const t = new Text({ text: 'L' + b.level, style: { fontFamily: 'Space Mono, ui-monospace, monospace', fontSize: 11, fontWeight: '700', fill: 0xffc15e, stroke: { color: 0x0b0a14, width: 3 } } }); t.anchor.set(0.5); t.position.set(m[0], m[1]); t.resolution = 2; g.addChild(t); }
         } else if (d.short && b.type !== 'pad') {
           const capLift = L.cap !== undefined ? 9 : 0;
           const m = iso(b.x + d.w / 2, b.y + d.h / 2, H + capLift);
@@ -352,6 +371,7 @@ export class View {
 
   // ----- every frame -----
   frame(s: State, selected: number | null, tool: string | null, hover: { x: number; y: number } | null, hoverOk: 'ok' | 'warn' | 'bad', now: number, speed = 1, overlay = false) {
+    this.useArt(s);
     if (this.drawnSeed !== s.seed) { this.drawTerrain(s); this.drawnSeed = s.seed; this.drawnRev = -1; }
     if (this.drawnRev !== s.rev) { this.drawBuildings(s); this.drawZones(s); this.drawnRev = s.rev; }
     this.heat.visible = overlay;
@@ -360,8 +380,14 @@ export class View {
     // light: quick dawn and dusk, warm near the horizon, blue-black at night
     // Daylight comes up fast after sunrise; a short twilight either side of the night keeps the cut from being abrupt.
     const ph = phaseOf(s.t), day = lightHours(), sun = sunFactor(s.t);
-    const light = ph < day ? Math.min(1, 0.35 + sun * 10) : Math.max(0, 0.35 * (1 - (ph - day) / 8), 0.35 * (1 - (LUNAR_DAY - ph) / 8));
-    const tint = light < 0.5 ? mix(0x4c5a86, 0xffcf9a, light * 2) : mix(0xffcf9a, 0xffffff, (light - 0.5) * 2);
+    const tw = Math.max(0.7, span(8));   // hours of twilight: eight on the Moon, well under one on Mars
+    const light = ph < day ? Math.min(1, 0.35 + sun * 10) : Math.max(0, 0.35 * (1 - (ph - day) / tw), 0.35 * (1 - (dayHours() - ph) / tw));
+    // The Moon's low sun is warm and its day is white. On Mars the twilight is blue and the day is butterscotch, and a
+    // dust storm turns everything the colour of the dust and takes most of the light.
+    const mars = s.world === 'mars', haze = mars && hazeActive(s);
+    let tint = mars ? (light < 0.5 ? mix(0x3d4468, 0xa9b8dc, light * 2) : mix(0xa9b8dc, 0xfff0e2, (light - 0.5) * 2))
+      : light < 0.5 ? mix(0x4c5a86, 0xffcf9a, light * 2) : mix(0xffcf9a, 0xffffff, (light - 0.5) * 2);
+    if (haze) tint = shade(mix(tint, 0xd08a55, 0.55), 0.74);
     this.terrain.tint = tint; this.labels.tint = tint; this.zones.tint = mix(tint, 0xffffff, 0.5);
     const dark = 1 - light;
     // Buildings take the tint one by one, so their night lights and the selection line, which sit beside them, stay bright.

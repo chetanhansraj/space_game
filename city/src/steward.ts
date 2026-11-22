@@ -7,12 +7,12 @@
 // after while its owner is away and how a town can be run by the world itself. And it is the
 // reference for what "playable" means: if the steward cannot keep a town alive, the rules are wrong.
 import { BUILDINGS, BuildingType, ZONES, ZONE_BUILDS, ZONE_COST } from './sim/buildings';
-import { MISSIONS } from './sim/missions';
+import { MISSIONS, missions } from './sim/missions';
 import { urgent } from './ui/advisor';
-import { State, Intent, PRICES, ground, siteProblem, zoneProblem, habAt, aliveCount, population, support, isNight } from './sim/sim';
+import { State, Intent, PRICES, ground, siteProblem, zoneProblem, habAt, aliveCount, population, support, isNight, world } from './sim/sim';
 
 /** The last of the crew's missions that needs a working foundry. A temperament that shuts foundries waits until it is done. */
-const FOUNDRY_MISSIONS = MISSIONS.reduce((last, m, i) => (/foundry|Industry/.test(m.goal) ? i : last), -1);
+const lastFoundry = (list: typeof MISSIONS) => list.reduce((last, m, i) => (/foundry|Industry/.test(m.goal) ? i : last), -1);
 
 export type Apply = (s: State, it: Intent) => { ok: boolean; reason?: string };
 
@@ -37,7 +37,7 @@ export interface Style {
 
 /** A steward who acts through `apply`. Call the result once a game hour. */
 export function steward(apply: Apply, style: Style = {}): (s: State, keep?: boolean) => void {
-  const DUSTY: BuildingType[] = ['pad', 'garage', 'o2plant', 'reactor', 'solar', 'battery'];
+  const DUSTY: BuildingType[] = ['pad', 'garage', 'o2plant', 'reactor', 'solar', 'battery', 'drill', 'sabatier', 'wind'];
 
   /** A free spot touching the base. Dusty things go east of the lander, pleasant things west, as a sensible player would. */
   function findSpot(s: State, type: BuildingType): [number, number] | null {
@@ -170,15 +170,18 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
    */
   return (s: State, keep = false) => {
     ground(s);
-    const u = urgent(s), m = MISSIONS[s.mission];
+    const u = urgent(s), m = missions(s)[s.mission];
     const count = (t: BuildingType) => s.buildings.filter(b => b.type === t).length;
     const answer = (why: string, z: number): boolean => {
       if (why === 'no zoned land') return zoneLot(s, z);
       if (why === 'night power') return s.mission > 9 && count('reactor') < 6 && s.materials >= 200 ? put(s, 'reactor') || put(s, 'battery') : s.mission > 9 && count('battery') >= 8 + 4 * count('reactor') ? false : put(s, 'battery');
-      if (why === 'daytime power') return put(s, 'solar');
+      // On Mars the arrays give so little that past a dozen a reactor is the better buy.
+      if (why === 'daytime power') return world().id === 'mars' && count('solar') >= 8 && s.materials >= BUILDINGS.reactor.cost + 20 ? put(s, 'reactor') || put(s, 'solar') : put(s, 'solar');
       if (why === 'oxygen tanks') return put(s, 'o2tank');
       if (why === 'oxygen plants') return put(s, 'o2plant');
       if (why === 'greenhouses') return put(s, 'greenhouse');
+      if (why === 'ice drills') return put(s, 'drill');
+      if (why === 'water recycling') return put(s, 'recycler');
       if (why === 'people want a garden') return put(s, 'garden');
       if (why === 'people want a clinic') return put(s, 'clinic');
       if (why.includes('Commercial')) return freeLot(s, 3) ? false : zoneLot(s, 3);
@@ -197,7 +200,7 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
       // sign what is offered, then work to keep it
       if (s.offer) apply(s, { k: 'offer', accept: !style.refuse?.includes(s.offer.kind) });
       if (style.price !== undefined && s.price !== PRICES[style.price]) apply(s, { k: 'price', level: style.price });
-      if (style.foundries !== undefined && s.mission > FOUNDRY_MISSIONS) {
+      if (style.foundries !== undefined && s.mission > lastFoundry(missions(s))) {
         const running = s.buildings.filter(b => b.type === 'printer' && b.on && b.progress >= 1).sort((a, b) => b.level - a.level || a.uid - b.uid);
         for (const b of running.slice(style.foundries)) apply(s, { k: 'toggle', uid: b.uid });
       }
@@ -212,7 +215,7 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
       if (!acted) for (const z of [...ZONES].sort((a, b) => (b.z === m?.zone ? 1 : 0) - (a.z === m?.zone ? 1 : 0))) if (s.want[z.key] > 0.15 && s.block[z.key] && answer(s.block[z.key], z.z)) { acted = true; break; }
       if (!acted && s.mission > 9) {
         const cap = support(s);
-        if (cap.limit - population(s) < 4) acted = answer(cap.why, 1);
+        if (cap.limit - population(s) < world().berths) acted = answer(cap.why, 1);
         if (!acted && count('garage') < 2 && s.tourists >= 6) acted = put(s, 'garage');
       }
     }

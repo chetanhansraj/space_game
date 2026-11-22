@@ -313,6 +313,23 @@ def test_a_town_survives_a_restart(routes, tmp_path):
 
 # -- the same game ------------------------------------------------------------------
 
+def test_no_town_in_the_shared_world_can_build_what_belongs_to_mars(game, town):
+    """D94. The rules now know Mars, and a Sabatier plant there earns credits
+    from nothing but air. That is play money for the practice page. Until it
+    is real propellant sold to a real buyer it must not exist where there is a
+    ledger, so every town the server holds is a Moon town and is refused all
+    three Mars buildings."""
+    assert state(game, town).get("world", "moon") == "moon"
+    before, made = cash(game, town.account), minted(game)
+    for kind in ("drill", "wind", "sabatier"):
+        for x, y in ((14, 14), (22, 18), (18, 24), (10, 20)):
+            with pytest.raises(GameError):
+                game.town_intent(town, {"k": "place", "type": kind, "x": x, "y": y})
+    assert not any(b["type"] in ("drill", "wind", "sabatier")
+                   for b in state(game, town)["buildings"])
+    assert cash(game, town.account) == before and minted(game) == made
+
+
 def test_the_engine_is_deterministic():
     a, b = Engine(), Engine()
     one, two = a.create(77, 160), b.create(77, 160)

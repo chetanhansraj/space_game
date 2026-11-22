@@ -1,21 +1,37 @@
 // The world acting on the base: graders that level zoned ground, what the rovers find, and things that go wrong.
 
 import { BUILDINGS } from './buildings';
-import { State, Building, GROUND, LUNAR_DAY, bedsOf, hoursToSunrise, hoursToSunset, isNight, pushAlert, rnd, working } from './sim';
+import { State, Building, GROUND, bedsOf, hoursToSunrise, hoursToSunset, isNight, pushAlert, rnd, working, world, span, stormCover } from './sim';
 
 export interface Grader { x: number; y: number; k: number; phase: 'idle' | 'go' | 'work' | 'home'; }
 export interface Find { id: number; x: number; y: number; kind: number; near: string; }
-export type EventKind = 'storm' | 'scrub' | 'dust' | 'breach';
+export type EventKind = 'storm' | 'scrub' | 'dust' | 'breach' | 'haze';
 export interface GameEvent { kind: EventKind; from: number; to: number; hit: boolean; }
 
 export const GRADER_SPEED = 1.5;      // tiles an hour
 export const DUST_RADIUS = 5, DUST_HOURS = 60, STORM_HOURS = 16, STORM_WARNING = 10, SCRUB_HOURS = 45;
+/**
+ * A dust storm, on a world that has them: a sol's warning, then days of a quarter of the light, then
+ * dust left lying on every array until it is swept. The first one a town meets is short. Invented; D94.
+ */
+export const HAZE_WARNING = 24, HAZE_FIRST = 50, HAZE_MIN = 70, HAZE_MORE = 130, HAZE_DUST = 48, HAZE_SWEPT = 12;
 /** What the rovers can find. A foundry standing on a deposit earns that much more. */
 export const ORES = [
   { name: 'Ilmenite', what: 'titanium and iron ore', bonus: 0.5, color: 0xb59cf0 },
   { name: 'Pyroclastic glass', what: 'volcanic glass beads, rich in volatiles', bonus: 0.5, color: 0xf0a04e },
   { name: 'Helium-3 regolith', what: 'old soil soaked by the solar wind', bonus: 1, color: 0x6fe3d2 },
 ];
+/** What a survey turns up on Mars, in the same three places in the list and worth the same. */
+const MOON_ORES = ORES.map(o => ({ ...o }));
+const MARS_ORES = [
+  { name: 'Hematite', what: 'iron ore, the red in the red planet' },
+  { name: 'Olivine basalt', what: 'fresh lava rock that sinters cleanly' },
+  { name: 'Hydrated sulfates', what: 'salts that hold water and sulfur' },
+];
+/** Name the finds for the world the town stands on. Called with the catalogue, at the top of every way into the rules. */
+export function useOres(id: string): void {
+  ORES.forEach((o, i) => Object.assign(o, MOON_ORES[i], id === 'mars' ? MARS_ORES[i] : undefined));
+}
 const FIND_AT = [3, 18, 40, 70, 110];   // rover trips before each find
 const FIND_KIND = [0, 1, 0, 2, 1];
 const LENA = 2, RAFAEL = 3, ASHA = 0, KENJI = 1;
@@ -124,9 +140,14 @@ export function maybeFind(s: State) {
 // ---------- things that go wrong ----------
 export const stormActive = (s: State) => !!s.event && s.event.kind === 'storm' && s.t >= s.event.from && s.t < s.event.to;
 export const dustActive = (s: State) => !!s.event && s.event.kind === 'dust' && s.t < s.event.to;
-/** Is this solar array under the dust a hard landing threw up? */
+/** A dust storm is overhead. */
+export const hazeActive = (s: State) => !!s.event && s.event.kind === 'haze' && s.t >= s.event.from && s.t < s.event.to;
+/** The share of sunlight reaching the arrays now: all of it, or what a dust storm leaves. */
+export const hazeNow = (s: State) => (hazeActive(s) ? world().haze : 1);
+/** Is this solar array under dust: what a hard landing threw up, or what a storm left on every array there is? */
 export function dusty(s: State, b: Building): boolean {
   if (!dustActive(s) || !BUILDINGS[b.type].solar) return false;
+  if (world().haze < 1) return true;
   const pad = s.buildings.find(q => q.type === 'pad');
   return !!pad && Math.hypot(b.x + BUILDINGS[b.type].w / 2 - (pad.x + 1.5), b.y + BUILDINGS[b.type].h / 2 - (pad.y + 1.5)) < DUST_RADIUS;
 }
@@ -137,7 +158,8 @@ export function eventLine(s: State): { text: string; tone: string } | null {
   const h = (t: number) => Math.max(1, Math.ceil(t - s.t));
   if (e.kind === 'storm') return s.t < e.from ? { text: `Solar storm in ${h(e.from)} h`, tone: 'warn' } : { text: `Solar storm · ${h(e.to)} h left`, tone: 'bad' };
   if (e.kind === 'scrub') return { text: `Shuttle delayed · ${h(e.to)} h`, tone: 'warn' };
-  if (e.kind === 'dust') return { text: `Dust around the pad · ${h(e.to)} h`, tone: 'warn' };
+  if (e.kind === 'dust') return { text: world().haze < 1 ? `Dust on the arrays · ${h(e.to)} h` : `Dust around the pad · ${h(e.to)} h`, tone: 'warn' };
+  if (e.kind === 'haze') return s.t < e.from ? { text: `Dust storm in ${h(e.from)} h`, tone: 'warn' } : { text: `Dust storm · ${h(e.to)} h left`, tone: 'bad' };
   return null;
 }
 export const repairCost = (b: Building) => Math.max(8, Math.round(BUILDINGS[b.type].cost * 0.15)) * b.level;
@@ -146,22 +168,44 @@ export function tickEvents(s: State) {
   const e = s.event;
   if (e) {
     if (e.kind === 'storm' && !e.hit && s.t >= e.from) { e.hit = true; pushAlert(s, 'bad', 'The solar storm is here. Everyone is under cover. Foundries, rovers and graders have stopped.', LENA); }
+    if (e.kind === 'haze' && !e.hit && s.t >= e.from) { e.hit = true; pushAlert(s, 'bad', `The dust storm is here. The arrays give a quarter of what they did, for about ${Math.round((e.to - e.from) / world().day)} sols. Wind and the reactor do not care.`, LENA); }
     if (s.t >= e.to) {
       if (e.kind === 'storm') pushAlert(s, 'good', 'The storm has passed. Work outdoors can start again.', LENA);
-      if (e.kind === 'dust') pushAlert(s, 'info', 'The dust around the pad has been swept off. Solar arrays there are back to full power.', LENA);
+      if (e.kind === 'dust') pushAlert(s, 'info', world().haze < 1 ? 'The arrays are swept clean and back to full power.' : 'The dust around the pad has been swept off. Solar arrays there are back to full power.', LENA);
+      if (e.kind === 'haze') {
+        // The sky clears and the dust it carried is lying on every array. Rovers sweep it off in a quarter of the time.
+        const rovers = s.buildings.some(b => b.type === 'garage' && working(b));
+        s.stats.hazes = (s.stats.hazes ?? 0) + 1;
+        s.event = { kind: 'dust', from: s.t, to: s.t + (rovers ? HAZE_SWEPT : HAZE_DUST), hit: true };
+        pushAlert(s, 'good', `The dust storm has passed. Dust is lying on every array: half power for ${rovers ? HAZE_SWEPT : HAZE_DUST} hours${rovers ? ' while the rovers sweep them' : '. A Rover Bay would have them swept in a quarter of that'}.`, LENA);
+        return;
+      }
       s.event = null; s.nextEvent = s.t + 130 + rnd(s) * 110;
     }
     return;
   }
+  const w = world();
   // Nothing goes wrong before the first sunrise. After that, something does every week or so of daylight.
-  if (s.nextEvent === 0) { if (s.t >= LUNAR_DAY) s.nextEvent = s.t + 40 + rnd(s) * 70; return; }
+  if (s.nextEvent === 0) { if (s.t >= w.firstEvent) s.nextEvent = s.t + (w.haze < 1 ? 0 : 40 + rnd(s) * 70); return; }
   if (s.t < s.nextEvent) return;
-  if (isNight(s.t) || hoursToSunset(s.t) < 70) { s.nextEvent = s.t + hoursToSunrise(s.t) + 30 + rnd(s) * 60; return; }
+  if (w.haze < 1) {
+    // On Mars the weather is what goes wrong, most of the time: every other trouble is a dust storm.
+    const first = !s.stats.hazes && s.lastEvent !== 'haze';
+    if (first || s.lastEvent !== 'haze') {
+      const hours = first ? HAZE_FIRST : HAZE_MIN + rnd(s) * HAZE_MORE, cover = stormCover(s);
+      s.lastEvent = 'haze'; s.stats.events++;
+      s.event = { kind: 'haze', from: s.t + HAZE_WARNING, to: s.t + HAZE_WARNING + hours, hit: false };
+      pushAlert(s, cover >= hours ? 'info' : 'warn', `Orbit reports a dust storm ${HAZE_WARNING} hours out, about ${Math.round(hours / w.day)} sols long. The arrays will give a quarter of their power. `
+        + (cover === Infinity ? 'Life support can run through it on what does not need the Sun.' : cover >= hours ? `Life support can run ${Math.round(cover)} hours on what we have, which is enough.` : `Life support can run ${Math.round(cover)} hours on what we have. That is not enough: more batteries, a reactor or wind, before it arrives.`), LENA);
+      return;
+    }
+  }
+  if (isNight(s.t) || hoursToSunset(s.t) < span(70)) { s.nextEvent = s.t + hoursToSunrise(s.t) + span(30) + rnd(s) * span(60); return; }
   const pad = s.buildings.find(b => b.type === 'pad' && working(b));
   const homes = s.buildings.filter(b => (b.type === 'habitat' || b.type === 'lodge' || b.type === 'market') && working(b));
   const kinds: EventKind[] = ['storm'];
   if (pad && s.shuttle.phase === 'away' && s.nextShuttle > 0) kinds.push('scrub');
-  if (pad) kinds.push('dust');
+  if (pad && w.haze >= 1) kinds.push('dust');
   if (homes.length > 1) kinds.push('breach');
   const pool = kinds.filter(k => k !== s.lastEvent);
   const kind = (pool.length ? pool : kinds)[Math.floor(rnd(s) * (pool.length ? pool.length : kinds.length))];
@@ -170,11 +214,11 @@ export function tickEvents(s: State) {
   if (kind === 'storm') {
     s.event = { kind, from: s.t + STORM_WARNING, to: s.t + STORM_WARNING + STORM_HOURS, hit: false };
     const clinic = s.buildings.some(b => b.type === 'clinic' && working(b));
-    pushAlert(s, 'warn', `Solar storm in ${STORM_WARNING} hours. For ${STORM_HOURS} hours nobody works outdoors: foundries, rovers and graders stop, and the shuttle holds in orbit.${clinic ? '' : ' We have no clinic, so people will take it badly.'}`, LENA);
+    pushAlert(s, 'warn', `Solar storm in ${STORM_WARNING} hours. For ${STORM_HOURS} hours nobody works outdoors: foundries, rovers and graders stop, and the ${w.ship} holds in orbit.${clinic ? '' : ' We have no clinic, so people will take it badly.'}`, LENA);
   } else if (kind === 'scrub') {
     s.nextShuttle = Math.max(s.nextShuttle, s.t) + SCRUB_HOURS;
     s.event = { kind, from: s.t, to: s.nextShuttle, hit: true };
-    pushAlert(s, 'warn', `Earth has scrubbed a launch. The next shuttle is ${SCRUB_HOURS} hours late. We have ${left('food', s.food, s.flows.foodRate)} and ${left('water', s.water, s.flows.waterRate)}.`, ASHA);
+    pushAlert(s, 'warn', `Earth has scrubbed a launch. The next ${w.ship} is ${SCRUB_HOURS} hours late. We have ${left('food', s.food, s.flows.foodRate)} and ${left('water', s.water, s.flows.waterRate)}.`, ASHA);
   } else if (kind === 'dust') {
     s.event = { kind, from: s.t, to: s.t + DUST_HOURS, hit: true };
     const hit = s.buildings.filter(b => dusty(s, b)).length;

@@ -7,7 +7,12 @@
 export type BuildingType =
   | 'lander' | 'conduit' | 'solar' | 'battery' | 'reactor' | 'habitat'
   | 'o2plant' | 'recycler' | 'o2tank' | 'watertank' | 'printer'
-  | 'greenhouse' | 'pad' | 'lodge' | 'garage' | 'garden' | 'clinic' | 'market';
+  | 'greenhouse' | 'pad' | 'lodge' | 'garage' | 'garden' | 'clinic' | 'market'
+  // Mars only (root docs/DECISIONS.md D94)
+  | 'drill' | 'wind' | 'sabatier';
+
+/** The worlds a town can stand on. The rules are one set; a world is the numbers they run on. */
+export type WorldId = 'moon' | 'mars';
 
 export interface BuildingDef {
   id: BuildingType;
@@ -34,11 +39,12 @@ export interface BuildingDef {
   jobs: number;           // workers needed to run at full output
   upkeep: number;         // credits per hour
   zone: number;           // 0 = placed by hand, otherwise the zone it grows in
+  hidden: boolean;        // not part of the world the town stands on
 }
 
 const def = (d: Partial<BuildingDef> & Pick<BuildingDef, 'id' | 'name' | 'short' | 'cluster' | 'codex' | 'desc' | 'effect'>): BuildingDef => ({
   w: 1, h: 1, cost: 0, buildHours: 1, gen: 0, solar: false, drawDay: 0, drawNight: 0,
-  priority: 9, battery: 0, o2Store: 0, waterStore: 0, housing: 0, toggle: false, buildable: true, jobs: 0, upkeep: 0, zone: 0, ...d,
+  priority: 9, battery: 0, o2Store: 0, waterStore: 0, housing: 0, toggle: false, buildable: true, jobs: 0, upkeep: 0, zone: 0, hidden: false, ...d,
 });
 
 export const BUILDINGS: Record<BuildingType, BuildingDef> = {
@@ -165,10 +171,75 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     desc: 'A canteen, a market, a workshop, a bar. Traders open one on Commercial land once enough people live here to keep it busy. Residents spend their wages in it, and it makes the streets around it better to live on.',
     effect: 'Serves 16 residents per level · raises habitability nearby · 2 jobs per level',
   }),
+  // ----- Mars only. Hidden on the Moon, so a Moon town is exactly what it was. -----
+  drill: def({
+    id: 'drill', name: 'Ice Drill', short: 'ID', cluster: 'Resource Systems', codex: 'L1-WTR', hidden: true,
+    upkeep: 0.04, jobs: 1,
+    w: 2, h: 2, cost: 35, buildHours: 4, drawDay: 5, drawNight: 5, priority: 4, toggle: true,
+    desc: 'A heated drill into the glacier under Arcadia. No ship brings water to Mars: what the town drinks, grows with and turns into propellant comes out of this.',
+    effect: '+0.5 kg water per hour by day, more on icy ground · 5 kW · 1 job',
+  }),
+  wind: def({
+    id: 'wind', name: 'Wind Turbine', short: 'WT', cluster: 'Power Systems', codex: 'L1-PWR', hidden: true,
+    upkeep: 0.02,
+    cost: 25, buildHours: 2, gen: 1.5,
+    desc: 'The air is thin, so it gives little. But it gives it at night and in a dust storm, when the arrays do not.',
+    effect: '1.5 kW day and night, dust or not',
+  }),
+  sabatier: def({
+    id: 'sabatier', name: 'Sabatier Plant', short: 'SP', cluster: 'Resource Systems', codex: 'L1-ISR', hidden: true,
+    upkeep: 0.06, jobs: 2,
+    w: 2, h: 2, cost: 90, buildHours: 6, drawDay: 8, drawNight: 8, priority: 6, toggle: true,
+    desc: 'Makes methane and oxygen propellant out of the Martian air and water from the drills. Propellant is what every ship in the system burns.',
+    effect: '+0.9 credits per hour by day when staffed · uses 0.2 kg water per hour · 8 kW · 2 jobs',
+  }),
 };
+
+/**
+ * What is different about a building on Mars: its name and words, and the few numbers the planet changes.
+ * Everything not named here is the same building as on the Moon, at the same cost.
+ * Sunlight at Mars is 43% of what it is at the Moon, so an array gives 5 kW where it gave 12. That makes a
+ * town of arrays a very large field of them, which is why the reactor here is a pair and cheaper: over a sol
+ * it gives what a dozen arrays do, for about what they cost, and it is what a Mars base would really run on.
+ * Its price and power are invented; D94.
+ */
+const MARS: Partial<Record<BuildingType, Partial<BuildingDef>>> = {
+  lander: { name: 'Arcadia Command', desc: 'The landed ship and first shelter, with the airlock everything else joins to. A small radioisotope generator keeps its own life support running, but its CO2 canisters are finite.' },
+  conduit: { desc: 'Carries power, air and water. Anything not linked back to the command module does nothing.' },
+  solar: { gen: 5, desc: 'Cheap power that follows the Sun. The Sun is weak here and sets every twelve hours, and a dust storm takes three quarters of what is left.', effect: 'Up to 5 kW by day · 0 kW at night · a quarter of that in a dust storm' },
+  battery: { name: 'Megapack Battery', desc: 'Stores daytime surplus. A night here is short. A dust storm is not, and this is what carries the town through one.' },
+  reactor: { name: 'Twin Kilopower', cost: 150, gen: 20, desc: 'Two small fission reactors. Steady power that ignores the Sun and the dust: one does the work of a dozen arrays over a sol, with no battery behind it. Slow to build, and it must stand well away from living quarters.', effect: '20 kW day and night, dust or not · 6 tiles from crew' },
+  habitat: { desc: 'Pressurised quarters. Build the first ones yourself. After that, zone land for Habitat and settlers build their own, and expand them when the neighbourhood is good.' },
+  o2plant: { name: 'MOXIE Plant', desc: 'Splits oxygen out of the carbon dioxide air. Power hungry, so run it by day and live off the tank at night.' },
+  recycler: { name: 'Water Scrubber', desc: 'Washes the perchlorate out and recovers most of what the crew uses. Without it the drills cannot keep up.' },
+  o2tank: { name: 'Oxygen Tank', desc: 'Extra oxygen storage so the plant can rest through the night.', effect: 'Stores 240 kg O2' },
+  watertank: { name: 'Water Tank', desc: 'Extra water storage for what the drills bring up.' },
+  printer: { name: 'Basalt Printer', desc: 'Sinters Martian basalt into parts. Contractors build these on land you zone for Industry. They need workers, and they are dusty neighbours.' },
+  greenhouse: { name: 'Bio-Dome', desc: 'Food, a little oxygen, and the only green for a hundred million kilometres. No ship brings food to Mars, so the town eats what it grows, and people want to live beside one.',
+    effect: '+0.6 kg food per hour by day · feeds about 9 people · raises habitability nearby · 1 job' },
+  pad: { desc: 'A sintered pad with a beacon. Transports come half as often as a shuttle does to the Moon and carry twice as many: up to eight settlers at a time, and nothing to eat or drink. It is the dustiest, loudest thing in the town, so keep homes away from it.', effect: 'Transport every 120 hours' },
+  lodge: { name: 'Areology Lab', desc: 'Scientists on rotation pay to work here. Institutes build labs on Commercial land when there is something to study, and they pay more for a good spot: quiet, green, near a crater.', effect: '6 visiting scientists per level · income rises with habitability' },
+  garage: { desc: 'Two pressurised rovers. With visiting scientists in town they run paid field trips to the craters. With none, the geologist takes them on survey runs for a small science grant, and they sweep the arrays after a storm.', effect: '2 rovers · field trips pay 5 credits per scientist · sweeps dust off arrays · 2 jobs' },
+  clinic: { name: 'Med-Bay', desc: 'A surgery, a pharmacy and a storm shelter. People settle more readily where there is one, and the crew recovers faster.' },
+  market: { name: 'Commons', desc: 'A canteen, a market, a workshop, a bar. Traders open one on Commercial land once enough people live here to keep it busy. Residents spend their wages in it, and it makes the streets around it better to live on.' },
+  garden: { hidden: true },
+  drill: { hidden: false }, wind: { hidden: false }, sabatier: { hidden: false },
+};
+const MOON: Record<string, BuildingDef> = Object.fromEntries(Object.entries(BUILDINGS).map(([k, d]) => [k, { ...d }]));
+let current: WorldId = 'moon';
+/**
+ * Make the catalogue the one for this world. The rules read one catalogue and work on one town at a
+ * time, so the world is set at the top of every way into them (sim.ground) and nothing else has to know.
+ */
+export function useWorld(id: WorldId): void {
+  if (id === current) return;
+  current = id;
+  for (const k of Object.keys(BUILDINGS) as BuildingType[]) Object.assign(BUILDINGS[k], MOON[k], id === 'mars' ? MARS[k] : undefined);
+}
 
 export const BUILD_MENU: BuildingType[] = [
   'conduit', 'solar', 'battery', 'habitat', 'o2plant', 'recycler', 'greenhouse', 'pad', 'garage', 'garden', 'clinic', 'o2tank', 'watertank', 'reactor',
+  'drill', 'wind', 'sabatier',
 ];
 
 // Zones. The player marks land; settlers, companies and traders build on it when conditions are right.

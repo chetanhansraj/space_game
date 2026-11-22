@@ -34,8 +34,17 @@ function blur(src: Float32Array, tmp: Float32Array, N: number, r: number) {
 
 // Crater stamps rendered in Blender: shading only, 128 = level ground, with a soft edge. rim = where the crest sits, as a share of half the picture.
 export interface Stamp { img: HTMLImageElement; rim: number; }
+/**
+ * The colour of a world's ground: what the grey dust picture is multiplied by, and how thickly small
+ * craters lie on it. The Moon's is very nearly grey. Mars is rust, and its air has worn the small craters away.
+ */
+export interface Soil { r: number; g: number; b: number; craters: number; }
+export const SOIL: Record<string, Soil> = {
+  moon: { r: 0.985, g: 0.975, b: 1.04, craters: 300 },
+  mars: { r: 1.52, g: 0.80, b: 0.50, craters: 90 },
+};
 
-export function buildGround(s: State, detail: HTMLImageElement | null, stamps: Stamp[] = []): HTMLCanvasElement {
+export function buildGround(s: State, detail: HTMLImageElement | null, stamps: Stamp[] = [], soil: Soil = SOIL.moon): HTMLCanvasElement {
   const n = s.size, N = n * GP;
   const h = new Float32Array(N * N), tmp = new Float32Array(N * N);
 
@@ -73,7 +82,7 @@ export function buildGround(s: State, detail: HTMLImageElement | null, stamps: S
   const sc = document.createElement('canvas'); sc.width = sc.height = N;
   const sctx = sc.getContext('2d')!; sctx.fillStyle = 'rgb(128,128,128)'; sctx.fillRect(0, 0, N, N);
   const put = (k: number, cx: number, cy: number, rPx: number) => { const st = stamps[k % stamps.length], d = 2 * rPx / st.rim; sctx.drawImage(st.img, cx - d / 2, cy - d / 2, d, d); };
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < soil.craters; i++) {
     const cr = (0.08 + Math.pow(rnd(), 3.1) * 0.95) * GP, cx = rnd() * N, cy = rnd() * N, dep = (0.3 + 0.25 * rnd()) * cr / GP + 0.035, R = cr * 1.7;
     if (stamps.length && cr > 0.3 * GP) { if (!big.some(b => Math.hypot(cx / GP - b.x, cy / GP - b.y) < b.r + cr / GP + 0.6)) put(i, cx, cy, cr); continue; }
     for (let y = Math.max(0, Math.floor(cy - R)); y < Math.min(N, Math.ceil(cy + R)); y++) {
@@ -109,7 +118,7 @@ export function buildGround(s: State, detail: HTMLImageElement | null, stamps: S
       const patch = 0.84 + 0.2 * vnoise(x / GP / 7 + 31, y / GP / 7 + 17, sd) + 0.1 * vnoise(x / GP / 2.2, y / GP / 2.2, sd + 5);
       const i = (o + x) * 4, f = sh * patch * (spx[i] / 128) * 0.83;
       const warm = k === GROUND.heritage ? 1 : 0;
-      const rr = px[i] * f * (0.985 + 0.1 * warm), gg = px[i + 1] * f * (0.975 + 0.04 * warm), bb = px[i + 2] * f * (1.04 - 0.14 * warm);
+      const rr = px[i] * f * (soil.r + 0.1 * warm), gg = px[i + 1] * f * (soil.g + 0.04 * warm), bb = px[i + 2] * f * (soil.b - 0.14 * warm);
       px[i] = rr > 255 ? 255 : rr; px[i + 1] = gg > 255 ? 255 : gg; px[i + 2] = bb > 255 ? 255 : bb;
     }
   }
@@ -139,7 +148,7 @@ export const LANDS: Land[] = [
 ];
 const smooth = (a: number, b: number, x: number) => { const k = x <= a ? 0 : x >= b ? 1 : (x - a) / (b - a); return k * k * (3 - 2 * k); };
 
-export function buildLand(s: State, detail: HTMLImageElement | null, stamps: Stamp[], L: Land, salt: number): HTMLCanvasElement {
+export function buildLand(s: State, detail: HTMLImageElement | null, stamps: Stamp[], L: Land, salt: number, soil: Soil = SOIL.moon): HTMLCanvasElement {
   const n = s.size, N = L.px, C = n / 2, per = N / (2 * L.half), t0 = C - L.half;   // per = picture pixels per tile; t0 = the tile at the picture's left edge
   const cv = document.createElement('canvas'); cv.width = cv.height = N;
   const ctx = cv.getContext('2d')!;
@@ -150,7 +159,7 @@ export function buildLand(s: State, detail: HTMLImageElement | null, stamps: Sta
   let seed = (s.seed | 0) ^ (0x2545f491 + salt * 0x9e3779b1);
   const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; };
   const far = L.rim || L.half;
-  if (stamps.length) for (let i = 0; i < L.craters; i++) {
+  if (stamps.length) for (let i = 0; i < Math.round(L.craters * soil.craters / 300); i++) {
     const r = L.small + Math.pow(rnd(), 2.5) * L.large, tx = t0 + rnd() * 2 * L.half, ty = t0 + rnd() * 2 * L.half, k = Math.floor(rnd() * stamps.length);
     const d0 = Math.hypot(tx - C, ty - C), w = r * 1.4;
     if (L.hole ? d0 - w < L.hole : tx > -w - 1 && tx < n + w + 1 && ty > -w - 1 && ty < n + w + 1) continue;   // none cut by the claim's edge, or by the picture above
@@ -166,7 +175,7 @@ export function buildLand(s: State, detail: HTMLImageElement | null, stamps: Sta
       let patch = 0.84 + 0.2 * vnoise(tx / 7 + 31, ty / 7 + 17, sd) + 0.1 * vnoise(tx / 2.2, ty / 2.2, sd + 5);
       if (d0 > 40) patch *= 1 + smooth(40, 130, d0) * (0.34 * vnoise(tx / 48 + 9, ty / 48 + 3, sd + 11) + 0.2 * vnoise(tx / 150 + 5, ty / 150 + 7, sd + 13) - 0.27);   // broad light and dark country, far out
       const f = patch * (spx[i] / 128) * 0.83 * bend(dx, dy);
-      const rr = px[i] * f * 0.985, gg = px[i + 1] * f * 0.975, bb = px[i + 2] * f * 1.04;
+      const rr = px[i] * f * soil.r, gg = px[i + 1] * f * soil.g, bb = px[i + 2] * f * soil.b;
       px[i] = rr > 255 ? 255 : rr; px[i + 1] = gg > 255 ? 255 : gg; px[i + 2] = bb > 255 ? 255 : bb;
       if (L.rim && d0 > L.rim) px[i + 3] = 255 * (1 - smooth(L.rim, L.end, d0));
     }

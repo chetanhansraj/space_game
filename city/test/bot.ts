@@ -3,10 +3,13 @@ declare const process: any; declare const require: any;
 //  1. doing nothing loses,
 //  2. a player who does what the crew asks survives the first night with all four crew,
 //  3. the colony then grows by itself on zoned land: habitats, foundries, lodges and concourses appear, people arrive,
-//     rovers run, money comes in, and nobody is lost.
+//     rovers run, money comes in, and nobody is lost,
+//  4. and the same rules on Mars: doing nothing loses there too, and a player who follows the crew comes
+//     through a dust storm, grows a settlement and makes propellant.
 import { BUILDINGS, BuildingType, ZONES, ZONE_BUILDS, ZONE_COST } from '../src/sim/buildings';
-import { MISSIONS } from '../src/sim/missions';
+import { MISSIONS, missions } from '../src/sim/missions';
 import { steward } from '../src/steward';
+import { WorldId } from '../src/sim/buildings';
 import { State, Intent, createState, tick as localTick, apply as localApply, siteProblem, zoneProblem, habAt, aliveCount, population, support, tierOf, LUNAR_DAY, isNight } from '../src/sim/sim';
 
 // The same player, against a town in the shared world.
@@ -43,15 +46,15 @@ const hour = steward(apply);
 
 
 /** A player who does what the crew says, and between missions answers what the demand bars ask for. */
-function play(name: string, hours: number, follow: boolean) {
-  const s = createState(1969);
+function play(name: string, hours: number, follow: boolean, on: WorldId = 'moon', seed = 1969) {
+  const s = createState(seed, on);
   if (REMOTE) mirror(s, http('POST', '/api/town/found', {}));
   const log: string[] = [];
   let next = 0, lastMission = -1;
   while (s.phase === 'playing' && s.t < hours) {
     if (follow && s.t >= next) {
       next = s.t + 1;
-      if (s.mission !== lastMission) { lastMission = s.mission; const m = MISSIONS[s.mission]; log.push(`t=${s.t.toFixed(0)} [${m ? s.crew[m.who].name.split(' ')[0] : '-'}] ${m ? m.goal : 'all missions done'} (credits ${s.materials.toFixed(0)}, pop ${population(s)})`); }
+      if (s.mission !== lastMission) { lastMission = s.mission; const m = missions(s)[s.mission]; log.push(`t=${s.t.toFixed(0)} [${m ? s.crew[m.who].name.split(' ')[0] : '-'}] ${m ? m.goal : 'all missions done'} (credits ${s.materials.toFixed(0)}, pop ${population(s)})`); }
       hour(s);
     }
     tick(s);
@@ -60,7 +63,7 @@ function play(name: string, hours: number, follow: boolean) {
     if (follow && Math.abs(s.t / 177 - Math.round(s.t / 177)) < 0.0004) log.push(`    t=${s.t.toFixed(0)} ${isNight(s.t) ? 'night' : 'day  '} pop ${population(s)} (${s.residents} res, ${s.tourists} vis) credits ${s.materials.toFixed(0)} ${s.flows.income >= 0 ? '+' : ''}${s.flows.income.toFixed(1)}/h jobs ${s.flows.jobs}/${s.flows.workers} charge ${s.charge.toFixed(0)}/${s.flows.battCap} o2 ${s.o2.toFixed(0)} food ${s.food.toFixed(0)} | want R${s.want.r.toFixed(1)} I${s.want.i.toFixed(1)} V${s.want.v.toFixed(1)} | block ${ZONES.map(z => s.block[z.key] ? z.key + ':' + s.block[z.key] : '').filter(Boolean).join(', ') || 'none'} | grown ${s.stats.grown} up ${s.stats.upgrades} deals ${s.stats.deals}/${s.stats.broken} finds ${s.stats.finds} events ${s.stats.events} lost ${s.stats.lost} evac ${s.stats.evacuated}`);
   }
   const c: any = {}; for (const b of s.buildings) if (b.type !== 'conduit') c[b.type] = (c[b.type] || 0) + 1;
-  console.log(`\n== ${name}: ${s.phase} at t=${s.t.toFixed(0)}h · crew ${aliveCount(s)}/4 · pop ${population(s)} (${tierOf(population(s))}) · credits ${s.materials.toFixed(0)} · mission ${s.mission}/${MISSIONS.length} · flights ${s.stats.flights} · trips ${s.stats.trips} · grown ${s.stats.grown} · upgrades ${s.stats.upgrades} · hab homes ${s.flows.habHomes.toFixed(0)} lodges ${s.flows.habLodges.toFixed(0)}`);
+  console.log(`\n== ${name}: ${s.phase} at t=${s.t.toFixed(0)}h · crew ${aliveCount(s)}/4 · pop ${population(s)} (${tierOf(population(s))}) · credits ${s.materials.toFixed(0)} · mission ${s.mission}/${missions(s).length} · flights ${s.stats.flights} · trips ${s.stats.trips} · grown ${s.stats.grown} · upgrades ${s.stats.upgrades} · hab homes ${s.flows.habHomes.toFixed(0)} lodges ${s.flows.habLodges.toFixed(0)}`);
   if (follow) console.log('   ' + JSON.stringify(c));
   if (log.length) console.log(log.join('\n'));
   return s;
@@ -105,4 +108,18 @@ expect(day3.buildings.some(b => b.type === 'market') && day3.buildings.some(b =>
 expect(day3.stats.finds >= 2 && day3.buildings.some(b => b.type === 'printer' && day3.ore[b.y * day3.size + b.x] > 0), 'rovers found ore and a foundry stands on it');
 expect(day3.stats.events >= 3, 'storms, breaches and delays came and the town came through them');
 expect(day3.materials < 4000, 'and credits have not piled up out of reach of any cost');
+
+// Mars. The same rules with another world's numbers: a sol of 24.66 hours, dust storms instead of a long night,
+// nothing to eat or drink off the transports, eight berths every 120 hours.
+const marsIdle = play('Mars: do nothing', 400, false, 'mars', 2199);
+const mars = play('Mars: follow the crew for 600 hours', 600, true, 'mars', 2199);
+const made = (type: BuildingType) => mars.buildings.some(b => b.type === type && b.progress >= 1);
+console.log('');
+expect(marsIdle.phase === 'lost', 'on Mars, doing nothing loses');
+expect(mars.phase === 'playing' && aliveCount(mars) === 4, 'on Mars, following the crew keeps all four alive for 600 hours');
+expect((mars.stats.hazes ?? 0) >= 1, 'through at least one dust storm');
+expect(made('drill') && made('greenhouse'), 'on water from an ice drill and food from a Bio-Dome, since transports bring neither');
+expect(mars.stats.flights >= 2 && mars.residents >= 8, 'transports have landed and eight or more settlers stayed');
+expect(made('sabatier'), 'and a Sabatier plant is making propellant');
+expect(mars.mission >= 17, 'seventeen or more of the Mars missions are complete');
 process.exit(fail ? 1 : 0);

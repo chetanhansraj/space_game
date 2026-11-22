@@ -5,10 +5,10 @@
 // The player lays infrastructure by hand and zones land. Habitats, foundries, lodges and concourses
 // then build themselves where demand, habitability and life support allow.
 
-import { BUILDINGS, BuildingType, ZONE, ZONE_BUILDS, ZONE_COST, ZONES } from './buildings';
-import { MISSIONS } from './missions';
+import { BUILDINGS, BuildingType, WorldId, useWorld, ZONE, ZONE_BUILDS, ZONE_COST, ZONES } from './buildings';
+import { missions } from './missions';
 import { Offer, Deal, tickContracts, answerOffer } from './contracts';
-import { Grader, Find, GameEvent, EventKind, initWorld, lotLevel, tickGraders, richOf, oreLot, maybeFind, stormActive, dusty, tickEvents, repairCost } from './world';
+import { Grader, Find, GameEvent, EventKind, initWorld, lotLevel, tickGraders, richOf, oreLot, maybeFind, stormActive, dusty, hazeNow, tickEvents, repairCost, useOres } from './world';
 
 export const LUNAR_DAY = 708;       // hours, sunrise to sunrise
 export const HALF = 354;            // hours of light, then hours of dark
@@ -50,6 +50,40 @@ export const PARTS_KG = 5;
  */
 export const YARD_RESTART = 0.02;
 export const PRICES = [0.75, 1, 1.3];   // low, fair, high
+
+/**
+ * A world: the numbers the one set of rules runs on. The Moon's are the constants above, so a town
+ * with no world named is a Moon town and plays exactly as it always has. Root docs/DECISIONS.md D94.
+ */
+export interface World {
+  id: WorldId;
+  /** Hours from sunrise to sunrise, and the hours of dark where the plot does not say. */
+  day: number; dark: number; minDark: number;
+  /** Hours either side of the dark when the Sun is too low to count: what the batteries carry beyond the night itself. */
+  dusk: number;
+  /** Hours between landings, what each brings by way of food and water, and the most settlers it carries. */
+  shuttleEvery: number; shuttleFood: number; shuttleWater: number; berths: number;
+  /** Do ships land in the dark, with cargo only? Where the night is short they wait for morning instead. */
+  nightFlights: boolean;
+  /** Hours before anything goes wrong, and hours before sunset that the crew is warned of it (0 for never). */
+  firstEvent: number; warn: number;
+  /** Is the turn of the day news? On Mars it comes every six real minutes and is not. */
+  dawnNews: boolean;
+  /** The share of sunlight a dust storm leaves. 1 where there are none. */
+  haze: number;
+  /** What comes down to the pad, and what the people who visit are. */
+  ship: string; Ship: string; guests: string;
+}
+export const WORLDS: Record<WorldId, World> = {
+  moon: { id: 'moon', day: LUNAR_DAY, dark: HALF, minDark: 24, dusk: DARK - HALF, shuttleEvery: SHUTTLE_EVERY, shuttleFood: SHUTTLE_FOOD, shuttleWater: SHUTTLE_WATER, berths: 4,
+    nightFlights: true, firstEvent: LUNAR_DAY, warn: 60, dawnNews: true, haze: 1, ship: 'shuttle', Ship: 'Shuttle', guests: 'visitors' },
+  // A sol is 24 h 39 min. Transports are half as often and carry twice as many, and bring nothing to eat or drink.
+  // A dust storm leaves a quarter of the light. All invented but the sol; D94.
+  mars: { id: 'mars', day: 24.66, dark: 12.33, minDark: 1, dusk: 1.6, shuttleEvery: 120, shuttleFood: 0, shuttleWater: 0, berths: 8,
+    nightFlights: false, firstEvent: 120, warn: 0, dawnNews: false, haze: 0.25, ship: 'transport', Ship: 'Transport', guests: 'visiting scientists' },
+};
+/** Water an Ice Drill brings up in an hour, and what a Sabatier Plant takes and pays. Mars only. Invented; D94. */
+export const DRILL = 0.5, SABATIER = 0.9, SABATIER_WATER = 0.2;
 
 export const GROUND = { flat: 0, rim: 1, floor: 2, boulder: 3, heritage: 4 } as const;
 
@@ -103,7 +137,7 @@ export interface Cargo {
  *   view   Earth in the sky, or the far side's silence: what a visitor will pay to be there
  * The server assigns it from where the plot is on the Moon (root docs/DECISIONS.md D84).
  */
-export interface Plot { sun: number; ice: number; metal: number; glass: number; he3: number; view: number; lat?: number; lon?: number; name?: string; /** Hours of dark in a lunar day here. */ dark?: number; }
+export interface Plot { sun: number; ice: number; metal: number; glass: number; he3: number; view: number; lat?: number; lon?: number; name?: string; /** Hours of dark in a day here. */ dark?: number; }
 export type PlotKey = 'sun' | 'ice' | 'metal' | 'glass' | 'he3' | 'view';
 /**
  * How much a reading counts. At 1 the ground gives this many times the usual, at 0 the same
@@ -160,6 +194,8 @@ export interface State {
   crew: Crew[]; residents: number; tourists: number; mood: number; risk: number;
   rovers: Rover[]; shuttle: Shuttle; nextShuttle: number;
   /** Hours the Sun's day stands ahead of this town's own clock (see phaseOf). Absent in the practice game. */
+  /** The world this town stands on. Missing is the Moon. Root docs/DECISIONS.md D94. */
+  world?: WorldId;
   sun?: number;
   /** Game hours in a real minute, as the world runs. Absent in the practice game. Used only to size waits a person must answer. */
   pace?: number;
@@ -173,7 +209,7 @@ export interface State {
   pops: Pop[]; nextPop: number;
   strikes: number[];
   phase: 'playing' | 'lost';
-  stats: { built: number; grown: number; upgrades: number; flights: number; strikes: number; peakCharge: number; trips: number; earned: number; lost: number; evacuated: number; peakPop: number; deals: number; broken: number; finds: number; events: number };
+  stats: { built: number; grown: number; upgrades: number; flights: number; strikes: number; peakCharge: number; trips: number; earned: number; lost: number; evacuated: number; peakPop: number; deals: number; broken: number; /** Dust storms come through. */ hazes?: number; finds: number; events: number };
 }
 
 export type Intent =
@@ -203,7 +239,17 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
  * game there is no world, the offset is nothing, and a town is founded at its own sunrise.
  */
 let SUN = 0;
-export const phaseOf = (t: number) => (((t + SUN) % LUNAR_DAY) + LUNAR_DAY) % LUNAR_DAY;
+/** The world the town being worked on stands on. Set from the state by `ground`, like the clock values below. */
+let W: World = WORLDS.moon;
+export const world = () => W;
+/** Hours in a day here, sunrise to sunrise. */
+export const dayHours = () => W.day;
+/**
+ * A stretch of hours that belongs to the day's turning (a margin before sunset, a warning, a twilight),
+ * given as it is on the Moon and scaled to the day here. On the Moon it is itself.
+ */
+export const span = (moonHours: number) => (moonHours * W.day) / LUNAR_DAY;
+export const phaseOf = (t: number) => (((t + SUN) % W.day) + W.day) % W.day;
 /**
  * How long the Sun is up where this town stands. Across nearly all the Moon it is half the lunar
  * day. On a polar rim the Sun circles the horizon and the dark is short. The plot says how many
@@ -214,40 +260,42 @@ export const phaseOf = (t: number) => (((t + SUN) % LUNAR_DAY) + LUNAR_DAY) % LU
  */
 let LIGHT = HALF, CARRY = DARK;
 export function ground(s: State): void {
-  const dark = Math.max(24, Math.min(HALF, s.plot?.dark ?? HALF));
-  LIGHT = LUNAR_DAY - dark;
-  CARRY = dark + (DARK - HALF);
+  if (W.id !== (s.world ?? 'moon')) { W = WORLDS[s.world ?? 'moon']; useOres(W.id); }
+  useWorld(W.id);
+  const dark = Math.max(W.minDark, Math.min(W.day / 2, s.plot?.dark ?? W.dark));
+  LIGHT = W.day - dark;
+  CARRY = dark + W.dusk;
   SUN = s.sun ?? 0;
 }
 /**
  * Set the town's day by the Sun. `noon` is hours since the Sun was highest over the town's
- * longitude, from minus half a lunar day to plus half. The middle of the town's daylight is put
+ * longitude, from minus half a day to plus half. The middle of the town's daylight is put
  * there, so a polar town's long day and an equatorial town's half day both have the Sun highest
  * at their noon. The world says this every hour, so a town's day cannot drift from the Sun's.
  */
 export function setSun(s: State, noon: number): void {
   ground(s);
-  const want = (((LIGHT / 2 + noon) % LUNAR_DAY) + LUNAR_DAY) % LUNAR_DAY, now = phaseOf(s.t);
-  let turn = (((want - now) % LUNAR_DAY) + LUNAR_DAY) % LUNAR_DAY;
-  if (turn > HALF) turn -= LUNAR_DAY;                       // the short way round
-  if (s.sun === undefined) { s.sun = (((want - s.t) % LUNAR_DAY) + LUNAR_DAY) % LUNAR_DAY; SUN = s.sun; return; }
+  const D = W.day, want = (((LIGHT / 2 + noon) % D) + D) % D, now = phaseOf(s.t);
+  let turn = (((want - now) % D) + D) % D;
+  if (turn > D / 2) turn -= D;                              // the short way round
+  if (s.sun === undefined) { s.sun = (((want - s.t) % D) + D) % D; SUN = s.sun; return; }
   // The Moon does not turn evenly, so the world's hour runs a few minutes fast or slow of the town's
   // and is corrected a little every hour. A correction backwards is held over for an hour if it
   // would carry the town back across its sunrise, its sunset or the warning before it: each of
   // those is announced once, as the clock passes it.
-  if (turn < 0 && turn > -2) for (const edge of [0, LIGHT - 60, LIGHT]) if (now >= edge && now + turn < edge) return;
+  if (turn < 0 && turn > -2) for (const edge of [0, LIGHT - W.warn, LIGHT]) if (now >= edge && now + turn < edge) return;
   s.sun += turn;                                            // kept whole, not wrapped, so the count of days never steps back
   SUN = s.sun;
 }
 /** Fill the batteries. Used once, when the world's towns were moved onto the one Sun and some woke in the dark. */
 export function topUp(s: State): void { refresh(s); s.charge = Math.max(s.charge, s.flows.battCap); }
 /** Hours of light and of dark in a lunar day here, and the hours the batteries must carry. */
-export const lightHours = () => LIGHT, darkHours = () => LUNAR_DAY - LIGHT, carryHours = () => CARRY;
+export const lightHours = () => LIGHT, darkHours = () => W.day - LIGHT, carryHours = () => CARRY;
 export const isNight = (t: number) => phaseOf(t) >= LIGHT;
 export const sunFactor = (t: number) => (isNight(t) ? 0 : Math.sin((Math.PI * phaseOf(t)) / LIGHT));
 export const hoursToSunset = (t: number) => LIGHT - phaseOf(t);
-export const hoursToSunrise = (t: number) => LUNAR_DAY - phaseOf(t);
-export const dayNumber = (t: number) => Math.floor((t + SUN) / LUNAR_DAY) + 1;
+export const hoursToSunrise = (t: number) => W.day - phaseOf(t);
+export const dayNumber = (t: number) => Math.floor((t + SUN) / W.day) + 1;
 
 // ---------- people and buildings ----------
 export const aliveCount = (s: State) => s.crew.reduce((n, c) => n + (c.alive ? 1 : 0), 0);
@@ -277,11 +325,13 @@ function emptyFlows(): Flows {
 
 // Real names from around the Apollo 11 landing site.
 const CRATERS = ['West crater', 'Little West', 'Double crater', 'Armstrong', 'Aldrin', 'Collins'];
+// Arcadia Planitia has few named features at this scale. These are the town's own names for what is around it.
+const MARS_CRATERS = ['West Rim crater', 'North Ice crater', 'East Basalt crater', 'South Ejecta bowl', 'Glacier scarp', 'Dune field'];
 
-export function createState(seed = 1969): State {
+export function createState(seed = 1969, on: WorldId = 'moon'): State {
   const N = SIZE * SIZE;
   const s: State = {
-    v: 5, seed, rng: seed | 0, size: SIZE,
+    v: 5, seed, rng: seed | 0, size: SIZE, ...(on === 'moon' ? {} : { world: on }),
     ground: new Array(N).fill(GROUND.flat), occ: new Array(N).fill(0), zone: new Array(N).fill(0), linked: new Array(N).fill(0),
     view: new Array(N).fill(0), hab: new Array(N).fill(50), habRev: -1, pois: [],
     prep: new Array(N).fill(0), rough: new Array(N).fill(3), ore: new Array(N).fill(0), finds: [], graders: [], event: null, nextEvent: 0, lastEvent: '',
@@ -301,6 +351,8 @@ export function createState(seed = 1969): State {
     strikes: [], phase: 'playing',
     stats: { built: 0, grown: 0, upgrades: 0, flights: 0, strikes: 0, peakCharge: 40, trips: 0, earned: 0, lost: 0, evacuated: 0, peakPop: 4, deals: 0, broken: 0, finds: 0, events: 0 },
   };
+  ground(s);
+  const mars = on === 'mars';
   const c = SIZE / 2;
   // Craters: a raised rim around a sunken floor. Neither can be built on yet. Each is a place rovers can visit.
   for (let i = 0; i < 6; i++) {
@@ -315,17 +367,18 @@ export function createState(seed = 1969): State {
       // a view over the rim is worth something to anyone living or staying nearby
       if (d < r + 3.2) s.view[y * SIZE + x] = Math.max(s.view[y * SIZE + x], 14 * (1 - Math.max(0, d - r) / 3.2));
     }
-    s.pois.push({ x: Math.max(1, Math.min(SIZE - 1, cx)), y: Math.max(1, cy - r - 1.2), name: CRATERS[i], bonus: 1 });
+    s.pois.push({ x: Math.max(1, Math.min(SIZE - 1, cx)), y: Math.max(1, cy - r - 1.2), name: (mars ? MARS_CRATERS : CRATERS)[i], bonus: 1 });
   }
-  // The heritage site: where Eagle landed in 1969. Visitors pay double to see it.
-  s.pois.push({ x: 5.5, y: 30.5, name: 'Tranquility Base', bonus: 2 });
+  // The heritage site: where Eagle landed in 1969. Visitors pay double to see it. Nobody has been to Arcadia before.
+  if (!mars) s.pois.push({ x: 5.5, y: 30.5, name: 'Tranquility Base', bonus: 2 });
   for (let i = 0; i < 34; i++) {
     const x = Math.floor(rnd(s) * SIZE), y = Math.floor(rnd(s) * SIZE);
     if (Math.hypot(x - c, y - c) > 5 && Math.hypot(x - 5, y - 30) > 3 && s.ground[y * SIZE + x] === GROUND.flat) s.ground[y * SIZE + x] = GROUND.boulder;
   }
-  for (let y = 29; y <= 31; y++) for (let x = 4; x <= 6; x++) s.ground[y * SIZE + x] = GROUND.heritage;   // protected ground
+  if (!mars) for (let y = 29; y <= 31; y++) for (let x = 4; x <= 6; x++) s.ground[y * SIZE + x] = GROUND.heritage;   // protected ground
   initWorld(s);
-  s.strikes = [190 + rnd(s) * 110, 420 + rnd(s) * 180];
+  // Mars has air enough to burn up the small ones: a strike is rare there.
+  s.strikes = mars ? [600 + rnd(s) * 500] : [190 + rnd(s) * 110, 420 + rnd(s) * 180];
   addBuilding(s, 'lander', c - 1, c - 1, 1);
   recomputeNetwork(s);
   computeHab(s);
@@ -367,6 +420,7 @@ export function earn(s: State, amount: number, x?: number, y?: number) {
 /** Why this spot will not work, ignoring cost. Null means the site is fine. `auto` is the simulation building on a zone. */
 export function siteProblem(s: State, type: BuildingType, x: number, y: number, auto = false): string | null {
   const d = BUILDINGS[type];
+  if (d.hidden) return 'That is not built on this world';
   if (!d.buildable && !auto) return 'Zone land for this and it will be built for you';
   if (x < 0 || y < 0 || x + d.w > s.size || y + d.h > s.size) return 'Outside the claim';
   for (let j = 0; j < d.h; j++) for (let i = 0; i < d.w; i++) {
@@ -520,6 +574,9 @@ export function computeHab(s: State) {
     else if (b.type === 'o2plant') spread(cx, cy, 3.5, -12);
     else if (b.type === 'reactor') spread(cx, cy, 10, -32);
     else if (b.type === 'garden' && b.progress >= 1) spread(cx, cy, 6.5, 30);
+    else if (b.type === 'greenhouse' && b.progress >= 1 && W.id === 'mars') spread(cx, cy, 5.5, 20);   // the only green on Mars
+    else if (b.type === 'sabatier') spread(cx, cy, 4, -14);
+    else if (b.type === 'drill') spread(cx, cy, 3, -8);
     else if (b.type === 'clinic' && b.progress >= 1) spread(cx, cy, 7.5, 16);
     else if (b.type === 'market' && b.progress >= 1) spread(cx, cy, 5, 8 + 4 * b.level);
   }
@@ -537,6 +594,24 @@ export const habAt = (s: State, x: number, y: number, w = 2, hgt = 2) => {
 // ---------- capacity ----------
 /** kWh of storage needed to carry life support through a whole night. */
 export const nightNeed = (s: State) => Math.max(0, s.flows.essentialDeficit) * CARRY;
+/**
+ * Hours life support could run in a dust storm: steady power, what little the arrays still give, and
+ * then the batteries. Infinity where the first two are enough, and on a world with no dust storms.
+ */
+export function stormCover(s: State): number {
+  if (W.haze >= 1) return Infinity;
+  let peak = 0, steady = 0, essDay = 0, essNight = 0, cap = 0;
+  for (const b of s.buildings) {
+    const d = BUILDINGS[b.type];
+    if (d.priority <= ESSENTIAL) { essDay += drawOf(b, false); essNight += drawOf(b, true); }
+    if (!working(b)) continue;
+    cap += d.battery;
+    if (b.on) { if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen; }
+  }
+  const dark = W.day - LIGHT;
+  const short = (essDay * LIGHT + essNight * dark) / W.day - steady - peak * W.haze * 0.6366 * (LIGHT / W.day);
+  return short <= 0.001 ? Infinity : cap / short;
+}
 
 /** Hours of night the batteries cover. Infinity when no deficit. */
 export function nightCover(s: State): number {
@@ -552,13 +627,21 @@ export function nightCover(s: State): number {
 export function support(s: State): { limit: number; why: string; air: number; food: number; power: boolean } {
   const f = s.flows;
   const n = (t: BuildingType) => s.buildings.filter(b => b.type === t && working(b)).length;
-  const tank = Math.floor(f.o2Cap / (O2_USE * (LUNAR_DAY - LIGHT + 90)));          // a night of breathing has to fit in the tanks
+  const tank = Math.floor(f.o2Cap / (O2_USE * (W.day - LIGHT + span(90))));          // a night of breathing has to fit in the tanks
   const plants = Math.floor((n('o2plant') * O2_PLANT) / (O2_USE * 2.1)); // plants only run by day, so they must make double
   const air = Math.min(tank, plants);
-  const food = Math.floor((0.8 * (n('greenhouse') * GREENHOUSE_FOOD * 0.5 + SHUTTLE_FOOD / SHUTTLE_EVERY)) / FOOD_USE);
+  const food = Math.floor((0.8 * (n('greenhouse') * GREENHOUSE_FOOD * 0.5 + W.shuttleFood / W.shuttleEvery)) / FOOD_USE);
   const need = nightNeed(s);
   const power = f.battCap >= need * POWER_MARGIN - 1 && (isNight(s.t) || sunsetCharge(s) >= need * 1.05);
   let limit = Math.min(air, food), why = air <= food ? (tank <= plants ? 'oxygen tanks' : 'oxygen plants') : 'greenhouses';
+  // Where no ship brings water, the drills have to: what they raise by day, less what the domes and the
+  // propellant plant take, has to cover what people use after recycling.
+  if (W.shuttleWater === 0) {
+    const use = WATER_USE * (n('recycler') ? 1 - RECYCLE : 1);
+    const raised = n('drill') * DRILL * gain(s, 'ice') * 0.5 - n('greenhouse') * 0.02 - n('sabatier') * SABATIER_WATER * 0.5;
+    const water = Math.max(4, Math.floor(0.9 * raised / use));     // the lander's own tank sees the first four through
+    if (water < limit) { limit = water; why = n('recycler') ? 'ice drills' : 'water recycling'; }
+  }
   if (!power) { limit = Math.min(limit, population(s)); why = 'night power'; }
   return { limit, why, air, food, power };
 }
@@ -578,7 +661,7 @@ export function sunsetCharge(s: State, extraDay = 0): number {
   }
   if (isNight(s.t)) return s.charge;
   const ph = phaseOf(s.t), sunset = LIGHT - ph;
-  const sunE = peak * (LIGHT / Math.PI) * (1 + Math.cos((Math.PI * ph) / LIGHT));
+  const sunE = hazeNow(s) * peak * (LIGHT / Math.PI) * (1 + Math.cos((Math.PI * ph) / LIGHT));
   return Math.min(cap, s.charge + 0.85 * Math.max(0, sunE + (steady - essDay - extraDay) * sunset));
 }
 
@@ -598,7 +681,7 @@ function powerFor(s: State, extraNight: number, extraDay: number): string {
   // There has to be enough daylight left today to fill the batteries for it.
   if (extraNight > 0 && !isNight(s.t) && sunsetCharge(s, extraDay) < nightKwh * 1.08) return 'night power';
   // After dark, only what the remaining charge can carry to sunrise.
-  if (extraNight > 0 && isNight(s.t) && s.charge < Math.max(0, essential + extraNight - steady) * (hoursToSunrise(s.t) + 40) * 1.1) return 'night power';
+  if (extraNight > 0 && isNight(s.t) && s.charge < Math.max(0, essential + extraNight - steady) * (hoursToSunrise(s.t) + span(40)) * 1.1) return 'night power';
   // Over a whole day the arrays must run the base and still fill the batteries for the night.
   const dayGain = (peak * 0.6366 + steady - day - extraDay) * LIGHT;
   if (dayGain < nightKwh * 1.1) return 'daytime power';
@@ -636,14 +719,14 @@ function computeFlows(s: State, dt = 0) {
   const need = Math.max(0, planned - steady) * CARRY;
   // By day they also rest whenever running them would leave the batteries short at sunset.
   f.saving = night || sunsetCharge(s) < Math.min(need * (s.flows.saving ? 1.12 : 1.06), f.battCap * 0.995);
-  const o2Short = night ? s.o2 < O2_USE * pop * toDawn + 6 : s.o2 < Math.min(f.o2Cap * 0.97, O2_USE * pop * (sunset + LUNAR_DAY - LIGHT + 30));
+  const o2Short = night ? s.o2 < O2_USE * pop * toDawn + 6 : s.o2 < Math.min(f.o2Cap * 0.97, O2_USE * pop * (sunset + W.day - LIGHT + span(30)));
 
-  const storm = stormActive(s);
+  const storm = stormActive(s), haze = hazeNow(s);
   const loads: { b: Building; draw: number; pr: number }[] = [];
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
     if (!working(b) || !b.on) { b.powered = false; continue; }
-    f.gen += d.gen * (d.solar ? sun * gain(s, 'sun') * (dusty(s, b) ? 0.5 : 1) : 1);
+    f.gen += d.gen * (d.solar ? sun * haze * gain(s, 'sun') * (dusty(s, b) ? 0.5 : 1) : 1);
     const optional = d.priority > ESSENTIAL && d.drawNight > 0;
     if (optional && f.saving && !(b.type === 'o2plant' && o2Short)) { b.asleep = true; b.powered = false; continue; }
     if (storm && (b.type === 'printer' || b.type === 'garage')) { b.asleep = true; b.powered = false; continue; }   // nobody works outdoors in a storm
@@ -672,6 +755,8 @@ function computeFlows(s: State, dt = 0) {
     if (s.cargo?.wear && b.progress >= 1) f.parts += (PARTS_KG / gain(s, 'glass')) * d.upkeep * (grows(b.type) ? b.level : 1);
     if (!b.powered || !working(b)) continue;
     if (b.type === 'o2plant') f.o2Rate += O2_PLANT;
+    else if (b.type === 'drill') f.waterRate += DRILL * gain(s, 'ice');
+    else if (b.type === 'sabatier') { if (s.water > 1) { f.waterRate -= SABATIER_WATER; f.earn.foundry += SABATIER * f.staff; } }
     else if (b.type === 'recycler') recycling = true;
     else if (b.type === 'greenhouse') { f.foodRate += GREENHOUSE_FOOD; f.o2Rate += 0.02; f.waterRate -= 0.04; }
     else if (b.type === 'printer') { const out = b.level * f.staff * gain(s, 'metal') * (1 + richOf(s, b) * gain(s, 'he3')); if (s.cargo) f.make += FOUNDRY_KG * out; else f.earn.foundry += FOUNDRY * out; }
@@ -702,7 +787,7 @@ export function needs(s: State): { name: string; met: boolean; text: string }[] 
   const pop = population(s), locals = aliveCount(s) + s.residents;
   const n = (t: BuildingType) => s.buildings.filter(b => b.type === t && working(b)).length;
   const out: { name: string; met: boolean; text: string }[] = [];
-  if (locals >= 10) out.push({ name: 'A Garden Dome for every 20 people living here', met: n('garden') >= Math.ceil(locals / 20), text: 'people want a garden' });
+  if (locals >= 10 && !BUILDINGS.garden.hidden) out.push({ name: 'A Garden Dome for every 20 people living here', met: n('garden') >= Math.ceil(locals / 20), text: 'people want a garden' });
   if (locals >= 14) out.push({ name: 'A Concourse to eat, trade and meet in', met: n('market') >= 1, text: 'people want a Concourse, zone Commercial land' });
   if (pop >= 20) out.push({ name: 'A Clinic', met: n('clinic') >= 1, text: 'people want a clinic' });
   if (locals >= 30) out.push({ name: 'Two Concourses', met: s.buildings.filter(b => b.type === 'market' && working(b)).reduce((a, b) => a + b.level, 0) >= 2, text: 'the Concourse is overcrowded, zone more Commercial land' });
@@ -724,7 +809,7 @@ function computeDemand(s: State) {
   // Commercial: lodges come when there is something to see and a way to get here.
   // Concourses come when enough people live here to keep one busy.
   const pad = count('pad') > 0;
-  const draw = pad ? (6 + count('garage') * 6 + count('garden') * 4) * (s.mood / 100) / s.price : 0;
+  const draw = pad ? (6 + count('garage') * 6 + count('garden') * 4 + (W.id === 'mars' ? count('greenhouse') * 2 : 0)) * (s.mood / 100) / s.price : 0;
   const film = s.deals.find(d => d.kind === 'broadcast');   // a signed broadcast makes lodge keepers want to build
   const tourism = pad ? clamp((Math.max(draw, film ? (film.amount ?? 6) + 2 : 0) - f.lodging) / 6, -1, 1) : 0;
   const shops = s.buildings.filter(b => b.type === 'market').reduce((a, b) => a + b.level, 0);
@@ -738,7 +823,7 @@ function grow(s: State) {
   computeDemand(s);
   const cap = support(s), room = cap.limit - population(s);
   // Whoever wants it most builds first. What the crew has asked for jumps the queue.
-  const asked = MISSIONS[s.mission]?.zone ?? 0;
+  const asked = missions(s)[s.mission]?.zone ?? 0;
   const order = ZONES.map(z => z).sort((a, b) => s.want[b.key] + (b.z === asked ? 0.6 : 0) - s.want[a.key] - (a.z === asked ? 0.6 : 0));
   let done = false;
   for (const z of order) {
@@ -798,7 +883,8 @@ function tickShuttle(s: State, dt: number) {
   const pad = s.buildings.find(b => b.type === 'pad');
   const open = !!pad && working(pad) && pad.powered;
   if (sh.phase === 'away') {
-    if (open && s.nextShuttle > 0 && s.t >= s.nextShuttle && !stormActive(s)) { sh.phase = 'landing'; sh.timer = 3; sh.flight++; }
+    // Where the night is short a ship waits for morning rather than land in the dark with cargo only.
+    if (open && s.nextShuttle > 0 && s.t >= s.nextShuttle && !stormActive(s) && (W.nightFlights || !isNight(s.t))) { sh.phase = 'landing'; sh.timer = 3; sh.flight++; }
     return;
   }
   sh.timer -= dt;
@@ -806,34 +892,36 @@ function tickShuttle(s: State, dt: number) {
   if (sh.phase === 'landing') {
     sh.phase = 'landed'; sh.timer = 5; s.stats.flights++;
     const [px, py] = pad ? centre(pad) : [0, 0];
+    const stores = W.shuttleWater > 0 || W.shuttleFood > 0, withStores = stores ? ' with water and food' : '';
+    const land = () => { if (stores) { s.water = Math.min(f.waterCap, s.water + W.shuttleWater + population(s)); s.food += W.shuttleFood; } };
     if (isNight(s.t)) {
       // Night flights carry cargo only. Whoever is on the Moon at sunset stays until sunrise.
-      s.water = Math.min(f.waterCap, s.water + SHUTTLE_WATER + population(s)); s.food += SHUTTLE_FOOD;
-      pushAlert(s, 'info', `Shuttle ${sh.flight} has landed with water and food. Night flights carry cargo only.`);
+      land();
+      pushAlert(s, 'info', `${W.Ship} ${sh.flight} has landed${withStores}. Night flights carry cargo only.`);
       return;
     }
     const left = (stock: number, rate: number) => (rate < -1e-6 ? stock / -rate : Infinity);
     const safe = !f.lackO2 && !f.lackWater && !f.lackFood && f.exposed === 0 && f.atRisk === 0 && s.mood >= 60
-      && left(s.o2, f.o2Rate) > 60 && left(s.food, f.foodRate) > 40;
+      && left(s.o2, f.o2Rate) > Math.min(60, W.day) && left(s.food, f.foodRate) > Math.min(40, W.day);
     const gone = s.tourists;
     s.tourists = 0;
     const cap = support(s);
     let room = Math.max(0, cap.limit - population(s));
     const beds = Math.max(0, f.housing - aliveCount(s) - s.residents);
     const pull = Math.max(0, Math.ceil(f.jobs - f.workers) + 2);   // people come for work, and a few on hope
-    const movers = safe ? Math.min(4, beds, room, pull) : 0; room -= movers;
+    const movers = safe ? Math.min(W.berths, beds, room, pull) : 0; room -= movers;
     const guests = safe ? Math.min(f.lodging, room) : 0;
-    const turnedAway = safe ? Math.min(4, beds, pull) + f.lodging - movers - guests : 0;
+    const turnedAway = safe ? Math.min(W.berths, beds, pull) + f.lodging - movers - guests : 0;
     s.residents += movers; s.tourists = guests;
-    s.water = Math.min(f.waterCap, s.water + SHUTTLE_WATER + population(s)); s.food += SHUTTLE_FOOD;
+    land();
     if (guests) earn(s, guests * LANDING_FEE * s.price, px, py);
-    const parts = [movers ? `${movers} new resident${movers > 1 ? 's' : ''}` : '', guests ? `${guests} visitors` : '', gone ? `${gone} visitors heading home` : ''].filter(Boolean);
-    pushAlert(s, 'good', `Shuttle ${sh.flight} has landed with water and food${parts.length ? ': ' + parts.join(', ') : ''}.`
+    const parts = [movers ? `${movers} new resident${movers > 1 ? 's' : ''}` : '', guests ? `${guests} ${W.guests}` : '', gone ? `${gone} ${W.guests} heading home` : ''].filter(Boolean);
+    pushAlert(s, 'good', `${W.Ship} ${sh.flight} has landed${withStores}${parts.length ? ': ' + parts.join(', ') : ''}.`
       + (!safe ? ' Earth held back all passengers until the base is stable.'
         : turnedAway > 0 ? ` Earth held back ${turnedAway} more: the base can only support ${cap.limit} people. The limit is ${cap.why}.`
-        : !movers && !guests && beds === 0 ? ' Nobody came to stay: every bed is taken. Build another Habitat Module, or zone Habitat land, and the next shuttle brings people.' : ''));
+        : !movers && !guests && beds === 0 ? ` Nobody came to stay: every bed is taken. Build another Habitat Module, or zone Habitat land, and the next ${W.ship} brings people.` : ''));
   } else if (sh.phase === 'landed') { sh.phase = 'launching'; sh.timer = 3; }
-  else { sh.phase = 'away'; sh.timer = 0; s.nextShuttle = s.t + SHUTTLE_EVERY; }
+  else { sh.phase = 'away'; sh.timer = 0; s.nextShuttle = s.t + W.shuttleEvery; }
 }
 
 function tickRovers(s: State, dt: number) {
@@ -885,8 +973,8 @@ export function tick(s: State) {
         if (b.type !== 'conduit') pushAlert(s, 'good', d.zone && s.zone[b.y * s.size + b.x] ? `A new ${d.name} has opened.` : `${d.name} complete.`);
         if (b.type === 'pad') {
           // The first pad is what Earth has been waiting for: its first shuttle leaves at once. A pad rebuilt later waits a day.
-          if (s.shuttle.flight === 0) { s.nextShuttle = s.t; pushAlert(s, 'info', 'Earth has cleared the pad. The first shuttle is on its way.'); }
-          else { s.nextShuttle = s.t + 24; pushAlert(s, 'info', 'Earth has cleared the pad. Next shuttle in 24 hours.'); }
+          if (s.shuttle.flight === 0) { s.nextShuttle = s.t; pushAlert(s, 'info', `Earth has cleared the pad. The first ${W.ship} is on its way.`); }
+          else { s.nextShuttle = s.t + 24; pushAlert(s, 'info', `Earth has cleared the pad. Next ${W.ship} in 24 hours.`); }
         }
       }
     }
@@ -982,9 +1070,10 @@ export function tick(s: State) {
     hit.damaged = true; hit.repair = 0; s.rev++; s.stats.strikes++;
     pushAlert(s, 'bad', `Micrometeorite strike. ${BUILDINGS[hit.type].name} is offline until repaired.`);
   }
+  if (!W.dawnNews && !s.strikes.length) s.strikes.push(s.t + 600 + rnd(s) * 500);   // where no sunrise brings the next ones
 
   // Missions: the crew asks, the player delivers, Earth pays.
-  const m = MISSIONS[s.mission];
+  const m = missions(s)[s.mission];
   if (m && m.done(s)) {
     earn(s, m.reward);
     pushAlert(s, 'good', `${m.goal}: done. Earth pays ${m.reward} credits.`, m.who);
@@ -1005,14 +1094,14 @@ export function tick(s: State) {
   if (f.offline > 0) alertOnce(s, 'short', 'warn', `Power shortfall. ${f.offline} building${f.offline > 1 ? 's' : ''} shut down.`, 60);
   if (s.materials < 0) alertOnce(s, 'debt', 'warn', 'The base is in debt. Nothing new will be built until it is back in credit.', 120);
 
-  if (before < LIGHT - 60 && after >= LIGHT - 60) {
+  if (W.warn > 0 && before < LIGHT - W.warn && after >= LIGHT - W.warn) {
     const need = nightNeed(s), have = f.battCap;
     pushAlert(s, have >= need ? 'info' : 'warn', have >= need
       ? 'Sunset in 60 hours. Battery capacity is enough for life support.'
       : `Sunset in 60 hours. Life support needs ${Math.round(need)} kWh for the night and you can store ${Math.round(have)}.`);
   }
-  if (before < LIGHT && after >= LIGHT) pushAlert(s, 'info', `Sunset. The night lasts ${Math.round(LUNAR_DAY - LIGHT)} hours. Foundries, farms and rovers rest until sunrise.`);
-  if (after < before) {
+  if (W.dawnNews && before < LIGHT && after >= LIGHT) pushAlert(s, 'info', `Sunset. The night lasts ${Math.round(W.day - LIGHT)} hours. Foundries, farms and rovers rest until sunrise.`);
+  if (W.dawnNews && after < before) {
     pushAlert(s, 'good', `Sunrise. Day ${dayNumber(s.t)} on the Moon.`);
     s.strikes.push(s.t + 190 + rnd(s) * 110, s.t + 420 + rnd(s) * 180);
   }
