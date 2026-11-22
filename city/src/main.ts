@@ -13,8 +13,13 @@ import { ORES } from './sim/world';
 import { Hud, UiState, Tool, zoneOf, stateLine } from './ui/hud';
 
 declare const LIVE: boolean;
-const PRACTICE_RATE = LUNAR_DAY / 900;      // one lunar day in 15 minutes at 1x
-const SAVE_KEY = 'lunarark.tranquility.v5';
+/** The world a practice game is set on. A live town's world is the server's to say. */
+declare const WORLD: 'moon' | 'mars';
+// One lunar day in 15 minutes at 1x on the Moon. A Mars practice game runs at the shared world's own pace,
+// an hour every fifteen seconds, so a sol is six minutes there as it will be on the server.
+const PRACTICE_RATE = WORLD === 'mars' ? 1 / 15 : LUNAR_DAY / 900;
+const FIRST_SEED = WORLD === 'mars' ? 2199 : 1969;
+const SAVE_KEY = WORLD === 'mars' ? 'lunarark.arcadia.v1' : 'lunarark.tranquility.v5';
 const KEY = 'lunarark.key';                 // the company's key, set by the Moon page
 
 /** Which of the plots it was offered the company will found on. */
@@ -75,9 +80,10 @@ const load = (): State | null => {
 const save = (s: State) => { if (LIVE) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch { /* storage is optional */ } };
 
 async function boot(hot: any) {
+  if (!LIVE) document.body.dataset.world = WORLD;   // so the first page shown is the right world's
   const stage = document.getElementById('stage')!;
   const view = await View.create(stage);
-  let s: State = createState();
+  let s: State = createState(FIRST_SEED, WORLD);
   const ui: UiState = { tool: null, selected: null, speed: 0, hint: '', overlay: false };
   let hover: { x: number; y: number } | null = null;
   let heldSpeed = 1, helpOpen = false;
@@ -212,7 +218,7 @@ async function boot(hot: any) {
   });
 
   function begin(from: State | null) {
-    s = from ?? createState();
+    s = from ?? createState(FIRST_SEED, WORLD);
     s.netDirty = true; refresh(s);
     ui.tool = null; ui.selected = null; ui.speed = LIVE || (from && from.t > 0) ? 1 : 0; hover = null; ended = false; running = true; acc = 0; helpOpen = false;
     view.scale = window.innerWidth < 820 ? 0.7 : 1;

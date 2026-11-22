@@ -6,12 +6,14 @@
     "test": "test"
   },
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --minify --format=iife --target=es2020 --define:LIVE=false --loader:.png=dataurl --loader:.jpg=dataurl --outfile=dist/game.js && cp src/index.html dist/index.html",
-    "dev": "esbuild src/main.ts --bundle --format=iife --sourcemap --define:LIVE=false --loader:.png=dataurl --loader:.jpg=dataurl --outfile=dist/game.js --servedir=dist --watch",
+    "build": "esbuild src/main.ts --bundle --minify --format=iife --target=es2020 --define:LIVE=false --define:WORLD='\"moon\"' --loader:.webp=dataurl --loader:.png=dataurl --loader:.jpg=dataurl --outfile=dist/game.js && cp src/index.html dist/index.html",
+    "dev": "esbuild src/main.ts --bundle --format=iife --sourcemap --define:LIVE=false --define:WORLD='\"moon\"' --loader:.webp=dataurl --loader:.png=dataurl --loader:.jpg=dataurl --outfile=dist/game.js --servedir=dist --watch",
     "check": "tsc --noEmit",
     "test": "esbuild test/bot.ts --bundle --platform=node --outfile=dist/bot.cjs --log-level=warning && node dist/bot.cjs",
     "build:engine": "esbuild src/engine.ts --bundle --minify --format=iife --target=es2020 --outfile=../sim/src/sim/town_engine.js",
-    "build:live": "rm -rf ../web/town/art && esbuild src/main.ts --bundle --minify --format=iife --target=es2020 --define:LIVE=true --loader:.png=file --loader:.jpg=file --asset-names=art/[name]-[hash] --entry-names=game --outdir=../web/town && cp src/index.html ../web/town/index.html"
+    "build:live": "rm -rf ../web/town/art && esbuild src/main.ts --bundle --minify --format=iife --target=es2020 --define:LIVE=true --define:WORLD='\"moon\"' --loader:.webp=file --loader:.png=file --loader:.jpg=file --asset-names=art/[name]-[hash] --entry-names=game --outdir=../web/town && cp src/index.html ../web/town/index.html",
+    "build:mars": "rm -rf ../web/mars/art && esbuild src/main.ts --bundle --minify --format=iife --target=es2020 --define:LIVE=false --define:WORLD='\"mars\"' --loader:.webp=file --loader:.png=file --loader:.jpg=file --asset-names=art/[name]-[hash] --entry-names=game --outdir=../web/mars && cp src/index.html ../web/mars/index.html",
+    "dev:mars": "esbuild src/main.ts --bundle --format=iife --sourcemap --define:LIVE=false --define:WORLD='\"mars\"' --loader:.webp=dataurl --loader:.png=dataurl --loader:.jpg=dataurl --outfile=dist/game.js --servedir=dist --watch"
   },
   "keywords": [],
   "author": "",

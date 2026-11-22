@@ -105,6 +105,43 @@ import market_3NightPng from './market_3_night.png';
 import printer_2NightPng from './printer_2_night.png';
 // @ts-ignore a picture, resolved by the bundler
 import printer_3NightPng from './printer_3_night.png';
+// @ts-ignore a picture, resolved by the bundler
+import mars_arcadia_hq from './mars/arcadia_hq.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_corridor_hab from './mars/corridor_hab.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_solar_array from './mars/solar_array.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_megapack_battery from './mars/megapack_battery.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_kilopower from './mars/kilopower.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_moxie_o2 from './mars/moxie_o2.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_scrubber_recycler from './mars/scrubber_recycler.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_cryo_tank_farm from './mars/cryo_tank_farm.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_basalt_printer from './mars/basalt_printer.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_biodome from './mars/biodome.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_lander_pad from './mars/lander_pad.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_areology_lab from './mars/areology_lab.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_drone_garage from './mars/drone_garage.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_medbay_shelter from './mars/medbay_shelter.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_commons_lounge from './mars/commons_lounge.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_ice_drill from './mars/ice_drill.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_wind_thermal from './mars/wind_thermal.webp';
+// @ts-ignore a picture, resolved by the bundler
+import mars_sabatier_plant from './mars/sabatier_plant.webp';
+
 // glow: what is lit at night (windows, lamps, furnaces), on black, the same size as the picture. Added over it when the building has power.
 // levels[0] is the picture from level 2, levels[1] from level 3.
 export interface Art { url: string; glow?: string; ax: number; ay: number; k: number; top: number; levels?: Art[]; }
@@ -126,4 +163,30 @@ export const ART: Partial<Record<BuildingType, Art>> = {
   watertank: { url: watertankPng as string, glow: watertankNightPng as string, ax: 176/352, ay: 257/361, k: 0.5, top: 38 },
   pad: { url: padPng as string, glow: padNightPng as string, ax: 432/864, ay: 288/520, k: 0.5, top: 14 },
   garden: { url: gardenPng as string, glow: gardenNightPng as string, ax: 304/608, ay: 345/513, k: 0.5, top: 44 },
+};
+
+/**
+ * Mars: Chetan's Arcadia set, drawn for the same camera. One picture per building; a grown building wears a level mark.
+ * ax, ay and k come from how the pictures were placed on his own grid (96 by 48 tiles), carried to this one (64 by 32).
+ */
+export const MARS_ART: Partial<Record<BuildingType, Art>> = {
+  lander: { url: mars_arcadia_hq as string, ax: 0.5, ay: 0.690, k: 0.162, top: 23 },
+  habitat: { url: mars_corridor_hab as string, ax: 0.5, ay: 0.772, k: 0.205, top: 26 },
+  solar: { url: mars_solar_array as string, ax: 0.5, ay: 0.752, k: 0.158, top: 50 },
+  battery: { url: mars_megapack_battery as string, ax: 0.5, ay: 0.733, k: 0.106, top: 26 },
+  reactor: { url: mars_kilopower as string, ax: 0.5, ay: 0.748, k: 0.200, top: 62 },
+  o2plant: { url: mars_moxie_o2 as string, ax: 0.5, ay: 0.738, k: 0.200, top: 50 },
+  recycler: { url: mars_scrubber_recycler as string, ax: 0.5, ay: 0.733, k: 0.106, top: 31 },
+  o2tank: { url: mars_cryo_tank_farm as string, ax: 0.5, ay: 0.660, k: 0.074, top: 8 },
+  watertank: { url: mars_cryo_tank_farm as string, ax: 0.5, ay: 0.660, k: 0.074, top: 8 },
+  printer: { url: mars_basalt_printer as string, ax: 0.5, ay: 0.660, k: 0.148, top: 12 },
+  greenhouse: { url: mars_biodome as string, ax: 0.5, ay: 0.674, k: 0.154, top: 20 },
+  pad: { url: mars_lander_pad as string, ax: 0.5, ay: 0.697, k: 0.249, top: 31 },
+  lodge: { url: mars_areology_lab as string, ax: 0.5, ay: 0.665, k: 0.150, top: 27 },
+  garage: { url: mars_drone_garage as string, ax: 0.5, ay: 0.656, k: 0.146, top: 8 },
+  clinic: { url: mars_medbay_shelter as string, ax: 0.5, ay: 0.748, k: 0.200, top: 42 },
+  market: { url: mars_commons_lounge as string, ax: 0.5, ay: 0.660, k: 0.148, top: 8 },
+  drill: { url: mars_ice_drill as string, ax: 0.5, ay: 0.678, k: 0.156, top: 31 },
+  wind: { url: mars_wind_thermal as string, ax: 0.5, ay: 0.772, k: 0.124, top: 42 },
+  sabatier: { url: mars_sabatier_plant as string, ax: 0.5, ay: 0.669, k: 0.152, top: 24 },
 };

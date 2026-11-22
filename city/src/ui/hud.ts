@@ -3,8 +3,8 @@
 // Plain DOM over the canvas. It reads state and reports clicks; it changes nothing itself.
 
 import { BUILDINGS, BUILD_MENU, BuildingType, ZONES, ZONE_COST } from '../sim/buildings';
-import { MISSIONS } from '../sim/missions';
-import { FOUNDRY_KG, Plot, PlotKey,
+import { missions } from '../sim/missions';
+import { FOUNDRY_KG, Plot, PlotKey, dayHours, world,
   State, Building, LUNAR_DAY, SHUTTLE_EVERY, TIERS, aliveCount, dayNumber, lightHours, hoursToSunrise, hoursToSunset,
   PRICES, needs, bedsOf, habAt, jobsOf, drawOf, isNight, nightCover, nightNeed, phaseOf, population, support, tierOf,
 } from '../sim/sim';
@@ -64,11 +64,17 @@ const SWATCH: Record<BuildingType, string> = {
   lander: '#d2a84c', conduit: '#b9b4d6', solar: '#3f6fc4', battery: '#3f8f63', reactor: '#ff8a3d', habitat: '#e2ded5',
   o2plant: '#69b4e3', recycler: '#3a9bb0', o2tank: '#b5def4', watertank: '#4a78dc', printer: '#b47a3f', greenhouse: '#58b874', pad: '#8a8799',
   lodge: '#e8c9a0', market: '#86b6ff', garage: '#9aa3ad', garden: '#3fa66a', clinic: '#f4f1ea',
+  drill: '#7fd0e8', wind: '#c8c2b4', sabatier: '#e0a04a',
 };
 const BAR: Record<string, string> = {
   conduit: 'Conduit', solar: 'Solar', battery: 'Battery', habitat: 'Habitat', o2plant: 'O2 Plant', recycler: 'Recycler',
   o2tank: 'O2 Tank', watertank: 'Water Tank', printer: 'Foundry', greenhouse: 'Greenhouse', pad: 'Landing Pad', reactor: 'Reactor',
   lodge: 'Lodge', market: 'Concourse', garage: 'Rover Bay', garden: 'Garden', clinic: 'Clinic',
+};
+/** Short names for the build bar on Mars, where they differ. */
+const MARS_BAR: Record<string, string> = {
+  battery: 'Megapack', reactor: 'Kilopower', o2plant: 'MOXIE', recycler: 'Scrubber', greenhouse: 'Bio-Dome', clinic: 'Med-Bay',
+  printer: 'Printer', lodge: 'Lab', market: 'Commons', drill: 'Ice Drill', wind: 'Wind', sabatier: 'Sabatier',
 };
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
 const FACE = ['#ffc15e', '#62d394', '#86b6ff', '#ff9a3d'];   // one colour per crew member
@@ -100,9 +106,10 @@ const ICON = {
 /** The build menu in five drawers. Zones come first because zoning is how the town grows. */
 const CATS: { id: string; name: string; icon: string; tools: Tool[] }[] = [
   { id: 'zones', name: 'Zones', icon: ICON.zones, tools: ['zone1', 'zone2', 'zone3', 'zone0'] },
-  { id: 'power', name: 'Power', icon: ICON.power, tools: ['conduit', 'solar', 'battery', 'reactor'] },
-  { id: 'life', name: 'Life support', icon: ICON.life, tools: ['habitat', 'o2plant', 'recycler', 'greenhouse', 'o2tank', 'watertank'] },
-  { id: 'transport', name: 'Transport', icon: ICON.transport, tools: ['pad', 'garage'] },
+  { id: 'power', name: 'Power', icon: ICON.power, tools: ['conduit', 'solar', 'wind', 'battery', 'reactor'] },
+  { id: 'life', name: 'Life support', icon: ICON.life, tools: ['habitat', 'drill', 'o2plant', 'recycler', 'greenhouse', 'o2tank', 'watertank'] },
+  // the Mars-only tools (wind, drill, sabatier) are in the drawers and hidden on the Moon
+  { id: 'transport', name: 'Transport', icon: ICON.transport, tools: ['pad', 'garage', 'sabatier'] },
   { id: 'community', name: 'Community', icon: ICON.community, tools: ['garden', 'clinic'] },
 ];
 const catOf = (t: Tool) => CATS.find(c => c.tools.includes(t))!.id;
@@ -115,6 +122,14 @@ const RES_NOTE: Record<string, string> = {
   o2: 'Oxygen in the tanks. Plants make it from regolith, and people breathe it day and night.',
   water: 'Water in the tanks. A recycler returns most of what people use.',
   food: 'Food in store. The shuttle feeds about nine, and each greenhouse about nine more.',
+};
+/** The same notes where Mars is different. */
+const MARS_NOTE: Record<string, string> = {
+  power: 'What the base makes right now against what it uses. Solar follows the Sun, gives nothing at night and a quarter in a dust storm. Wind and the reactor do not care.',
+  store: 'Battery charge. A night is twelve hours and easy. A dust storm is days, and this is what life support runs on when the arrays cannot keep up.',
+  o2: 'Oxygen in the tanks. MOXIE plants split it out of the carbon dioxide air by day, and people breathe it day and night.',
+  water: 'Water in the tanks. No ship brings any: Ice Drills raise it, a scrubber returns most of what people use, and Bio-Domes and the Sabatier Plant drink it too.',
+  food: 'Food in store. No ship brings any. Each Bio-Dome feeds about nine.',
 };
 const RES_NAME: Record<string, string> = { people: 'People', mat: 'Credits', power: 'Power', store: 'Storage', o2: 'Oxygen', water: 'Water', food: 'Food' };
 
@@ -152,11 +167,12 @@ export class Hud {
         el.type = 'button'; el.id = `tool-${t}`; el.dataset.cat = c.id;
         if (z > 0) { const zd = ZONES[z - 1]; el.className = 'tool zone'; el.innerHTML = `<i style="background:${zd.css}"></i><span class="tn">${esc(zd.short)}</span><span class="tz">${ZONE_COST} cr a tile</span>`; el.title = `Zone land for ${zd.name}: ${zd.desc}`; }
         else if (z === 0) { el.className = 'tool zone'; el.innerHTML = '<i style="background:#55526a"></i><span class="tn">Unzone</span><span class="tz">clear</span>'; el.title = 'Clear zoning from empty land'; }
-        else { const bt = t as BuildingType, d = BUILDINGS[bt], k = KEYS[BUILD_MENU.indexOf(bt)]; el.className = 'tool'; el.innerHTML = `<i style="background:${SWATCH[bt]}"></i><span class="tn">${esc(BAR[bt] ?? d.name)}</span><span class="tc">${d.cost}</span>${k ? `<kbd>${k}</kbd>` : ''}`; el.title = `${d.name}: ${d.effect}`; }
+        else { el.className = 'tool'; }   // named and priced by labelTools, for the world the town stands on
         el.addEventListener('click', () => h.pickTool(t));
         tray.appendChild(el);
       }
     }
+    this.labelTools('moon');
     // ----- left rail: crew, then drawers -----
     const rail = $('rail');
     const railBtn = (id: DrawerId, inner: string, label: string, title: string) => {
@@ -218,7 +234,28 @@ export class Hud {
 
   keyTool(key: string): BuildingType | null {
     const i = KEYS.indexOf(key);
-    return i >= 0 && i < BUILD_MENU.length ? BUILD_MENU[i] : null;
+    const t = i >= 0 && i < BUILD_MENU.length ? BUILD_MENU[i] : null;
+    return t && !BUILDINGS[t].hidden ? t : null;
+  }
+
+  /** Name, price and show the building tools for a world. The catalogue has already been set for it by the rules. */
+  private worldSeen = '';
+  private labelTools(world: string) {
+    if (world === this.worldSeen) return;
+    this.worldSeen = world;
+    const mars = world === 'mars';
+    for (const bt of BUILD_MENU) {
+      const el = document.getElementById(`tool-${bt}`); if (!el) continue;
+      const d = BUILDINGS[bt], k = KEYS[BUILD_MENU.indexOf(bt)];
+      el.hidden = d.hidden;
+      el.innerHTML = `<i style="background:${SWATCH[bt]}"></i><span class="tn">${esc((mars ? MARS_BAR[bt] : undefined) ?? BAR[bt] ?? d.name)}</span><span class="tc">${d.cost}</span>${k ? `<kbd>${k}</kbd>` : ''}`;
+      el.title = `${d.name}: ${d.effect}`;
+    }
+    for (const z of ZONES) { const el = document.getElementById(`tool-zone${z.z}`); if (el && mars) el.title = `Zone land for ${z.name}: ${z.desc.replace(/Regolith Foundries/g, 'Basalt Printers').replace(/Visitor Lodges/g, 'Areology Labs').replace(/Concourses/g, 'Commons')}`; }
+    document.title = mars ? 'Arcadia' : 'Tranquility';
+    const brand = document.querySelector('.brand b'); if (brand) brand.textContent = mars ? 'Arcadia' : 'Tranquility';
+    const box = document.querySelector<HTMLElement>('.moonbox'); if (box) box.style.display = mars ? 'none' : '';
+    document.body.dataset.world = world;
   }
 
   /** A click on the map: the message preview and any resource detail close. Drawers stay, they were opened on purpose. */
@@ -259,19 +296,23 @@ export class Hud {
     if (!id) return;
     const r = this.res[id], chip = $(`g-${id}`).getBoundingClientRect(), app = $('app').getBoundingClientRect();
     box.dataset.tone = r.tone;
-    box.innerHTML = `<p class="eyebrow">${RES_NAME[id]}</p><h2>${esc(r.value)}</h2><p class="rs">${esc(r.sub)}</p><div class="gb"><i style="width:${Math.round(Math.max(0, Math.min(1, r.frac)) * 100)}%"></i></div><p class="rn">${RES_NOTE[id]}</p>`;
+    box.innerHTML = `<p class="eyebrow">${RES_NAME[id]}</p><h2>${esc(r.value)}</h2><p class="rs">${esc(r.sub)}</p><div class="gb"><i style="width:${Math.round(Math.max(0, Math.min(1, r.frac)) * 100)}%"></i></div><p class="rn">${(document.body.dataset.world === 'mars' ? MARS_NOTE[id] : undefined) ?? RES_NOTE[id]}</p>`;
     box.style.left = `${Math.max(12, Math.min(app.width - 276, chip.left - app.left + chip.width / 2 - 132))}px`;
   }
 
   update(s: State, ui: UiState) {
-    const f = s.flows, night = isNight(s.t), ph = phaseOf(s.t);
+    const f = s.flows, night = isNight(s.t), ph = phaseOf(s.t), mars = s.world === 'mars';
+    this.labelTools(s.world ?? 'moon');
     $('phase').textContent = night ? 'Night' : 'Day';
     $('phase').className = night ? 'night' : 'day';
     // On the shared world the hours are the world's, so say what they are on a watch as well.
     const real = (h: number) => s.pace ? ` · ${Math.max(1, Math.round(h / s.pace))} min` : '';
     $('countdown').textContent = s.phase !== 'playing' ? 'Mission over' : night ? `Sunrise in ${num(hoursToSunrise(s.t))} h${real(hoursToSunrise(s.t))}` : `Sunset in ${num(hoursToSunset(s.t))} h${real(hoursToSunset(s.t))}`;
-    $('hour').textContent = `Lunar day ${dayNumber(s.t)} · hour ${num(ph)} of ${LUNAR_DAY}`;
-    this.moon(ph, night, s.plot?.lon, s.plot?.lat);
+    // Mars keeps a clock people can read: the Sun rises at six. The Moon's day is too long for one, so it counts hours.
+    const clock = (6 + (ph * 24) / dayHours()) % 24, hh = Math.floor(clock), mm = Math.floor((clock - hh) * 60);
+    $('hour').textContent = mars ? `Sol ${dayNumber(s.t)} · ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} local` : `Lunar day ${dayNumber(s.t)} · hour ${num(ph)} of ${LUNAR_DAY}`;
+    if (!mars) this.moon(ph, night, s.plot?.lon, s.plot?.lat);
+    if (!s.plot?.name) { const pl = document.getElementById('place'); if (pl) pl.textContent = mars ? 'Arcadia Planitia' : 'Mare Tranquillitatis'; }
     this.time0 = s.t === 0;
     const ev = eventLine(s), evEl = $('event');
     evEl.hidden = !ev; if (ev) { evEl.textContent = ev.text; evEl.dataset.tone = ev.tone; }
@@ -350,7 +391,7 @@ export class Hud {
 
   /** Messages from the crew. A new one shows a short preview beside the face, then stays as a badge until it is read. */
   private messages(s: State) {
-    const u = urgent(s), m = MISSIONS[s.mission], now = performance.now();
+    const u = urgent(s), m = missions(s)[s.mission], now = performance.now();
     this.advTool = u ? u.tool ?? (u.zone ? (`zone${u.zone}` as Tool) : null) : null; this.advOff = u?.off ?? null; this.advOn = u?.on ?? null;
     this.misTool = m ? m.tool ?? (m.zone ? (`zone${m.zone}` as Tool) : null) : null;
     this.curMis = s.mission;
@@ -396,7 +437,7 @@ export class Hud {
 
   /** Badges and the little demand meter on the rail. A green count is unread messages, as in a chat app. */
   private rail(s: State, ui: UiState) {
-    const u = urgent(s), m = MISSIONS[s.mission], nd = needs(s);
+    const u = urgent(s), m = missions(s)[s.mission], nd = needs(s);
     const blocked = ZONES.some(z => s.want[z.key] > 0.15 && !!s.block[z.key]);
     const unmet = nd.some(q => !q.met), soon = s.deals.some(d => d.due - s.t < 40);
     const unread = this.drawer === 'log' ? 0 : s.alerts.filter(a => a.id > this.seenAlert).length;
@@ -549,14 +590,14 @@ export class Hud {
     } else if (id === 'log') {
       html = `${head('Log')}<ul class="log">${[...s.alerts].reverse().map(a => `<li data-tone="${a.level}"><time>D${dayNumber(a.t)} ${String(Math.floor(phaseOf(a.t))).padStart(3, '0')}</time><span>${a.who !== undefined ? `${esc(s.crew[a.who].name.split(' ')[0])}: ` : ''}${esc(a.msg)}</span></li>`).join('')}</ul>`;
     } else {
-      const i = Number(id.slice(4)), c = s.crew[i], u = urgent(s), m = MISSIONS[s.mission];
+      const i = Number(id.slice(4)), c = s.crew[i], u = urgent(s), m = missions(s)[s.mission];
       const tone = !c.alive ? 'bad' : c.health < 35 ? 'bad' : c.health < 70 ? 'warn' : 'ok';
       const stamp = (t: number) => `Day ${dayNumber(t)} · hour ${Math.floor(phaseOf(t))}`;
       const msgs: string[] = [];
       if (u && u.who === i) { const lb = this.actLabel(u.tool, u.zone, u.off, u.on, true); msgs.push(`<li class="msg" data-kind="urgent"><span class="mm">Urgent</span><b>${esc(u.title)}</b><p>${esc(u.why)}</p>${lb ? `<button type="button" class="nb" data-act="adv">${esc(lb)}</button>` : ''}</li>`); }
-      if (m && m.who === i) { const ok = m.tool ? s.materials >= BUILDINGS[m.tool].cost : true, lb = this.actLabel(m.tool, m.zone, undefined, undefined, ok); msgs.push(`<li class="msg" data-kind="ask"><b>${esc(m.goal)}</b><p class="say">${esc(m.say)}</p>${lb ? `<button type="button" class="nb${ok ? '' : ' wait'}" data-act="mis">${esc(lb)}</button>` : ''}<span class="mm"><em>+${m.reward} credits</em> · mission ${s.mission + 1} of ${MISSIONS.length}</span></li>`); }
+      if (m && m.who === i) { const ok = m.tool ? s.materials >= BUILDINGS[m.tool].cost : true, lb = this.actLabel(m.tool, m.zone, undefined, undefined, ok); msgs.push(`<li class="msg" data-kind="ask"><b>${esc(m.goal)}</b><p class="say">${esc(m.say)}</p>${lb ? `<button type="button" class="nb${ok ? '' : ' wait'}" data-act="mis">${esc(lb)}</button>` : ''}<span class="mm"><em>+${m.reward} credits</em> · mission ${s.mission + 1} of ${missions(s).length}</span></li>`); }
       for (const a of [...s.alerts].reverse()) if (a.who === i) msgs.push(`<li class="msg" data-tone="${a.level}"><p>${esc(a.msg)}</p><time>${stamp(a.t)}</time></li>`);
-      const done = MISSIONS.slice(0, s.mission).map((q, k) => ({ q, k })).filter(x => x.q.who === i).slice(-3).reverse();
+      const done = missions(s).slice(0, s.mission).map((q, k) => ({ q, k })).filter(x => x.q.who === i).slice(-3).reverse();
       for (const d of done) msgs.push(`<li class="msg" data-kind="done">✓ ${esc(d.q.goal)}</li>`);
       html = `${head(c.name)}<p class="sub">${esc(c.role)} · health ${c.alive ? Math.ceil(c.health) : 0}</p><div class="hp" data-tone="${tone}"><i style="width:${c.health}%"></i></div>
         <h3 style="margin-top:12px">Report</h3><p class="txt">${esc(c.alive ? this.report(s, i) : 'Lost.')}</p>
@@ -566,7 +607,7 @@ export class Hud {
     const now = performance.now();
     // What the drawer is made of (which messages, which offers, which reasons) redraws at once. Numbers ticking over wait a few seconds,
     // so a button is never swapped out from under the pointer.
-    const u2 = urgent(s), m2 = MISSIONS[s.mission], ci = id.startsWith('crew') ? Number(id.slice(4)) : -1;
+    const u2 = urgent(s), m2 = missions(s)[s.mission], ci = id.startsWith('crew') ? Number(id.slice(4)) : -1;
     const struct = ci >= 0 ? `${u2 && u2.who === ci ? u2.title : ''}|${m2 && m2.who === ci ? `${s.mission}:${m2.tool ? s.materials >= BUILDINGS[m2.tool].cost : ''}` : ''}|${s.alerts.filter(a => a.who === ci).length}`
       : id === 'towns' ? `${(ui.league ?? []).map(t => t.company).join()}|${ui.plot?.name}`
       : id === 'money' ? `${s.price}|${ui.yard ? [Math.floor(ui.yard.held_kg / 10), Math.round(ui.yard.make_kg_per_hour), ui.yard.bid, ui.yard.sell, ui.yard.open, ui.yard.sold_kg, ui.yard.ship.here, ui.yard.full, ui.yard.parts?.wear, ui.yard.parts?.keep_t, ui.yard.parts?.buy, ui.yard.parts?.bought_kg, ui.yard.parts?.on_order_kg, Math.round(ui.yard.parts?.kg_per_hour ?? 0)].join() : ''}|${ui.caretaker ? `${ui.caretaker.on}${Math.floor(ui.caretaker.paid / 1000)}` : ''}` : id === 'deals' ? `${s.offer?.title}|${s.deals.length}` : id === 'demand' ? ZONES.map(z => s.block[z.key]).join() : id === 'log' ? `${this.lastAlert}` : '';
@@ -610,7 +651,7 @@ export class Hud {
         if (b.damaged && b.repair === 0) acts.push(`<button type="button" class="primary" data-act="repair" data-uid="${b.uid}">Repair · ${repairCost(b)} credits</button>`);
         if (b.type !== 'lander') acts.push(`<button type="button" class="danger" data-act="demolish" data-uid="${b.uid}">Demolish · refund ${b.progress < 1 ? d.cost : Math.floor(d.cost / 2)}</button>`);
         let now = '', read = '';   // `now` is live status worth seeing at once; `read` waits behind More
-        if (b.type === 'pad') read = `<p>Flights so far: ${s.stats.flights}. A shuttle comes every ${SHUTTLE_EVERY} hours while the pad has power.</p>`;
+        if (b.type === 'pad') read = `<p>Flights so far: ${s.stats.flights}. A ${world().ship} comes every ${world().shuttleEvery} hours while the pad has power.</p>`;
         if (b.type === 'garage') { const mine = s.rovers.filter(r => r.bay === b.uid); now = `<p>${mine.map(r => r.phase === 'idle' ? 'In the bay' : `${r.phase === 'back' ? 'Returning from' : 'Out to'} ${esc(s.pois[r.poi].name)}${r.pax ? ` with ${r.pax} visitor${r.pax > 1 ? 's' : ''}` : ', survey run'}`).join('. ')}.</p>`; }
         if (b.type === 'printer') { const o = s.ore[b.y * s.size + b.x] || s.ore[(b.y + 1) * s.size + b.x + 1], r = richOf(s, b); if (r > 0 && o) now = `<p class="effect">On ${esc(ORES[o - 1].name.toLowerCase())}: ${s.cargo ? 'makes' : 'earns'} ${Math.round(r * 100)}% more.</p>`; else read = `<p>Plain regolith. A foundry on a survey find ${s.cargo ? 'makes' : 'earns'} more.</p>`;
           if (s.cargo) { now += `<p class="effect">${s.cargo.room <= 0 ? 'Standing idle: the yard is full.' : `Makes ${FOUNDRY_KG} kg of goods an hour a level into the yard, when fully staffed.`}</p>`; } }
@@ -677,7 +718,22 @@ export class Hud {
     const acts = inGame ? `<button type="button" class="primary" id="m-back">Back to the base</button><button type="button" id="m-new">Start over</button>`
       : resume ? `<button type="button" class="primary" id="m-resume">Continue: lunar day ${dayNumber(saved!.t)}, ${population(saved!)} people</button><button type="button" id="m-new">New landing</button>`
       : `<button type="button" class="primary" id="m-new">Begin</button>`;
-    m.innerHTML = `<div class="card">
+    const mars = document.body.dataset.world === 'mars' || saved?.world === 'mars';
+    m.innerHTML = mars ? `<div class="card">
+      <p class="eyebrow">Lunar Ark · Arcadia Planitia, Mars</p>
+      <h1>Arcadia</h1>
+      <p class="lede"><b>Plan a town on Mars.</b> You land with four crew on the northern plains, on top of a buried glacier. You build the base and zone the land around it. If the conditions are right, people and companies come and build on it themselves. Nothing else comes: no water, no food, no spare air.</p>
+      <ol class="brief">
+        <li><b>You build the base.</b> Power, the first habitat, an ice drill, oxygen, a Bio-Dome, the landing pad, rovers. Pick a category at the bottom, then a building, then click the ground.</li>
+        <li><b>You zone, they build.</b> Paint land for Habitat, Industry and Commercial. Your graders level it, then settlers, companies and institutes build there at their own cost when the base wants it. The Demand meter on the left rail shows what is wanted and what stands in the way.</li>
+        <li><b>Mars feeds itself or it dies.</b> Water comes from Ice Drills, food from Bio-Domes, air from MOXIE plants. A transport brings up to eight people at a time and not one litre for them to drink.</li>
+        <li><b>The night is short. The dust is not.</b> A sol is a little over 24 hours, so the dark is twelve and a battery covers it. A dust storm leaves the arrays a quarter of their power for days. Batteries, wind or a reactor have to carry life support through it.</li>
+        <li><b>Where you put things matters.</b> Dust, noise and reactors drive people away. Bio-Domes, a Med-Bay and crater views draw them in. Press <kbd>H</kbd> for the habitability map. Your rovers find ore, and a printer standing on it earns far more.</li>
+        <li><b>Things go wrong.</b> After the first few sols expect dust storms, solar storms, breaches and late transports. Spare beds, reserves and a little money in hand are what get you through.</li>
+      </ol>
+      <p class="keys">A green badge on a crew face means a message. Click the face to read it and for a report. Each request pays credits · click any number at the top for its detail · everything must touch the base, zoned land or a conduit · the clock starts with your first move and runs at the shared world's pace: one hour every fifteen seconds, a sol in six minutes · <kbd>Space</kbd> pauses · 4× and 8× speed up time · drag to move the map · scroll to zoom · <kbd>?</kbd> reopens this page</p>
+      <div class="acts">${acts.replace('lunar day', 'sol')}</div>
+    </div>` : `<div class="card">
       <p class="eyebrow">Lunar Ark · Mare Tranquillitatis</p>
       <h1>Tranquility</h1>
       <p class="lede"><b>Plan a town on the Moon.</b> You land with four crew and one lander, a short drive from where Apollo 11 touched down. You build the base and zone the land around it. If the conditions are right, people and companies come and build on it themselves.</p>
