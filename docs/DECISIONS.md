@@ -2701,6 +2701,121 @@ plots, the switch, the pad grant, the watch, and the archive. The city's
 bot test passes. The switch and the archive were each rehearsed on a
 world file written by the previous code.
 
+### D94 — The town rules take a world, and Mars is the second one
+
+*Direction from Chetan, 22 November 2026,* after the review of his Mars
+colony page and the rest of lunarark.com: "i think mars town game first ..
+it has to be playable like the moon town game is, right now the art and
+look is nice and well thought of but game play is missing ... things need
+to be same like time and sun day night clock propelent, constraints. go
+ahead and make that game better".
+
+His Mars page has the look and no game: nothing can die, credits come from
+nothing, and it runs on an engine and rules of its own. The answer is not
+a second game. It is the same rules on another world's numbers, drawn with
+his pictures.
+
+**1. One set of rules, and a world is the numbers they run on.**
+`city/src/sim/sim.ts` has a `World` (length of day, how dark the night is,
+how often a ship comes and what it carries, what the sky does to sunlight)
+and a table of two, `moon` and `mars`. A town's state says which world it
+stands on; a state that says nothing is a Moon town. `ground(s)`, which
+already set a town's own night at every way into the rules (D85), now sets
+its world too, and swaps the building catalogue to that world's names and
+numbers.
+
+- *A Moon town is exactly what it was.* The bot's whole play log on the
+  Moon (three lunar days, every hour's choices) is byte for byte the log
+  from before this change. All 438 server tests pass on the rebuilt engine.
+- Margins that were written in hours of a lunar day ("60 hours before
+  sunset") go through `span()`, which scales them to the world's day.
+
+**2. Mars, as rules.** What the planet changes, and nothing else:
+
+| | Moon | Mars |
+|---|---|---|
+| Day | 708 h, night 354 h by latitude | a sol of 24.66 h, about 12.3 h dark |
+| The hard thing | the long night | dust storms: a quarter of the sunlight for days, then dust on every array |
+| Ships | a shuttle every 60 h, 4 berths, food and water aboard | a transport every 120 h, 8 berths, no food and no water |
+| Water | recycled, topped up by shuttle | an Ice Drill, or the tank runs dry |
+| Food | shuttle, then greenhouse | the Bio-Dome only |
+| Solar array | 12 kW | 5 kW (sunlight at Mars is 43% of the Moon's) |
+| Reactor | one, large | a Twin Kilopower, 20 kW |
+| New buildings | | Ice Drill, Wind Turbine, Sabatier Plant |
+| Visitors | tourists in lodges | scientists on rotation in labs |
+
+The crew's 21 missions on Mars teach it in that order: power, air, water,
+food, a second habitat before the pad (a transport's eight settlers need
+beds the night they land), storage for three sols of dust, then growth.
+Doing nothing loses at hour 197. Following the crew, five seeds over 1,500
+hours all keep four crew and finish every mission, with 73 to 128 people
+and three dust storms each.
+
+**3. Arcadia is where the Mars town stands.** His pictures are of Arcadia
+Planitia, so the town is "Arcadia" and its lander is Arcadia Command. This
+is a call made under his art, not one he stated. `seed-data.md` still
+lists Tharsis Yards and Hellas Agricultural as the Mars nodes and the
+orbital tables are cut for them; nothing there was touched. Which list
+wins is open item 33, and it has to be answered before Mars gets a port.
+
+**4. His pictures draw it.** Eighteen building pictures, two rovers and
+six rocks from his Mars page are in `city/src/art/mars/` and stand on the
+same ground, lighting and horizon as the Moon (D87, D88), with rust soil
+and a butterscotch sky. Pictures are loaded for the world the town is on,
+so a Moon player downloads none of them.
+
+**5. Staging, and what this version is not.** Three steps, each playable:
+
+- **M1, this change.** The rules, the look, and a page to play it on:
+  `play.lunarark.com/mars/`. It is a practice page. It runs in the browser
+  at the world's pace (240x, one game hour in 15 seconds) but on a clock
+  and a Sun of its own, its credits are play credits, and it saves in the
+  browser. It is not yet "the same time and Sun", and it says so here
+  rather than pretending.
+- **M2.** A Mars town on the server: the shared clock, the Sun over
+  Arcadia from sky time, dust storms that are the world's and not a town's
+  own dice, founding on Mars, money in and out through the ledger as on
+  the Moon, and the towns list filtered by body so the Moon globe shows
+  only Moon towns.
+- **M3.** A port at Arcadia, a market, propellant as real cargo that ships
+  carry and burn, and lanes between worlds.
+
+**6. Propellant is play money until M3, and the server refuses it.** A
+Sabatier plant on the practice page earns 0.9 credits an hour from air and
+water. On a ledger that would be credits from nothing: invariant 3 forbids
+it and there is no sink to name for invariant 7. So the three Mars
+buildings are hidden on the Moon, every town the server holds is a Moon
+town, and a test asserts that no town in the shared world can place one.
+When Mars reaches the server the plant must make propellant as cargo, sold
+to a buyer at a price, and burned by ships. That is the design work of M3.
+
+**Invented outright, all of it tuned by playing and none of it from
+`seed-data.md`.** Practice-page numbers only until M2 puts them on a
+ledger, which is when they need his eye:
+
+- The sol's split: 12.33 h dark, 1.6 h of dusk carried on battery.
+- Transports every 120 h with 8 berths. First tried at 180 h and 12; the
+  48 real minutes between ships was too long to wait.
+- Dust storms: every other event the world sends is one. The first lasts
+  50 hours, later ones 70 to 200 (three to eight sols), each with 24 hours
+  of warning, sunlight at 0.25, and dust on the arrays for 48 hours after
+  (12 with a working rover bay). The first event comes at hour 120.
+- Ice Drill 35 cr, 5 kW, 0.5 kg water an hour, more on icy ground. Wind
+  Turbine 25 cr, 1.5 kW day and night. Sabatier Plant 90 cr, 8 kW, 0.9 cr
+  and 0.2 kg water an hour, two jobs.
+- Twin Kilopower 150 cr for 20 kW. Without it a Mars town was a sea of
+  arrays; with it the advisor says to build one past eight arrays.
+- Bio-Dome habitability (+20 within 5.5 tiles); the Sabatier and the
+  drill as bad neighbours (-14 within 4, -8 within 3).
+- "Ready for three sols of dust" is 72 hours of stored power.
+- Mission rewards, 20 to 400 cr, on the Moon's scale.
+
+**Checked.** The city's bot test has seven new checks on Mars and all 24
+pass. The Mars page was played in a headless browser by the steward for
+500 game hours with no errors. The live Moon town was replayed in a
+browser against a local server: plots, founding, pad, grant and first
+shuttle all as before.
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -2785,6 +2900,18 @@ Deliberately not decided, because these are yours.
 32. **The numbers D93 invented** — morning 90 hours, list held 60, offers
     open 40 real minutes, first-pad grant 40,000, watch after 10 minutes
     for 12 hours. Play it and say what is too generous or too tight.
+33. **Which Mars is the Mars** — D94. The town stands at Arcadia because
+    your pictures are of Arcadia. The trade tables still say Tharsis Yards
+    and Hellas Agricultural. One list has to win before Mars gets a port:
+    rename a node to Arcadia, add Arcadia as a third, or move the town.
+34. **Mars's numbers** — D94. Every one was invented to make it play:
+    transports every 30 real minutes with eight berths, storms at a
+    quarter light, the Twin Kilopower at 150. Play `/mars/` and say what
+    is too easy or too cruel before they go on the ledger.
+35. **What propellant is worth** — D94. On the practice page a Sabatier
+    plant pays 0.9 credits an hour from nothing. On the server it must be
+    cargo with a buyer. Who buys it, at which port, and is Mars the only
+    place that makes it or does the Moon make it from ice too (item 15)?
 27. **Should the Moon page be look-only by its own address too?** — D91.
     *Resolved by D92:* everyone watches, and trading waits for a landing
     pad wherever the page is opened from.
