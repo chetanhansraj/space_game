@@ -302,6 +302,8 @@ async function boot(hot: any) {
   }, { passive: false });
 
   window.addEventListener('keydown', e => {
+    // Escape closes the help page or an offer left for later, as it closes everything else.
+    if (running && helpOpen && e.key === 'Escape') { (document.getElementById('m-back') ?? document.getElementById('o-later'))?.click(); return; }
     if (!running || helpOpen || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === '?') { e.preventDefault(); document.getElementById('btn-help')!.click(); return; }
     if (e.key === ' ') { e.preventDefault(); if (LIVE) say('The town keeps the world\'s time. It cannot be paused.'); else ui.speed = ui.speed ? 0 : 1; return; }
@@ -314,6 +316,7 @@ async function boot(hot: any) {
   document.addEventListener('visibilitychange', () => { if (document.hidden && running) save(s); last = performance.now(); });
 
   // ----- loop -----
+  let heard = '';   // the storm forecast the clock last slowed for
   function frame(now: number) {
     const dt = Math.min(0.25, (now - last) / 1000); last = now;
     if (running && s.phase === 'playing' && ui.speed > 0) {
@@ -323,6 +326,11 @@ async function boot(hot: any) {
       // runs past the hour the server is about to announce.
       while (acc >= TICK && steps < 120 && (!LIVE || s.t < serverT + 1 - TICK / 2)) { tick(s); acc -= TICK; steps++; }
       if (steps === 120 || (LIVE && acc > 1)) acc = 0;
+      // Practice only: a storm forecast is the one thing with a deadline, and at eight times speed a day of
+      // warning is 45 seconds. The clock drops back to the world's own pace so the warning can be used.
+      const e = s.event, forecast = e && (e.kind === 'haze' || e.kind === 'storm') && s.t < e.from ? `${e.kind}:${e.from}` : '';
+      if (!LIVE && forecast && forecast !== heard && ui.speed > 1) { ui.speed = 1; say('Storm forecast. Back to 1× so there is time to get ready.', 6000); }
+      if (forecast) heard = forecast;
     }
     if (running && s.phase !== 'playing' && !ended) { ended = true; ui.tool = null; hover = null; save(s); window.setTimeout(() => hud.ending(s), 900); }
     if (ui.hint && now > hintUntil) ui.hint = '';

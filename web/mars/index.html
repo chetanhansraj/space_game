@@ -346,14 +346,15 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
   .brand b { font-size: 16px; } .brand { margin-right: auto; }
   #btn-map { font-size: 0; } #btn-map::after { content: "Map"; font-size: 11px; }
   .speed button, #btn-help, #btn-map { min-width: 27px; height: 28px; padding: 0 5px; }
-  .res { order: 3; flex-basis: 100%; margin: 0; } .chip { height: 32px; padding: 0 9px 3px; gap: 5px; } .chip .cv { font-size: 16px; }
-  .respop { top: 92px; left: 10px !important; right: 10px; width: auto; }
-  .rail { top: 92px; left: 8px; width: 50px; } .rb { width: 44px; } .rb .face { width: 26px; height: 26px; }
-  .leftcol { top: 92px; left: 64px; right: 10px; width: auto; max-height: 48%; z-index: 3; }
+  /* Seven numbers do not fit one row of a phone, and the ones that fell off the edge were water and food. Two rows, nothing hidden. */
+  .res { order: 3; flex-basis: 100%; margin: 0; flex-wrap: wrap; overflow: visible; } .chip { flex: 1 1 22%; justify-content: center; height: 30px; padding: 0 4px 3px; gap: 5px; } .chip .cv { font-size: 14px; }
+  .respop { top: 124px; left: 10px !important; right: 10px; width: auto; }
+  .rail { top: 124px; left: 8px; width: 50px; } .rb { width: 44px; } .rb .face { width: 26px; height: 26px; }
+  .leftcol { top: 124px; left: 64px; right: 10px; width: auto; max-height: 48%; z-index: 3; }
   .bubble { left: 64px; width: auto; right: 10px; }
   .alerts { top: auto; bottom: 150px; }
   .right { top: auto; left: 64px; right: 10px; bottom: 132px; width: auto; max-height: 34%; z-index: 2; }
-  .time { top: 92px; right: 10px; bottom: auto; gap: 3px 8px; } .moon { width: 50px; height: 50px; padding: 4px; } .moonbox .mv, .moonbox .mn, #hour { display: none; } #phase { font-size: 18px; } #countdown { font-size: 10px; }
+  .time { top: 124px; right: 10px; bottom: auto; gap: 3px 8px; } .moon { width: 50px; height: 50px; padding: 4px; } .moonbox .mv, .moonbox .mn, #hour { display: none; } #phase { font-size: 18px; } #countdown { font-size: 10px; }
   .cat { min-width: 62px; padding: 6px 6px 4px; } .tool kbd { display: none; } .tool { padding-right: 10px; }
   .roll, .stats { grid-template-columns: 1fr 1fr; }
 }
@@ -424,6 +425,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 </div>
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.22.0/dist/pixi.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.22.0/dist/packages/unsafe-eval.min.js"></script>
-<script src="game.js?v=20261122a"></script>
+<script src="game.js?v=20261122b"></script>
 </body>
 </html>
