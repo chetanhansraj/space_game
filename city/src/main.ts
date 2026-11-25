@@ -7,7 +7,7 @@
 // forward locally only so that the picture keeps moving. It never decides anything.
 
 import { BUILDINGS, BuildingType } from './sim/buildings';
-import { State, Intent, createState, tick, apply, refresh, placeProblem, siteProblem, zoneProblem, touchesBase, TICK, LUNAR_DAY, bedsOf, jobsOf, drawOf, habAt, isNight } from './sim/sim';
+import { State, Intent, createState, tick, apply, refresh, placeProblem, siteProblem, siteWarning, tileRing, zoneProblem, touchesBase, TICK, LUNAR_DAY, bedsOf, jobsOf, drawOf, habAt, isNight } from './sim/sim';
 import { View } from './view/view';
 import { ORES } from './sim/world';
 import { Hud, UiState, Tool, zoneOf, stateLine } from './ui/hud';
@@ -75,7 +75,13 @@ declare global { interface Window { claude?: { hot?: { snapshot(fn: () => unknow
 
 const load = (): State | null => {
   if (LIVE) return null;
-  try { const raw = localStorage.getItem(SAVE_KEY); const s = raw ? JSON.parse(raw) : null; return s && s.v === 5 ? s : null; } catch { return null; }
+  try {
+    const raw = localStorage.getItem(SAVE_KEY); const s = raw ? JSON.parse(raw) : null;
+    if (!s || s.v !== 5) return null;
+    // A practice town saved before the pad's blast zone (D96) gets its notice here: 60 game hours, a quarter of an hour.
+    if (s.blast === undefined) { s.blast = s.t + 60; s.alerts.push({ id: s.nextAlert++, t: s.t, level: 'warn', msg: 'Earth has a new flight rule: a landing destroys what stands in the red ring round the pad and knocks offline what stands in the amber. It starts in 60 hours. Click the pad to see its rings.' }); }
+    return s;
+  } catch { return null; }
 };
 const save = (s: State) => { if (LIVE) return; try { localStorage.setItem(SAVE_KEY, JSON.stringify(s)); } catch { /* storage is optional */ } };
 
@@ -233,6 +239,7 @@ async function boot(hot: any) {
   const pts = new Map<number, { x: number; y: number }>();
   let down: { x: number; y: number; moved: boolean; button: number } | null = null;
   let pinch = 0, painting = false;
+  let warned = '';   // the site the player has just been warned about
   const local = (e: PointerEvent | WheelEvent) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const origin = (p: { x: number; y: number }, t: Tool) => {
     const tile = view.screenToTile(p.x, p.y);
@@ -245,6 +252,11 @@ async function boot(hot: any) {
     const o = origin(p, ui.tool), z = zoneOf(ui.tool);
     if (z >= 0) { if (quiet && zoneProblem(s, z, o.x, o.y)) return; send({ k: 'zone', z, x: o.x, y: o.y }); return; }
     if (quiet && siteProblem(s, ui.tool as BuildingType, o.x, o.y)) return;
+    // The rules warn and then allow (D96): the first click on a site a landing would wreck says what it will cost,
+    // the second builds it anyway. Dragging never builds into the rings.
+    const risk = siteProblem(s, ui.tool as BuildingType, o.x, o.y) ? null : siteWarning(s, ui.tool as BuildingType, o.x, o.y), key = `${ui.tool}:${o.x}:${o.y}`;
+    if (risk && (quiet || warned !== key)) { if (!quiet) { warned = key; say(`${risk} Click again to build it anyway.`, 7000); } return; }
+    warned = '';
     send({ k: 'place', type: ui.tool as BuildingType, x: o.x, y: o.y });
   };
 
@@ -341,12 +353,15 @@ async function boot(hot: any) {
       if (z >= 0) {
         const why = zoneProblem(s, z, hover.x, hover.y);
         ok = why && why !== 'Already zoned' ? 'bad' : 'ok';
-        if (now > hintUntil) ui.hint = why && why !== 'Already zoned' ? why : inMap(hover) ? tileHint(hover.y * s.size + hover.x, z) : '';
+        const ring = z > 0 && inMap(hover) ? tileRing(s, hover.x, hover.y) : null, shut = ring === 'red' || ring === 'hurt';
+        if (shut && !why) ok = 'warn';
+        if (now > hintUntil) ui.hint = why && why !== 'Already zoned' ? why : shut ? 'In the landing pad\'s blast zone. Nobody will build here.' : inMap(hover) ? tileHint(hover.y * s.size + hover.x, z) : '';
       } else {
         const why = placeProblem(s, ui.tool as BuildingType, hover.x, hover.y);
         const apart = !why && !touchesBase(s, ui.tool as BuildingType, hover.x, hover.y);
-        ok = why ? 'bad' : apart ? 'warn' : 'ok';
-        if (now > hintUntil) ui.hint = why ?? (apart ? 'Not touching your base. It will do nothing here unless you link it with conduit.' : '');
+        const risk = why ? null : siteWarning(s, ui.tool as BuildingType, hover.x, hover.y);
+        ok = why ? 'bad' : apart || risk ? 'warn' : 'ok';
+        if (now > hintUntil) ui.hint = why ?? risk ?? (apart ? 'Not touching your base. It will do nothing here unless you link it with conduit.' : '');
       }
     } else if (look && now > hintUntil && inMap(look)) {
       const hit = mouse ? view.pick(s, mouse.x, mouse.y) : 0, b = s.buildings.find(q => q.uid === (hit || s.occ[look!.y * s.size + look!.x]));
