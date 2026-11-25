@@ -143,10 +143,14 @@ export const dustActive = (s: State) => !!s.event && s.event.kind === 'dust' && 
 /** A dust storm is overhead. */
 export const hazeActive = (s: State) => !!s.event && s.event.kind === 'haze' && s.t >= s.event.from && s.t < s.event.to;
 /** The share of sunlight reaching the arrays now: all of it, or what a dust storm leaves. */
+/** Hours a dust storm's dust stays on the arrays: swept off sooner by a working rover bay. */
+export const dustHours = (s: State) => (s.buildings.some(b => b.type === 'garage' && b.progress >= 1 && b.connected && !b.damaged) ? HAZE_SWEPT : HAZE_DUST);
 export const hazeNow = (s: State) => (hazeActive(s) ? world().haze : 1);
 /** Is this solar array under dust: what a hard landing threw up, or what a storm left on every array there is? */
 export function dusty(s: State, b: Building): boolean {
-  if (!dustActive(s) || !BUILDINGS[b.type].solar) return false;
+  if (!BUILDINGS[b.type].solar) return false;
+  if ((b.dust ?? 0) > s.t) return true;   // what the last landing threw over it (D96)
+  if (!dustActive(s)) return false;
   if (world().haze < 1) return true;
   const pad = s.buildings.find(q => q.type === 'pad');
   return !!pad && Math.hypot(b.x + BUILDINGS[b.type].w / 2 - (pad.x + 1.5), b.y + BUILDINGS[b.type].h / 2 - (pad.y + 1.5)) < DUST_RADIUS;

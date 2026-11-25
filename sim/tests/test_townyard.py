@@ -305,6 +305,8 @@ def test_earth_takes_parts_at_the_anchor_and_no_more_than_its_order(town):
         g.step()
     for firm in g.world.firms:
         firm.also_consumes = None
+    # ... and the town itself, which bids for parts when it runs short
+    g.town_policy(player, False, ANCHOR, buy=False)
     for _ in range(6):
         g.step()
     assert book.best_bid(YARD_ASSET) == ANCHOR
@@ -601,7 +603,7 @@ def test_a_town_short_of_parts_bids_at_the_port_just_above_the_rest(town):
     g, player = town
     account = short_town(g, player)
     g.town_policy(player, True, ANCHOR, keep_t=3)
-    wallet = cash(g, player.account)
+    last = g.db.execute("SELECT COALESCE(MAX(id), 0) FROM txn").fetchone()[0]
     g.step()
     mine = bids(g, account)
     assert len(mine) == 1
@@ -612,7 +614,18 @@ def test_a_town_short_of_parts_bids_at_the_port_just_above_the_rest(town):
     # paid for in full when placed, out of the company's own credits
     paid = order["price"] * towngame.PARTS_ORDER_LOTS
     assert cash(g, account) == 0
-    assert cash(g, player.account) <= wallet - paid + 5000
+    # Read from the ledger, not from the balance: the same hour may bring a
+    # sale or a reward in, and how much depends on the town that was played.
+    locked = g.db.execute(
+        "SELECT SUM(p.amount) FROM posting p JOIN txn t ON t.id = p.txn_id "
+        "WHERE t.kind = 'escrow_lock' AND t.ref = ? AND p.amount > 0",
+        (order["id"],)).fetchone()[0]
+    assert locked == paid
+    spent = -g.db.execute(
+        "SELECT COALESCE(SUM(amount), 0) FROM posting WHERE txn_id > ? "
+        "AND account_id = ? AND asset = ? AND amount < 0",
+        (last, player.account, CREDIT)).fetchone()[0]
+    assert spent >= paid
     y = yard(g, player)["parts"]
     assert y["buy"] and y["on_order_kg"] == order["remaining_kg"]
     # and it is renewed, not stacked: an hour later there is still one

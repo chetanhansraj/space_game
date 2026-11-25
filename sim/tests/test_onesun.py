@@ -300,3 +300,48 @@ def test_a_fund_that_cannot_pay_the_grant_owes_it_until_it_can(routes):
     g.step()
     assert tuple(grants(g, person.id)) == (1, PAD_GRANT)
     g.db.close()
+
+
+# -- the landing pad's blast zone (D96) ----------------------------------------------
+
+def test_a_town_from_before_the_blast_zone_is_given_three_days_notice_once(routes):
+    """A landing now destroys what stands in the red ring round a pad. Every
+    town built before that has its pad among its buildings, because nothing
+    said not to. Each is given notice, once, and a letter: nothing is taken
+    until the hour its own state names."""
+    from voice.letters import render_letter
+    g = fresh(routes)
+    a, b = (g.signup(name)[0] for name in ("Pad Co", "Other Pad Co"))
+    g.found_town(a)
+    g.found_town(b)
+    assert json.loads(g._town_row(a.id)["state"])["blast"] == 0, \
+        "a new town is under the rule from its first hour"
+    for pid in (a.id, b.id):                       # towns from before it
+        s = json.loads(g._town_row(pid)["state"])
+        del s["blast"]
+        g.db.execute("UPDATE town SET state = ? WHERE player_id = ?",
+                     (json.dumps(s), pid))
+    g.db.execute("DELETE FROM world_meta WHERE key = 'blast_zone'")
+    g.db.commit()
+    minted = g.world.ledger.credits_in_existence()
+    with g._mutation():
+        g._to_blast_zone()
+    starts = {}
+    for pid in (a.id, b.id):
+        s = json.loads(g._town_row(pid)["state"])
+        assert s["blast"] == s["t"] + towngame.BLAST_NOTICE
+        starts[pid] = s["blast"]
+    assert g._real_minutes(towngame.BLAST_NOTICE) == 3 * 24 * 60, "three real days"
+    assert g.world.ledger.credits_in_existence() == minted, "notice costs nothing"
+    letters = [m for m in g.inbox(g.player(a.id)) if m["kind"] == "town_blast_notice"]
+    assert len(letters) == 1
+    text = " ".join(render_letter(letters[0])["body"])
+    assert "3 days" in text and "red ring" in text and "Pad Co" in text
+    # once: a second pass moves no one's hour and writes no second letter
+    with g._mutation():
+        g._to_blast_zone()
+    for pid in (a.id, b.id):
+        assert json.loads(g._town_row(pid)["state"])["blast"] == starts[pid]
+    assert len([m for m in g.inbox(g.player(a.id))
+                if m["kind"] == "town_blast_notice"]) == 1
+    g.db.close()

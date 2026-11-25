@@ -4,7 +4,7 @@
 
 import { BUILDINGS, BuildingType, ZONE_COST, words } from '../sim/buildings';
 import { missions } from '../sim/missions';
-import { State, darkHours, carryHours, ESSENTIAL, POWER_MARGIN, drawOf, hoursToSunrise, hoursToSunset, isNight, nightCover, population, sunFactor, span, stormCover } from '../sim/sim';
+import { State, darkHours, carryHours, ESSENTIAL, POWER_MARGIN, drawOf, hoursToSunrise, hoursToSunset, isNight, nightCover, population, sunFactor, span, stormCover, padOf, inBlast, blastOn } from '../sim/sim';
 import { repairCost, stormFix } from '../sim/world';
 
 export interface Advice { who: number; title: string; why: string; tool?: BuildingType; zone?: number; off?: BuildingType[]; on?: BuildingType[]; }
@@ -13,9 +13,24 @@ const ASHA = 0, KENJI = 1, LENA = 2, RAFAEL = 3;
 const r0 = (n: number) => Math.round(n).toLocaleString('en-US');
 const left = (stock: number, rate: number) => (rate < -1e-6 ? stock / -rate : Infinity);
 
-export function urgent(s: State): Advice | null {
-  const a = advise(s);
+/**
+ * The one thing the crew most wants done now. `layout` adds, when nothing else is pressing, advice about where
+ * things stand (a pad among the buildings). The steward asks without it: he moves the pad by his own rule.
+ */
+export function urgent(s: State, layout = true): Advice | null {
+  const a = advise(s) ?? (layout ? padAdvice(s) : null);
   return a && { ...a, title: words(a.title), why: words(a.why) };
+}
+
+/** The pad stands among the buildings: say so before the next ship does. (D96) */
+function padAdvice(s: State): Advice | null {
+  const pad = padOf(s);
+  if (s.phase !== 'playing' || !pad || s.blast === undefined) return null;
+  const hit = inBlast(s, pad.x, pad.y), n = hit.lost.length + hit.hurt.length;
+  if (!n) return null;
+  const first = hit.lost[0] ?? hit.hurt[0], wait = blastOn(s) ? '' : ` Earth's new flight rule starts in ${Math.round(s.blast - s.t)} hours. If the pad still stands here then, Earth moves it clear for us, once, at no charge.`;
+  return { who: KENJI, title: 'The pad is too close to the base',
+    why: `A ship lands on its exhaust. ${hit.lost.length ? `${hit.lost.length} building${hit.lost.length === 1 ? '' : 's'}, the ${BUILDINGS[first.type].name} among them, will be destroyed by the next landing` : `${hit.hurt.length} building${hit.hurt.length === 1 ? '' : 's'}, the ${BUILDINGS[first.type].name} among them, will be knocked offline by every landing`}.${wait} Click the pad to see its rings. ${blastOn(s) ? 'Move what stands in the red and amber, or demolish the pad and build it well clear with a conduit out to it.' : 'To choose the ground ourselves, demolish the pad and build it well clear with a conduit out to it.'}` };
 }
 
 function advise(s: State): Advice | null {

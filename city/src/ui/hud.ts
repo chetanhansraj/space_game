@@ -5,7 +5,7 @@
 import { BUILDINGS, BUILD_MENU, BuildingType, ZONES, ZONE_COST, words } from '../sim/buildings';
 import { missions } from '../sim/missions';
 import { FOUNDRY_KG, Plot, PlotKey, dayHours, world,
-  State, Building, LUNAR_DAY, SHUTTLE_EVERY, TIERS, aliveCount, dayNumber, lightHours, hoursToSunrise, hoursToSunset,
+  State, Building, LUNAR_DAY, SHUTTLE_EVERY, TIERS, BLAST_DUST_HOURS, blastRing, blastOn, inBlast, aliveCount, dayNumber, lightHours, hoursToSunrise, hoursToSunset,
   PRICES, needs, bedsOf, habAt, jobsOf, drawOf, isNight, nightCover, nightNeed, phaseOf, population, support, tierOf,
 } from '../sim/sim';
 import { ORES, dusty, eventLine, rawTiles, repairCost, richOf } from '../sim/world';
@@ -665,7 +665,8 @@ export class Hud {
       const beds = ui.tool === 'pad' && spare < w.berths
         ? `<p class="state" data-tone="warn">A ${w.ship} carries up to ${w.berths} settlers and there ${spare === 1 ? 'is a free bed' : 'are free beds'} for ${spare}. Build ${Math.ceil((w.berths - spare) / 4)} more ${esc(BUILDINGS.habitat.name)}${w.berths - spare > 4 ? 's' : ''} first, or it lands part empty.</p>` : '';
       key += `:${beds.length}`;
-      html = `<p class="eyebrow">Placing</p><h2>${esc(d.name)}</h2><p class="effect">${esc(d.effect)}</p>${beds}
+      const rings = ui.tool === 'pad' ? '<p class="state" data-tone="warn">A ship lands on its exhaust. Red ring: destroyed by every landing. Amber: knocked offline. Green: dust on solar arrays. Stand the pad off on its own and run a conduit out to it.</p>' : '';
+      html = `<p class="eyebrow">Placing</p><h2>${esc(d.name)}</h2><p class="effect">${esc(d.effect)}</p>${rings}${beds}
         <dl><div><dt>Cost</dt><dd>${d.cost} cr</dd></div><div><dt>Upkeep</dt><dd>${d.upkeep}/h</dd></div><div><dt>Build</dt><dd>${d.buildHours} h</dd></div><div><dt>Size</dt><dd>${d.w} × ${d.h}</dd></div></dl>
         ${more(`<p>${esc(d.desc)}</p>${codex(ui.tool as BuildingType)}`)}<div class="acts"><button type="button" data-act="cancel" data-uid="0">Stop placing <kbd>Esc</kbd></button></div>`;
     } else if (ui.selected !== null) {
@@ -683,7 +684,14 @@ export class Hud {
         if (b.type === 'garage') { const mine = s.rovers.filter(r => r.bay === b.uid); now = `<p>${mine.map(r => r.phase === 'idle' ? 'In the bay' : `${r.phase === 'back' ? 'Returning from' : 'Out to'} ${esc(s.pois[r.poi].name)}${r.pax ? ` with ${r.pax} visitor${r.pax > 1 ? 's' : ''}` : ', survey run'}`).join('. ')}.</p>`; }
         if (b.type === 'printer') { const o = s.ore[b.y * s.size + b.x] || s.ore[(b.y + 1) * s.size + b.x + 1], r = richOf(s, b); if (r > 0 && o) now = `<p class="effect">On ${esc(ORES[o - 1].name.toLowerCase())}: ${s.cargo ? 'makes' : 'earns'} ${Math.round(r * 100)}% more.</p>`; else read = `<p>Plain regolith. A foundry on a survey find ${s.cargo ? 'makes' : 'earns'} more.</p>`;
           if (s.cargo) { now += `<p class="effect">${s.cargo.room <= 0 ? 'Standing idle: the yard is full.' : `Makes ${FOUNDRY_KG} kg of goods an hour a level into the yard, when fully staffed.`}</p>`; } }
-        if (dusty(s, b)) now = '<p class="effect">Coated in dust from a hard landing: half power until it is swept off.</p>';
+        { // the pad's blast zone (D96)
+          const ring = blastRing(s, b), soon = blastOn(s) ? '' : s.blast !== undefined ? ` The rule starts in ${Math.ceil(s.blast - s.t)} hours.` : '';
+          if (ring === 'red') now += `<p class="state" data-tone="bad">In the pad's blast zone. The next landing will destroy it.${soon}</p>`;
+          else if (ring === 'hurt') now += `<p class="state" data-tone="warn">Close to the pad. Every landing knocks it offline until it is repaired.${soon}</p>`;
+          else if (ring === 'dust' && d.solar) now += `<p class="effect">Within reach of the pad's dust: half power for ${BLAST_DUST_HOURS} hours after every landing.${soon}</p>`;
+          if (b.type === 'pad') { const hit = inBlast(s, b.x, b.y); now += `<p class="${hit.lost.length || hit.hurt.length ? 'state" data-tone="bad' : 'effect'}">${hit.lost.length || hit.hurt.length ? `${hit.lost.length} building${hit.lost.length === 1 ? '' : 's'} in the red ring and ${hit.hurt.length} in the amber. Move them, or move the pad.${soon}` : 'Nothing stands in its rings.'}</p>`; }
+        }
+        if (dusty(s, b)) now = `<p class="effect">${(b.dust ?? 0) > s.t ? `Coated in dust from the last landing: half power for ${Math.ceil((b.dust ?? 0) - s.t)} more hours. It stands within reach of the pad.` : 'Coated in dust: half power until it is swept off.'}</p>`;
         key = `b:${b.uid}:${st.text}:${night}:${b.on}:${b.level}:${hab}:${b.asleep}:${Math.floor(s.materials) >= repairCost(b)}:${now}:${this.more}`;
         html = `<button type="button" class="x" data-act="close" data-uid="0" aria-label="Close">×</button><p class="eyebrow">${esc(d.cluster)}</p><h2>${esc(d.name)}${d.zone && b.type !== 'greenhouse' ? ` · level ${b.level}` : ''}</h2><p class="state" data-tone="${b.asleep ? 'dim' : st.tone}">${esc(b.asleep ? 'Resting to save the batteries' : st.text)}</p>
           ${now}<dl>${draw ? `<div><dt>Draw now</dt><dd>${draw} kW</dd></div>` : ''}${d.gen ? `<div><dt>Output</dt><dd>${d.solar ? 'follows the Sun' : d.gen + ' kW'}</dd></div>` : ''}${beds ? `<div><dt>Beds</dt><dd>${beds}</dd></div>` : ''}${jobs ? `<div><dt>Jobs</dt><dd>${jobs}</dd></div>` : ''}<div><dt>Habitability</dt><dd>${hab}</dd></div></dl>

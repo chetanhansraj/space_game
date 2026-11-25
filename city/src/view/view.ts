@@ -31,7 +31,7 @@ import type { Texture as Tex } from './pixi';
 import { ART, MARS_ART, Art } from '../art/art';
 import { BUILDINGS, BuildingType, ZONES } from '../sim/buildings';
 import { ORES, hazeActive } from '../sim/world';
-import { State, GROUND, SIZE, sunFactor, population, phaseOf, lightHours, dayHours, span } from '../sim/sim';
+import { State, GROUND, SIZE, BLAST, padOf, blastRing, sunFactor, population, phaseOf, lightHours, dayHours, span } from '../sim/sim';
 
 const TW = 64, TH = 32;
 // Zoomed far out, a picture is drawn many times smaller than it was made. Smaller copies are kept ready so it does not sparkle.
@@ -464,6 +464,32 @@ export class View {
         gh.poly([a[0], a[1], b[0], b[1], c[0], c[1], e[0], e[1]]).fill({ color: col, alpha: 0.38 });
       }
       this.outline(gh, hover.x, hover.y, d.w, d.h, col, 2);
+    }
+    // The landing pad's blast zone: round the pad being placed, round the pad that stands while anything else is
+    // being placed, and round it when the pad, or something standing in its rings, is selected. (D96)
+    const pad = padOf(s), sel = selected ? s.buildings.find(b => b.uid === selected) : null;
+    if (tool === 'pad' && hover) this.drawBlast(gh, s, hover.x, hover.y);
+    else if (pad && (tool || (sel && (sel.type === 'pad' || blastRing(s, sel))))) this.drawBlast(gh, s, pad.x, pad.y);
+  }
+
+  /** Red at the pad, through amber, to a green that fades out: destroyed, knocked offline, dusted. */
+  private drawBlast(g: Graphics, s: State, px: number, py: number) {
+    const cx = px + 1.5, cy = py + 1.5, R = Math.ceil(BLAST.dust) + 1, n = s.size;
+    const mix = (a: number, b: number, k: number) => { const f = (sh: number) => Math.round(((a >> sh) & 255) + (((b >> sh) & 255) - ((a >> sh) & 255)) * k); return (f(16) << 16) | (f(8) << 8) | f(0); };
+    for (let y = Math.max(0, Math.floor(cy - R)); y < Math.min(n, cy + R); y++) for (let x = Math.max(0, Math.floor(cx - R)); x < Math.min(n, cx + R); x++) {
+      if (x >= px && x < px + 3 && y >= py && y < py + 3) continue;
+      const dx = Math.max(x - cx, 0, cx - (x + 1)), dy = Math.max(y - cy, 0, cy - (y + 1)), r = Math.hypot(dx, dy);
+      if (r >= BLAST.dust) continue;
+      const col = r < BLAST.red ? 0xff3b30 : r < BLAST.hurt ? mix(0xff5a2a, 0xffc53d, (r - BLAST.red) / (BLAST.hurt - BLAST.red)) : mix(0xd8d84a, 0x3ecf6e, (r - BLAST.hurt) / (BLAST.dust - BLAST.hurt));
+      const alpha = r < BLAST.red ? 0.42 : r < BLAST.hurt ? 0.34 : 0.26 * (1 - (r - BLAST.hurt) / (BLAST.dust - BLAST.hurt)) + 0.05;
+      const a = iso(x, y), b = iso(x + 1, y), c = iso(x + 1, y + 1), e = iso(x, y + 1);
+      g.poly([a[0], a[1], b[0], b[1], c[0], c[1], e[0], e[1]]).fill({ color: col, alpha });
+    }
+    // the edge of what is destroyed and of what is damaged, as lines
+    for (const [rad, col] of [[BLAST.red, 0xff3b30], [BLAST.hurt, 0xffb020]] as const) {
+      const pts: number[] = [];
+      for (let k = 0; k <= 48; k++) { const an = (k / 48) * Math.PI * 2, q = iso(cx + Math.cos(an) * rad, cy + Math.sin(an) * rad); pts.push(q[0], q[1]); }
+      g.poly(pts).stroke({ color: col, width: 2 / this.scale, alpha: 0.9 });
     }
   }
 

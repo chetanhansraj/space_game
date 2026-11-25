@@ -9,7 +9,7 @@
 import { BUILDINGS, BuildingType, ZONES, ZONE_BUILDS, ZONE_COST } from './sim/buildings';
 import { MISSIONS, missions } from './sim/missions';
 import { urgent } from './ui/advisor';
-import { State, Intent, PRICES, ground, siteProblem, zoneProblem, habAt, aliveCount, population, support, isNight, world } from './sim/sim';
+import { State, Intent, PRICES, BLAST, ground, siteProblem, siteWarning, tileRing, inBlast, padOf, padSite, zoneProblem, habAt, aliveCount, population, support, isNight, world } from './sim/sim';
 
 /** The last of the crew's missions that needs a working foundry. A temperament that shuts foundries waits until it is done. */
 const lastFoundry = (list: typeof MISSIONS) => list.reduce((last, m, i) => (/foundry|Industry/.test(m.goal) ? i : last), -1);
@@ -46,7 +46,7 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
     let best: [number, number] | null = null, bestScore = Infinity;
     const at = (x: number, y: number) => x >= 0 && y >= 0 && x < n && y < n && (s.occ[y * n + x] > 0 || s.zone[y * n + x] > 0);
     for (let y = 0; y < n - d.h; y++) for (let x = 0; x < n - d.w; x++) {
-      if (siteProblem(s, type, x, y)) continue;
+      if (siteProblem(s, type, x, y) || siteWarning(s, type, x, y)) continue;   // not where a landing would take it (D96)
       let touch = false;
       for (let i = 0; i < d.w && !touch; i++) touch = at(x + i, y - 1) || at(x + i, y + d.h);
       for (let j = 0; j < d.h && !touch; j++) touch = at(x - 1, y + j) || at(x + d.w, y + j);
@@ -62,7 +62,7 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
     const d = BUILDINGS.reactor, n = s.size, c = n / 2;
     let site: [number, number] | null = null, bd = Infinity;
     for (let y = 1; y < n - d.h - 1; y++) for (let x = 1; x < n - d.w - 1; x++) {
-      if (siteProblem(s, 'reactor', x, y)) continue;
+      if (siteProblem(s, 'reactor', x, y) || siteWarning(s, 'reactor', x, y)) continue;
       let zoned = false; for (let j = -1; j <= d.h; j++) for (let i = -1; i <= d.w; i++) if (s.zone[(y + j) * n + x + i]) zoned = true;
       if (zoned) continue;
       const dist = Math.hypot(x - (c + 12), y - c);
@@ -102,6 +102,14 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
     return true;
   }
 
+  /** The pad stands off on its own, on the dusty side, with a conduit out to it: the rules know where (padSite). (D96) */
+  function placePad(s: State): boolean {
+    const d = BUILDINGS.pad, site = padSite(s);
+    if (!site) return false;
+    if (!linkSite(s, site[0], site[1], d.w, d.h, d.cost)) return false;
+    return apply(s, { k: 'place', type: 'pad', x: site[0], y: site[1] }).ok;
+  }
+
   /** Zone the best two-by-two block of a survey find for Industry, with a conduit out to it if it stands alone. */
   function zoneOre(s: State): boolean {
     const n = s.size, c = n / 2;
@@ -109,6 +117,7 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
     for (let y = 0; y < n - 1; y++) for (let x = 0; x < n - 1; x++) {
       const ks = [y * n + x, y * n + x + 1, (y + 1) * n + x, (y + 1) * n + x + 1];
       if (ks.some(k => s.zone[k] || s.occ[k] || s.ground[k] !== 0)) continue;
+      if (ks.some(k => { const r = tileRing(s, k % n, Math.floor(k / n)); return r === 'red' || r === 'hurt'; })) continue;
       const ore = ks.filter(k => s.ore[k]).length;
       if (ore < 3) continue;
       const score = ore * 10 - Math.hypot(x + 1 - c, y + 1 - c);
@@ -124,6 +133,7 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
     if (s.materials < BUILDINGS[t].cost) return false;
     if (t !== 'battery' && t !== 'solar' && s.buildings.some(b => b.type === t && b.progress < 1)) return false;   // one at a time
     if (t === 'reactor') return placeReactor(s);
+    if (t === 'pad') return placePad(s);
     const p = findSpot(s, t);
     return !!p && apply(s, { k: 'place', type: t, x: p[0], y: p[1] }).ok;
   };
@@ -151,7 +161,7 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
     const linked = (x: number, y: number) => x >= 0 && y >= 0 && x < n && y < n && s.linked[y * n + x] > 0;
     for (let y = 0; y < n - 1; y++) for (let x = 0; x < n - 1; x++) {
       let ok = true, touch = false;
-      for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) { if (zoneProblem(s, z, x + i, y + j)) ok = false; if (s.zone[(y + j) * n + x + i]) ok = false; }
+      for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) { if (zoneProblem(s, z, x + i, y + j)) ok = false; if (s.zone[(y + j) * n + x + i]) ok = false; const r = tileRing(s, x + i, y + j); if (r === 'red' || r === 'hurt') ok = false; }
       if (!ok) continue;
       for (let i = 0; i < 2; i++) touch = touch || linked(x + i, y - 1) || linked(x + i, y + 2) || linked(x - 1, y + i) || linked(x + 2, y + i);
       if (!touch) continue;
@@ -170,8 +180,18 @@ export function steward(apply: Apply, style: Style = {}): (s: State, keep?: bool
    */
   return (s: State, keep = false) => {
     ground(s);
-    const u = urgent(s), m = missions(s)[s.mission];
+    const u = urgent(s, false), m = missions(s)[s.mission];
     const count = (t: BuildingType) => s.buildings.filter(b => b.type === t).length;
+    // A pad that stands among the buildings: move it, once there is the money to. A town that has had a ship and
+    // has no pad builds one. This is what a house company does with the notice the old towns were given. (D96)
+    if (s.blast !== undefined) {
+      const pad = padOf(s);
+      if (pad && pad.progress >= 1 && s.shuttle.phase === 'away' && s.materials >= BUILDINGS.pad.cost + 25) {
+        const hit = inBlast(s, pad.x, pad.y);
+        if ((hit.lost.length || hit.hurt.length) && padSite(s, true)) { apply(s, { k: 'demolish', uid: pad.uid }); if (put(s, 'pad')) return; }
+      }
+      if (!padOf(s) && (s.stats.flights > 0 || s.nextShuttle > 0) && put(s, 'pad')) return;
+    }
     const answer = (why: string, z: number): boolean => {
       if (why === 'no zoned land') return zoneLot(s, z);
       if (why === 'night power') return s.mission > 9 && count('reactor') < 6 && s.materials >= 200 ? put(s, 'reactor') || put(s, 'battery') : s.mission > 9 && count('battery') >= 8 + 4 * count('reactor') ? false : put(s, 'battery');

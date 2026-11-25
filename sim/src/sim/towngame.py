@@ -236,6 +236,9 @@ WATCH_FOR = _ticks_in(12 * 3_600)
 #: The owner's last visit is written down at most this often: five real
 #: minutes. A visit is a read, and this keeps reads from becoming writes.
 SEEN_EVERY = _ticks_in(5 * 60)
+# A town that stood before the pad's blast zone existed is given this long
+# before a landing clears it (D96): three real days, in game hours.
+BLAST_NOTICE = _ticks_in(3 * 24 * 3_600)
 #: The order of a town's standing, for saying when it has grown. The rules
 #: own the names (city/src/sim TIERS); only their order is repeated here.
 TIER_RANK = {"Outpost": 0, "Base": 1, "Colony": 2, "Town": 3}
@@ -1171,6 +1174,11 @@ class TownOps:
             log.exception("the move to the one Sun failed at tick %d",
                           self.world.tick)
         try:
+            self._to_blast_zone()
+        except Exception:
+            log.exception("giving notice of the blast zone failed at tick %d",
+                          self.world.tick)
+        try:
             events += self._house_business(now)
         except Exception:
             log.exception("house business failed at tick %d", self.world.tick)
@@ -1223,6 +1231,51 @@ class TownOps:
                  row["player_id"]))
         self.db.execute(
             "INSERT INTO world_meta (key, value) VALUES ('one_sun', ?)",
+            (str(self.world.tick),))
+
+    def _to_blast_zone(self) -> None:
+        """Once, when a world gets the landing pad's blast zone (D96):
+        give every town that already stands its notice.
+
+        The rules now say a landing destroys what stands in the red ring
+        round a pad and knocks offline what stands in the amber. Every
+        town built before that has its pad among its buildings, because
+        nothing said not to. A town's state names the hour the rule
+        starts for it (`blast`). A new town has it from its first hour.
+        A town without it is not under the rule at all, so the safe thing
+        happens if this never runs.
+
+        Each living town gets BLAST_NOTICE hours from now, and its owner
+        a letter. The towns the world runs move their own pads: that is
+        in the steward's rules. A pad that still stands among buildings
+        when the notice ends is moved clear by the town rules themselves,
+        once and free (`standOff`): rehearsed on towns built the old way,
+        doing nothing lost ten to fourteen buildings at the first landing
+        and killed two towns in three. Nothing is paid and nothing is
+        taken here.
+        """
+        if self.db.execute("SELECT 1 FROM world_meta WHERE key = 'blast_zone'"
+                           ).fetchone():
+            return
+        for row in self.db.execute(
+                "SELECT * FROM town WHERE lost_tick IS NULL").fetchall():
+            state = json.loads(row["state"])
+            if "blast" in state:
+                continue
+            state["blast"] = state["t"] + BLAST_NOTICE
+            self.db.execute("UPDATE town SET state = ? WHERE player_id = ?",
+                            (json.dumps(state, separators=(",", ":")),
+                             row["player_id"]))
+            player = self.player(row["player_id"])
+            if not player.house:
+                self._message(player.id, "ark_development_office",
+                              "town_blast_notice",
+                              {"company": player.name,
+                               "hours": BLAST_NOTICE,
+                               "days": round(self._real_minutes(BLAST_NOTICE)
+                                             / 1_440)})
+        self.db.execute(
+            "INSERT INTO world_meta (key, value) VALUES ('blast_zone', ?)",
             (str(self.world.tick),))
 
     def town_seen(self, player) -> None:
