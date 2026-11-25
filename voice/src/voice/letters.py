@@ -361,6 +361,30 @@ def _town_pad_grant(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     ])
 
 
+def _town_blast_notice(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
+    days = d["days"]
+    when = "a day" if days <= 1 else f"{days} days"
+    return ("Your landing pad, and what stands near it", [
+        f"{d['company']}: Earth's flight safety office has set a rule for "
+        "every landing pad. A ship comes down on its exhaust, and the "
+        "exhaust throws rock at whatever stands close.",
+        f"In {when} ({d['hours']:,} hours on your town's clock) the rule "
+        "starts for you. From then, each landing destroys what stands in "
+        "the red ring round your pad and knocks offline what stands in "
+        "the amber ring. Solar arrays in the green ring are dusted for "
+        "some hours.",
+        "Click your pad to see its rings. If you would like to choose the "
+        "ground, demolish the pad and build it well clear of your town, "
+        "with a conduit out to it, before then.",
+        "If the pad still stands among your buildings when the rule "
+        "starts, our engineers will move it clear and run the conduit, "
+        "once, at no charge: your town was built that way when nothing "
+        "said not to. After that, what you build inside the red ring is "
+        "yours to lose.",
+        "Yusuf Brandt, Ark Development Office",
+    ])
+
+
 def _town_caretaker_left(d: dict, key: int, ctx: dict) -> tuple[str, list[str]]:
     return ("Your caretaker has left", [
         f"{d['company']}: the caretaker you hired for your town is paid "
@@ -375,6 +399,7 @@ _LETTERS = {
     "town_charter": _town_charter, "town_lost": _town_lost,
     "town_caretaker_left": _town_caretaker_left,
     "town_relief": _town_relief, "town_pad_grant": _town_pad_grant,
+    "town_blast_notice": _town_blast_notice,
     "base_departure": _base_departure,
     "welcome": _welcome, "charter": _charter, "offers": _offers,
     "arrival": _arrival, "contract_paid": _contract_paid,

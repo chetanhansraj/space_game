@@ -8,7 +8,7 @@
 import { BUILDINGS, BuildingType, WorldId, useWorld, words, ZONE, ZONE_BUILDS, ZONE_COST, ZONES } from './buildings';
 import { missions } from './missions';
 import { Offer, Deal, tickContracts, answerOffer } from './contracts';
-import { Grader, Find, GameEvent, EventKind, initWorld, lotLevel, tickGraders, richOf, oreLot, maybeFind, stormActive, hazeActive, dusty, hazeNow, tickEvents, repairCost, useOres } from './world';
+import { Grader, Find, GameEvent, EventKind, initWorld, lotLevel, tickGraders, richOf, oreLot, maybeFind, stormActive, hazeActive, dusty, dustHours, hazeNow, tickEvents, repairCost, useOres } from './world';
 
 export const LUNAR_DAY = 708;       // hours, sunrise to sunrise
 export const HALF = 354;            // hours of light, then hours of dark
@@ -104,6 +104,8 @@ export interface Building {
   level: number;         // 1..3, zoned buildings expand
   on: boolean; powered: boolean; connected: boolean; asleep: boolean;
   damaged: boolean; repair: number;   // hours of repair left, 0 when idle
+  /** Coated in dust from a landing until this hour (D96). */
+  dust?: number;
 }
 export interface Crew { name: string; role: string; health: number; alive: boolean; grit: number; }
 export type AlertLevel = 'info' | 'good' | 'warn' | 'bad';
@@ -208,6 +210,8 @@ export interface State {
   /** The world this town stands on. Missing is the Moon. Root docs/DECISIONS.md D94. */
   world?: WorldId;
   sun?: number;
+  /** The game hour from which a landing clears the pad's blast zone. Absent on a town from before the rule: not in force. D96. */
+  blast?: number;
   /** Game hours in a real minute, as the world runs. Absent in the practice game. Used only to size waits a person must answer. */
   pace?: number;
   mission: number; price: number; nextGrow: number;
@@ -220,7 +224,7 @@ export interface State {
   pops: Pop[]; nextPop: number;
   strikes: number[];
   phase: 'playing' | 'lost';
-  stats: { built: number; grown: number; upgrades: number; flights: number; strikes: number; peakCharge: number; trips: number; earned: number; lost: number; evacuated: number; peakPop: number; deals: number; broken: number; /** Dust storms come through. */ hazes?: number; finds: number; events: number };
+  stats: { built: number; grown: number; upgrades: number; flights: number; strikes: number; peakCharge: number; trips: number; earned: number; lost: number; evacuated: number; peakPop: number; deals: number; broken: number; blasted?: number; /** Dust storms come through. */ hazes?: number; finds: number; events: number };
 }
 
 export type Intent =
@@ -361,6 +365,7 @@ export function createState(seed = 1969, on: WorldId = 'moon'): State {
     flows: emptyFlows(), alerts: [], nextAlert: 1, cooldown: {}, pops: [], nextPop: 1,
     strikes: [], phase: 'playing',
     stats: { built: 0, grown: 0, upgrades: 0, flights: 0, strikes: 0, peakCharge: 40, trips: 0, earned: 0, lost: 0, evacuated: 0, peakPop: 4, deals: 0, broken: 0, finds: 0, events: 0 },
+    blast: 0,
   };
   ground(s);
   const mars = on === 'mars';
@@ -442,6 +447,10 @@ export function siteProblem(s: State, type: BuildingType, x: number, y: number, 
     if (!auto && s.zone[k]) return 'This land is zoned. Unzone it first';
   }
   if (type === 'pad' && s.buildings.some(b => b.type === 'pad')) return 'One landing pad is enough for now';
+  // The one thing the crew will not be talked into: a pad whose exhaust reaches the ship they live by.
+  if (type === 'pad') { const home = s.buildings.find(b => b.type === 'lander'), r = home && ringFrom(x, y, home); if (r === 'red' || r === 'hurt') return 'Too close to the lander: a landing here would wreck it'; }
+  // Nobody builds for themselves where a rocket will take it away.
+  if (auto) { const r = blastRing(s, { type, x, y }); if (r === 'red' || r === 'hurt') return 'In the landing pad\'s blast zone'; }
   if (type === 'reactor' || isQuarters(type)) {
     const [cx, cy] = centre({ type, x, y });
     for (const b of s.buildings) {
@@ -453,6 +462,168 @@ export function siteProblem(s: State, type: BuildingType, x: number, y: number, 
     }
   }
   return null;
+}
+
+// ----- the landing pad's blast zone (root docs/DECISIONS.md D96) -----
+/**
+ * A ship comes down on a column of exhaust that throws rock and dust sideways faster than a rifle bullet.
+ * Three rings round the pad, in tiles from its centre to the nearest part of a building:
+ *  - red: whatever stands here is destroyed when a ship lands.
+ *  - hurt: knocked offline until it is repaired.
+ *  - dust: solar arrays are coated and give half power for BLAST_DUST_HOURS.
+ * The pad itself, buried conduit and the crew's own ship are spared. Invented numbers, all of them.
+ */
+export const BLAST = { red: 3.5, hurt: 5.5, dust: 8 }, BLAST_DUST_HOURS = 12;
+export type Ring = 'red' | 'hurt' | 'dust';
+type Foot = { type: BuildingType; x: number; y: number };
+const SPARED = (type: BuildingType) => type === 'pad' || type === 'conduit' || type === 'lander';
+/** Which ring of a pad at (px, py) a footprint stands in, by its nearest edge. */
+export function ringFrom(px: number, py: number, b: Foot): Ring | null {
+  const p = BUILDINGS.pad, d = BUILDINGS[b.type], cx = px + p.w / 2, cy = py + p.h / 2;
+  const dx = Math.max(b.x - cx, 0, cx - (b.x + d.w)), dy = Math.max(b.y - cy, 0, cy - (b.y + d.h)), r = Math.hypot(dx, dy);
+  return r < BLAST.red ? 'red' : r < BLAST.hurt ? 'hurt' : r < BLAST.dust ? 'dust' : null;
+}
+export const padOf = (s: State) => s.buildings.find(b => b.type === 'pad');
+/** The ring of this town's pad a building stands in. Null if there is no pad or it is spared. */
+export function blastRing(s: State, b: Foot): Ring | null {
+  const pad = padOf(s);
+  return pad && !SPARED(b.type) ? ringFrom(pad.x, pad.y, b) : null;
+}
+/** The ring a single tile lies in: for zoned land, where nobody will build. */
+export function tileRing(s: State, x: number, y: number): Ring | null {
+  const pad = padOf(s);
+  return pad ? ringFrom(pad.x, pad.y, { type: 'conduit', x, y }) : null;
+}
+/** Is the rule in force yet? A town from before it is given notice first (see State.blast). */
+export const blastOn = (s: State) => s.blast !== undefined && s.t >= s.blast;
+/** What stands in harm's way of a pad at (px, py): names of what would be destroyed and knocked offline, and arrays dusted. */
+export function inBlast(s: State, px: number, py: number): { lost: Building[]; hurt: Building[]; dust: number } {
+  const lost: Building[] = [], hurt: Building[] = []; let dust = 0;
+  for (const b of s.buildings) {
+    if (SPARED(b.type)) continue;
+    const r = ringFrom(px, py, b);
+    if (r === 'red') lost.push(b); else if (r === 'hurt') hurt.push(b); else if (r === 'dust' && BUILDINGS[b.type].solar) dust++;
+  }
+  return { lost, hurt, dust };
+}
+const tally = (list: Building[]) => {
+  const n = new Map<string, number>();
+  for (const b of list) n.set(BUILDINGS[b.type].name, (n.get(BUILDINGS[b.type].name) ?? 0) + 1);
+  const parts = [...n].map(([name, k]) => (k > 1 ? `${k} × ${name}` : `the ${name}`));
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0] ?? '';
+};
+/**
+ * What a player should be told before building here. It does not stop them: the rules warn, and then the
+ * rocket does what a rocket does.
+ */
+export function siteWarning(s: State, type: BuildingType, x: number, y: number): string | null {
+  if (type === 'pad') {
+    const { lost, hurt, dust } = inBlast(s, x, y);
+    if (!lost.length && !hurt.length && !dust) return null;
+    const say = [lost.length ? `destroy ${tally(lost)}` : '', hurt.length ? `knock ${tally(hurt)} offline` : '', dust ? `coat ${dust} solar array${dust > 1 ? 's' : ''} in dust` : ''].filter(Boolean);
+    return `Every landing here will ${say.length > 1 ? `${say.slice(0, -1).join(', ')} and ${say[say.length - 1]}` : say[0]}.`;
+  }
+  const r = blastRing(s, { type, x, y });
+  if (r === 'red') return 'Inside the landing pad\'s blast zone. The next landing will destroy it.';
+  if (r === 'hurt') return 'Close to the landing pad. Every landing will knock it offline until it is repaired.';
+  if (r === 'dust' && BUILDINGS[type].solar) return `Within reach of the pad's dust. Every landing will halve it for ${BLAST_DUST_HOURS} hours.`;
+  return null;
+}
+/**
+ * Ground for a pad that stands off on its own: nothing built in its red or amber ring, no zoned land there for
+ * anyone to build on later, on the dusty (east) side, close enough for a short conduit, and dusting as few arrays
+ * as it can. `moving` is for a town that has a pad and wants a better place for it. Null if there is none.
+ */
+export function padSite(s: State, moving = false): [number, number] | null {
+  const d = BUILDINGS.pad, n = s.size, c = n / 2;
+  let site: [number, number] | null = null, best = Infinity;
+  for (let y = 1; y < n - d.h - 1; y++) for (let x = 1; x < n - d.w - 1; x++) {
+    const why = siteProblem(s, 'pad', x, y);
+    if (why && !(moving && why === 'One landing pad is enough for now')) continue;
+    const hit = inBlast(s, x, y);
+    if (hit.lost.length || hit.hurt.length) continue;
+    let zoned = false;
+    const R = Math.ceil(BLAST.hurt) + 1;
+    for (let j = -R; j <= d.h + R && !zoned; j++) for (let i = -R; i <= d.w + R && !zoned; i++) {
+      const X = x + i, Y = y + j;
+      if (X < 0 || Y < 0 || X >= n || Y >= n || !s.zone[Y * n + X]) continue;
+      zoned = Math.hypot(X + 0.5 - (x + d.w / 2), Y + 0.5 - (y + d.h / 2)) < BLAST.hurt + 0.75;
+    }
+    if (zoned) continue;
+    if (moving && !routeTo(s, x, y, d.w, d.h)) continue;
+    const score = Math.hypot(x + d.w / 2 - (c + 9), y + d.h / 2 - c) + hit.dust * 3;
+    if (score < best) { best = score; site = [x, y]; }
+  }
+  return site;
+}
+/** The shortest line of free tiles from linked ground to the edge of a site: where a conduit would run. [] if it already touches. */
+export function routeTo(s: State, sx: number, sy: number, w: number, h: number): number[] | null {
+  const n = s.size, inSite = (x: number, y: number) => x >= sx && x < sx + w && y >= sy && y < sy + h;
+  const free = (x: number, y: number) => x >= 0 && y >= 0 && x < n && y < n && !s.occ[y * n + x] && !s.zone[y * n + x] && s.ground[y * n + x] === GROUND.flat && !inSite(x, y);
+  const linked = (x: number, y: number) => x >= 0 && y >= 0 && x < n && y < n && s.linked[y * n + x] > 0;
+  const prev = new Map<number, number>(), q: number[] = [];
+  for (let i = -1; i <= w; i++) for (let j = -1; j <= h; j++) {
+    if ((i === -1 || i === w) === (j === -1 || j === h)) continue;   // edges only
+    if (linked(sx + i, sy + j)) return [];
+    if (free(sx + i, sy + j)) { prev.set((sy + j) * n + sx + i, -1); q.push((sy + j) * n + sx + i); }
+  }
+  while (q.length) {
+    const k = q.shift()!, x = k % n, y = (k - x) / n;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const X = x + dx, Y = y + dy;
+      if (X < 0 || Y < 0 || X >= n || Y >= n) continue;
+      if (s.linked[Y * n + X]) { const path: number[] = []; for (let p = k; p >= 0; p = prev.get(p)!) path.push(p); return path; }
+      if (free(X, Y) && !prev.has(Y * n + X)) { prev.set(Y * n + X, k); q.push(Y * n + X); }
+    }
+  }
+  return null;
+}
+/**
+ * For a town from before the rule, at the hour its notice ends: if the pad still stands among the buildings,
+ * Earth's engineers move it clear and run a conduit out to it. Once, and nothing is charged, because the town was
+ * built that way when nothing said not to. A building, not money: no credits are made. (D96)
+ * Returns false if it has to wait an hour for a ship to be gone.
+ */
+function standOff(s: State): boolean {
+  const old = padOf(s);
+  if (!old) return true;
+  const hit = inBlast(s, old.x, old.y);
+  if (!hit.lost.length && !hit.hurt.length) { pushAlert(s, 'info', 'Earth\'s flight rule is in force: a landing now clears the pad\'s blast zone. Nothing of ours stands in it.'); return true; }
+  if (s.shuttle.phase !== 'away') return false;
+  if (s.netDirty) recomputeNetwork(s);
+  const site = padSite(s, true), path = site && routeTo(s, site[0], site[1], BUILDINGS.pad.w, BUILDINGS.pad.h);
+  if (!site || !path) {
+    pushAlert(s, 'bad', `Earth's flight rule is in force and there is no clear ground to move the pad to. The next landing will destroy ${hit.lost.length} of our buildings and knock ${hit.hurt.length} offline. Clear the rings round the pad.`);
+    return true;
+  }
+  raze(s, old);
+  const pad = addBuilding(s, 'pad', site[0], site[1], 1);
+  pad.on = old.on;
+  for (const k of path) addBuilding(s, 'conduit', k % s.size, Math.floor(k / s.size), 1);
+  recomputeNetwork(s);
+  pushAlert(s, 'warn', `Earth's flight rule is in force. The pad stood among our buildings, so Earth's engineers have moved it clear and run a conduit out to it, at no charge. From now on a landing destroys whatever is built inside its red ring.`);
+  return true;
+}
+
+/** Take a building off the map. No refund: that is for whoever calls. */
+function raze(s: State, b: Building) {
+  const d = BUILDINGS[b.type];
+  for (let j = 0; j < d.h; j++) for (let i = 0; i < d.w; i++) s.occ[(b.y + j) * s.size + b.x + i] = 0;
+  s.buildings.splice(s.buildings.indexOf(b), 1);
+  s.rovers = s.rovers.filter(r => r.bay !== b.uid);
+  s.netDirty = true; s.rev++;
+}
+/** Touchdown. Whatever stands too close pays for it. */
+function blast(s: State, pad: Building, flight: number) {
+  if (!blastOn(s)) return;
+  const { lost, hurt } = inBlast(s, pad.x, pad.y);
+  const down = hurt.filter(b => b.progress >= 1 && !b.damaged);
+  let dust = 0;
+  for (const b of s.buildings) if (BUILDINGS[b.type].solar && !SPARED(b.type) && ringFrom(pad.x, pad.y, b) === 'dust') { b.dust = s.t + BLAST_DUST_HOURS; dust++; }
+  if (lost.length) { const names = tally(lost); for (const b of lost) raze(s, b); s.stats.blasted = (s.stats.blasted ?? 0) + lost.length; pushAlert(s, 'bad', `${W.Ship} ${flight} came down and its exhaust destroyed ${names}. They stood in the pad's blast zone.`); }
+  for (const b of down) { b.damaged = true; b.repair = 0; }
+  if (down.length) { s.rev++; pushAlert(s, 'warn', `The landing knocked ${tally(down)} offline. Too close to the pad: it will happen every time.`); }
+  if (dust && !lost.length && !down.length) alertOnce(s, 'paddust', 'info', `Dust from the landing has settled on ${dust} solar array${dust > 1 ? 's' : ''} near the pad. Half power for ${BLAST_DUST_HOURS} hours, every landing.`, 600);
 }
 
 /** Does this footprint share an edge with anything already placed or zoned? If not, it will need a conduit. */
@@ -514,10 +685,7 @@ export function apply(s: State, it: Intent): { ok: boolean; reason?: string } {
   if (it.k === 'demolish') {
     if (b.type === 'lander') return { ok: false, reason: 'The lander stays' };
     s.materials += b.progress < 1 ? d.cost : Math.floor(d.cost / 2);
-    for (let j = 0; j < d.h; j++) for (let i = 0; i < d.w; i++) s.occ[(b.y + j) * s.size + b.x + i] = 0;
-    s.buildings.splice(s.buildings.indexOf(b), 1);
-    s.rovers = s.rovers.filter(r => r.bay !== b.uid);
-    s.netDirty = true; s.rev++;
+    raze(s, b);
     return { ok: true };
   }
   if (it.k === 'toggle') {
@@ -611,7 +779,8 @@ export const nightNeed = (s: State) => Math.max(0, s.flows.essentialDeficit) * C
  * It is worked out by walking the hours forward, because an average lies: what matters is whether the charge
  * survives each night on what a quarter of the Sun put back the day before. Only life support is counted, and
  * the oxygen plants when the tank runs low, since everything else rests in a storm (see computeFlows).
- *  - With a storm forecast or overhead: from this hour, on the charge there is, to the hour it ends.
+ *  - With a storm forecast or overhead: from this hour, on the charge there is, to the hour the dust it leaves
+ *    on the arrays is swept off, which is past the hour the sky clears.
  *    The answer is hours into the storm (or from now, once it has begun).
  *  - With none: the case the crew plans for, a storm that begins at sunset on full batteries. Infinity past 400 h.
  * `extraCap` and `extraSteady` ask the same question of a town with that much more storage or steady power.
@@ -627,20 +796,24 @@ export function stormCover(s: State, extraCap = 0, extraSteady = 0): number {
     cap += d.battery; o2Cap += d.o2Store;
     if (b.on) { if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen; if (b.type === 'o2plant') plants++; }
   }
-  const e = s.event && s.event.kind === 'haze' ? s.event : null;
-  const t0 = e ? s.t : s.t + hoursToSunset(s.t), from = e ? e.from : t0, STEP = 0.5;
+  // A storm is not over when the sky clears: it leaves dust on every array, half power until it is swept off.
+  const ev = s.event, sweep = dustHours(s);
+  const e = ev && (ev.kind === 'haze' || ev.kind === 'dust') ? ev : null;
+  const t0 = e ? s.t : s.t + hoursToSunset(s.t), STEP = 0.5;
+  const from = !e ? t0 : e.kind === 'haze' ? e.from : s.t, to = !e ? Infinity : e.kind === 'haze' ? e.to : s.t, end = !e ? Infinity : e.kind === 'haze' ? e.to + sweep : e.to;
+  const light = (t: number) => (t < from ? 1 : t < to ? W.haze : t < end ? 0.5 : 1);
   const breath = O2_USE * population(s), plant = BUILDINGS.o2plant;
   let charge = (e ? s.charge : cap) + extraCap * (e ? 0 : 1), o2 = s.o2;
   cap += extraCap;
   for (let h = 0; h < 400; h += STEP) {
     const t = t0 + h;
-    if (e && t >= e.to) return Infinity;
+    if (t >= end) return Infinity;
     const sun = sunFactor(t + STEP / 2), night = sun <= 0;
     let draw = night ? essNight : essDay;
     // the plants run by day when the tank holds less than a sol of breathing, as they do in the rules
     o2 -= breath * STEP;
     if (!night && plants && o2 < Math.min(o2Cap * 0.97, breath * W.day)) { draw += plants * plant.drawDay; o2 += plants * O2_PLANT * STEP; }
-    charge = Math.min(cap, charge + STEP * (steady + peak * sun * (t >= from ? W.haze : 1) - draw));
+    charge = Math.min(cap, charge + STEP * (steady + peak * sun * light(t) - draw));
     if (charge < 0) return Math.max(0, t - Math.max(from, s.t));
   }
   return Infinity;
@@ -648,9 +821,10 @@ export function stormCover(s: State, extraCap = 0, extraSteady = 0): number {
 
 /**
  * Kilowatt-hours life support will draw from the batteries over this many hours of dust storm: what a quarter
- * of the Sun and the steady power fall short by each sol, and one night on top, with a margin.
+ * of the Sun and the steady power fall short by each sol, the same for the `tail` hours of dust it leaves on
+ * the arrays (half power), and one night on top, with a margin.
  */
-function stormNeed(s: State, hours: number): number {
+function stormNeed(s: State, hours: number, tail: number): number {
   let peak = 0, steady = 0, essDay = 0, essNight = 0;
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
@@ -658,8 +832,8 @@ function stormNeed(s: State, hours: number): number {
     if (working(b) && b.on) { if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen; }
   }
   const dark = W.day - LIGHT;
-  const perSol = Math.max(0, essDay * LIGHT + essNight * dark - steady * W.day - peak * W.haze * 0.6366 * LIGHT);
-  return 1.15 * (perSol * (hours / W.day) + Math.max(0, essNight - steady) * CARRY);
+  const short = (lit: number) => Math.max(0, essDay * LIGHT + essNight * dark - steady * W.day - peak * lit * 0.6366 * LIGHT);
+  return 1.15 * (short(W.haze) * (hours / W.day) + short(0.5) * (tail / W.day) + Math.max(0, essNight - steady) * CARRY);
 }
 
 /** Hours of night the batteries cover. Infinity when no deficit. */
@@ -769,8 +943,12 @@ function computeFlows(s: State, dt = 0) {
   // By day they also rest whenever running them would leave the batteries short at sunset.
   // With a dust storm forecast or overhead, tonight is not enough: they rest until the batteries hold what life
   // support will take out of them before the sky clears. A town with steady power to spare keeps working.
-  const dustNeed = W.haze < 1 && s.event && s.event.kind === 'haze' ? stormNeed(s, s.event.to - Math.max(s.t, s.event.from)) : 0;
-  f.saving = night || sunsetCharge(s) < Math.min(Math.max(need * (s.flows.saving ? 1.12 : 1.06), dustNeed), f.battCap * 0.995);
+  const ev = W.haze < 1 ? s.event : null;
+  const dustNeed = ev && ev.kind === 'haze' ? stormNeed(s, ev.to - Math.max(s.t, ev.from), dustHours(s)) : ev && ev.kind === 'dust' ? stormNeed(s, 0, ev.to - s.t) : 0;
+  // For a storm the charge has to be in the batteries, not promised by this afternoon's sun: a machine that runs on
+  // the promise eats it. So with dust coming they rest until what life support needs is actually stored.
+  f.saving = night || sunsetCharge(s) < Math.min(Math.max(need * (s.flows.saving ? 1.12 : 1.06), dustNeed), f.battCap * 0.995)
+    || (dustNeed > 0 && s.charge < Math.min(dustNeed, f.battCap * 0.995));
   const o2Short = night ? s.o2 < O2_USE * pop * toDawn + 6 : s.o2 < Math.min(f.o2Cap * 0.97, O2_USE * pop * (sunset + W.day - LIGHT + span(30)));
 
   const storm = stormActive(s), haze = hazeNow(s);
@@ -945,6 +1123,7 @@ function tickShuttle(s: State, dt: number) {
   if (sh.timer > 0) return;
   if (sh.phase === 'landing') {
     sh.phase = 'landed'; sh.timer = 5; s.stats.flights++;
+    if (pad) blast(s, pad, sh.flight);
     const [px, py] = pad ? centre(pad) : [0, 0];
     const stores = W.shuttleWater > 0 || W.shuttleFood > 0, withStores = stores ? ' with water and food' : '';
     const land = () => { if (stores) { s.water = Math.min(f.waterCap, s.water + W.shuttleWater + population(s)); s.food += W.shuttleFood; } };
@@ -1017,6 +1196,8 @@ export function tick(s: State) {
   const before = phaseOf(s.t);
   s.t += dt;
   const after = phaseOf(s.t);
+  // A town from before the blast rule was given notice of the hour it starts (D96). This is that hour.
+  if (s.blast && s.t >= s.blast && s.t - dt < s.blast && !standOff(s)) s.blast = s.t + 1;   // a ship is on the pad: an hour more
 
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
