@@ -2958,6 +2958,132 @@ city's bot has 28 checks, 11 of them on Mars. The Mars page was played in
 a browser at desktop, 560 and 390 pixels wide with no errors, and the
 live Moon town was replayed against a local server.
 
+### D96 — The landing pad's blast zone
+
+*Direction from Chetan, 25 November 2026,* looking at a picture of a Mars
+town with its pad among the solar arrays: "doesn't make sense, the landing
+pad can't be in such a location. Logic needs to take precedence when
+people are placing. We should warn the players, but if they still go and
+place it, if a rocket lands it should destroy things in a radius around it
+due to the force of the emissions. Landing pad should have like a red ring
+fading to green outer ring so people know it will destroy structures."
+Then: "do the layout first."
+
+He is right, and it was not one bad picture. Until now a pad was only
+dirty and loud: it lowered habitability near homes, and on the Moon an
+occasional hard landing dusted nearby arrays. So the steward put the pad
+with the other dirty things, arrays included, on purpose. Apollo 12 came
+down 155 metres from Surveyor 3 and sandblasted it, and that was a small
+lander.
+
+**1. Three rings, on both worlds.** Measured in tiles from the pad's
+centre to the nearest edge of a building:
+
+| Ring | Out to | What a touchdown does |
+|---|---|---|
+| Red | 3.5 tiles | Destroys what stands there. No refund. |
+| Amber | 5.5 tiles | Knocks it offline until it is repaired. |
+| Green, fading | 8 tiles | Coats solar arrays in dust: half power for 12 hours. |
+
+The pad itself, buried conduit and the crew's own ship are spared. A home
+that is destroyed takes its beds with it, and people without a bed are
+sent home by Earth at the usual cost, as they always were. Nobody dies of
+it. Only the landing counts, not the lift-off eight hours later.
+
+**2. Warn, then allow.** `siteWarning` says what a site will cost before
+it is built on, for a pad ("Every landing here will destroy the Habitat
+Module and 2 × Solar Array") and for anything put near one. On the page
+the first click says it and the second builds it anyway. Dragging never
+builds into the rings. The rings are drawn while a pad is being placed,
+while anything is being placed in a town that has one, and when the pad
+or something standing in its rings is selected: red at the pad, through
+amber, to a green that fades out. The crew raise it, last of all, when
+the pad stands among buildings.
+
+Two things are refused outright rather than warned about:
+
+- A pad where its exhaust would reach the crew's own ship. The crew will
+  not be talked into that one.
+- Building on zoned land inside the red and amber rings. That is not the
+  player's hand: nobody builds for themselves where a rocket will take it
+  away. The land stays empty and says why.
+
+**3. The steward stands the pad off.** `padSite` finds ground with
+nothing built or zoned in the red and amber rings, on the dusty side,
+with a conduit out to it, and the steward keeps everything else out of
+the rings, the reactor included. On six Moon maps and five Mars maps a
+steward's town lost nothing to its pad.
+
+**4. Towns that stood before the rule.** Every live town has its pad
+among its buildings, because nothing said not to. A town's state names
+the hour the rule starts for it (`blast`). A new town has it from its
+first hour. A state without it is not under the rule at all, so the safe
+thing happens if the server's one-time pass never runs.
+
+- The server gives every living town **three real days** of notice, once
+  (`_to_blast_zone`, `BLAST_NOTICE`), and its owner a letter.
+- The towns the world runs move their own pads during the notice, at
+  their own cost.
+- **If the pad still stands among buildings when the notice ends, Earth
+  moves it clear and runs the conduit, once, at no charge** (`standOff`).
+
+The last point was not in the first build, and the rehearsal is why it
+is there. Three towns were built by the old rules and given notice. With
+nobody at the controls, the first landing after the notice took ten to
+fourteen buildings from each (batteries, reactors, oxygen plants) and
+two of the three towns died. A rule change may not kill a town that was
+built before it. With the move: nothing destroyed, nobody sent home, all
+alive, with or without anyone playing. It is a building moved, not
+credits made, and it has the same shape as the one-time battery fill in
+D93.
+
+**Invariant 7.** This only takes value out of the world: a destroyed
+building is credits gone. Nothing here creates any.
+
+**5. Found on the way: the storm forecast stopped at the wrong hour.**
+Moving the pad changed how the test towns grew, and one then lost a
+settler two hours after a dust storm Orbit had called safe. D95's
+forecast ended when the sky cleared, but the storm leaves dust on every
+array for up to 48 hours after. The forecast and the battery saving now
+run to the hour the dust is swept off. And before a storm, machines rest
+until the energy is actually in the batteries, not promised by the
+afternoon's sun: a machine that runs on the promise eats it. Five Mars
+maps over 1,500 hours: two evacuations became none, with 114 to 128
+people.
+
+**Tests that changed, and why.**
+
+- The Moon's play log is no longer byte for byte what it was. It cannot
+  be: the steward now builds the pad somewhere else.
+- Two of the bot's Moon checks asked for no evacuations at all and three
+  events on one map. Both were luck on that map: a breach in a full lodge
+  sends its guests home. Across six maps the change took evacuations from
+  52 to 18. They now ask for three at most and two events.
+- Two server tests read a company's balance after an hour and assumed
+  nothing else moved in it. They now read the ledger itself.
+
+**Seen and not fixed.** On one Moon map of the six (seed 5150) the
+steward loses the town in its first night, on main as well as here. It is
+the "small town left alone" finding again, and it is older than this
+change.
+
+**Not done.** The sea of arrays on Mars is untouched: Chetan's next idea
+(a ship's hold instead of money, levels of building) may answer it
+better than a new building would, so it waits for that. No blast berm
+yet. Lift-off does nothing.
+
+**Invented outright:** the three radii, the 12 hours of dust, the three
+days of notice, and 60 game hours of notice for a saved practice town.
+
+**Checked.** The city's bot has 51 checks, 23 of them new: on both
+worlds a home in the red ring is destroyed, a battery in the amber is
+knocked offline, an array in the green is dusted, the pad and its conduit
+and the crew's ship are spared, and an old town's pad is moved clear when
+its notice ends. 440 server tests pass on the rebuilt engine, one of them
+new. In a browser: the rings drawn, the warning on the first click, the
+building on the second, and the landing that knocked it offline. The
+live Moon town was replayed against a local server.
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -3049,6 +3175,12 @@ Deliberately not decided, because these are yours.
 34. **Mars's numbers** — D94, D95. Retuned once from your first playtest:
     stores, the first storm, transports every fourth sol, a larger grant.
     Play it again and say what is still too easy, too cruel or too slow.
+37. **The rings** — D96. Red to 3.5 tiles, amber to 5.5, dust to 8, on a
+    map 36 tiles across. Too big, too small? Should lift-off count as
+    well as landing? Should a blast berm shrink them, for a price?
+38. **Your own town's pad** — D96. You have three real days from the
+    deploy to move it where you want it. If you do nothing, it is moved
+    for you, free, to the nearest clear ground on the east side.
 36. **The late game on Mars** — D95. Credits pile up past a hundred
     people and a town is still mostly a field of arrays. Does Mars want a
     costly late goal (a second pad, a spaceport, a dome), or is that what
