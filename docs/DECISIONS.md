@@ -2816,6 +2816,148 @@ pass. The Mars page was played in a headless browser by the steward for
 browser against a local server: plots, founding, pad, grant and first
 shuttle all as before.
 
+### D95 — Mars after its first playtest: a forecast that is true, tighter stores, and Mars's own words
+
+*Playtest notes from Chetan, 22 November 2026,* after seven sols on the
+live practice page. In short: the first three sols are too easy (cash is
+comfortable, and 220 kg of water and 60 kg of food never bite); the first
+dust storm "hits like a brick wall" with batteries at zero and buildings
+shutting down; the first hour at the world's pace is sluggish; Moon text
+is left over on Mars ("Touchdown in Mare Tranquillitatis. Sunset in 354
+hours", "station four researchers at Tranquility", Scrubber against
+Recycler); Escape does not close the help page; Food and People clip off
+a narrow window; and a new sun-facing solar array picture is ready. On the
+site list: "Arcadia clearly wins as the playable starter Mars town", with
+Tharsis Yards and Hellas kept "as Mars's other two regional ports".
+
+Each note was checked against the rules before anything was changed. Two
+of them turned out to be worse than reported.
+
+**1. The storm forecast was false.** The notes asked for a warning. There
+was one, a sol ahead, and it was wrong. Replayed on the first map: Orbit
+said "Life support can run 1119 hours on what we have, which is enough",
+and 77 hours later Earth was evacuating people for want of a powered bed.
+The old sum averaged the storm and assumed full batteries. In fact the
+machines had spent the day's power, the storm began at night on 43 kWh,
+and the first night emptied them.
+
+- `stormCover` now walks the hours forward from the charge there is: each
+  night on what a quarter of the Sun put back the day before, with the
+  oxygen plants running when the tank falls low, as they do in the rules.
+- *The town gets ready by itself.* From the forecast until the sky
+  clears, machines that are not life support rest until the batteries
+  hold what life support will take out of them (`stormNeed`). A town with
+  wind or a reactor to spare keeps working. A town on arrays alone
+  hibernates and lives on its tanks, which is what a storm should be.
+- *The forecast says what to do.* When life support will not last it
+  says for how many of the storm's hours it has power, and what would
+  see it through, in buildings: "2 more Megapack Batteries, or 3 more
+  Wind Turbines". The same line is on the banner ("Dust storm in 18 h ·
+  power for 9 of 50 h") and in the crew's advice.
+- A new check plays three maps for 1,200 hours and fails if anyone is
+  without a powered bed during a storm Orbit called safe.
+
+**2. Mid-game, a town of eight sat for an hour.** "Too slow" was real,
+and it was not the clock. Measured with the steward on the first map:
+eight people at minute 19 and still eight at minute 82. Housing could
+not grow because the grid could not carry it, arrays cost 12 credits
+for 5 kW against the Moon's 12 kW, and income was about a third of a
+credit an hour. The second transport landed to no free beds. Four
+changes, each measured:
+
+- *The first storm comes at hour 216, not 120.* At 120 it fell across
+  the second transport and froze the one stretch in which the town
+  could have grown. Now the first hour runs: base, pad, first transport,
+  growth, second transport, and the storm as its last act, with more to
+  lose.
+- *A transport comes every fourth sol, counted from landing,* so always
+  at the same hour of the morning. Counted from launch, as it was, the
+  eleven hours on the pad pushed each arrival past sunset and the real
+  gap was five sols. A ship no longer starts down with too little day
+  left to land in, which used to produce a night landing with "cargo
+  only" and no cargo.
+- *A ship holds in orbit while a dust storm is overhead,* and lands when
+  it clears. The crew is told.
+- *Earth's founding grant on Mars is 1.2 credits an hour, not 0.8,* so it
+  fades out at 34 people instead of 24. Raising the array's output or
+  cutting its price were tried and did less. Income in the stretch
+  after the first transport roughly doubled.
+
+Measured after, seven maps: twelve or more people by minute 44 on every
+one (it was minute 75 to 81 on most), twenty by minute 75 to 99, forty by
+minute 124 to 161. Over 1,500 hours on five maps: all four crew alive,
+every mission done, 94 to 134 people, and two evacuations in total where
+there had been up to fourteen on one map.
+
+**3. The crew lands with water for three sols and food for eight** (50 kg
+and 20 kg; they were the Moon's 220 and 60). On the Moon the first
+stores are generous because a shuttle tops them up. With the Moon's
+stores on Mars the drill and the Bio-Dome were never needed in time:
+water never fell below 133 kg on any map. Doing nothing now loses at
+hour 157, not 197. A slow player, acting once every three hours, still
+keeps all four crew and reaches 46 to 51 people in 600 hours.
+
+**4. Every line a Mars player reads is in Mars's words.** The rules and
+the crew were written on the Moon. `buildings.words()` holds Mars's
+vocabulary in one table: shuttle and transport, foundry and printer,
+lodge and lab, Tranquility and Arcadia, and "an" before a vowel. Alerts,
+the crew's advice, contract offers and the reasons a zone is blocked all
+pass through it, and so does every piece of text the HUD draws. On the
+Moon it returns what it was given, so the Moon is untouched. Lines that
+needed more than a word swapped were written for Mars: the touchdown
+line, firms with Mars names, a scrubbed launch that no longer reports on
+food no ship carries, and a dust devil where the Moon has a
+micrometeorite. Found by playing five maps and reading all 312 distinct
+lines, then by opening every panel of the page in a browser. A bot check
+keeps it so.
+
+**5. Arcadia is the playable Mars town; Tharsis Yards and Hellas stay
+as Mars's other two ports.** His answer to open item 33. Nothing in the
+trade tables changes now. When Mars gets its port (M3 in D94), Arcadia is
+added to `seed-data.md` as a third Mars node beside the two that are
+there.
+
+**6. Smaller things from the notes.**
+
+- Escape closes the help page, and an offer left for later.
+- Choosing the Landing Pad now says how many of a ship's berths have a
+  bed waiting, and how many Habitat Modules would fix it.
+- On a narrow window the seven numbers along the top sit on two rows.
+  They used to run off the right edge, and the ones that fell off were
+  water and food.
+- His new solar array picture, panels to the Sun, replaces the first.
+  The first one also carried a NASA mark and an X, which should not have
+  shipped.
+- **A fault of D94's, found here:** the Moon town's build menu has been
+  showing the Wind Turbine, Ice Drill and Sabatier Plant since that
+  change went live. They could not be placed, there or on the server,
+  but they should not have been on the menu. Fixed and checked in a
+  browser on both worlds.
+
+**Not done, and why.** The notes asked for 2x as the default pace. The
+speed buttons exist only on the practice page. The real town runs on the
+world's one clock (invariant 5), and a practice page that plays twice as
+fast as the game it rehearses would mislead. The slowness was dead time,
+and section 2 is the answer to it. One aid was added for practice only:
+when a storm is forecast and the clock is running fast, it drops back to
+1x, because at 8x a sol of warning is 45 seconds.
+
+**Still weak, and not touched.** A mid-size town is still mostly a field
+of arrays. Credits pile up late (2,200 to 4,400 after 1,500 hours), so
+the late game wants a sink. Visiting scientists are not counted against a
+transport's eight berths, so one can land thirty.
+
+**Invented here,** all on the practice page and none on a ledger: first
+storm at hour 216; a transport every fourth sol; stores of 50 kg and
+20 kg; the grant of 1.2. The grant matters most when Mars reaches the
+server, where it will be Earth's real money (open item 16).
+
+**Checked.** The Moon's play log is still byte for byte the log from
+before Mars existed. 439 server tests pass on the rebuilt engine. The
+city's bot has 28 checks, 11 of them on Mars. The Mars page was played in
+a browser at desktop, 560 and 390 pixels wide with no errors, and the
+live Moon town was replayed against a local server.
+
 ## Still open — needs you
 
 Deliberately not decided, because these are yours.
@@ -2900,14 +3042,17 @@ Deliberately not decided, because these are yours.
 32. **The numbers D93 invented** — morning 90 hours, list held 60, offers
     open 40 real minutes, first-pad grant 40,000, watch after 10 minutes
     for 12 hours. Play it and say what is too generous or too tight.
-33. **Which Mars is the Mars** — D94. The town stands at Arcadia because
-    your pictures are of Arcadia. The trade tables still say Tharsis Yards
-    and Hellas Agricultural. One list has to win before Mars gets a port:
-    rename a node to Arcadia, add Arcadia as a third, or move the town.
-34. **Mars's numbers** — D94. Every one was invented to make it play:
-    transports every 30 real minutes with eight berths, storms at a
-    quarter light, the Twin Kilopower at 150. Play `/mars/` and say what
-    is too easy or too cruel before they go on the ledger.
+33. **Which Mars is the Mars** — D94. *Answered 22 November: Arcadia is
+    the playable town, and Tharsis Yards and Hellas Agricultural stay as
+    Mars's other two ports. Recorded in D95; Arcadia joins the trade
+    tables when Mars gets its port.*
+34. **Mars's numbers** — D94, D95. Retuned once from your first playtest:
+    stores, the first storm, transports every fourth sol, a larger grant.
+    Play it again and say what is still too easy, too cruel or too slow.
+36. **The late game on Mars** — D95. Credits pile up past a hundred
+    people and a town is still mostly a field of arrays. Does Mars want a
+    costly late goal (a second pad, a spaceport, a dome), or is that what
+    propellant and trade are for?
 35. **What propellant is worth** — D94. On the practice page a Sabatier
     plant pays 0.9 credits an hour from nothing. On the server it must be
     cargo with a buyer. Who buys it, at which port, and is Mars the only

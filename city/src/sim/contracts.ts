@@ -2,7 +2,8 @@
 // Each offer comes with one advisor for it and one against. Accepting creates a deal with a deadline:
 // meet its terms and it pays, miss the date and it costs.
 
-import { State, dayHours, span, phaseOf, addBuilding, aliveCount, earn, isNight, population, pushAlert, rnd, siteProblem, support, working } from './sim';
+import { words } from './buildings';
+import { State, world, dayHours, span, phaseOf, addBuilding, aliveCount, earn, isNight, population, pushAlert, rnd, siteProblem, support, working } from './sim';
 
 export type DealKind = 'team' | 'oxygen' | 'works' | 'broadcast';
 export interface Offer { kind: DealKind; amount?: number; from: string; title: string; text: string; need: string; pay: number; penalty: number; hours: number; expires: number;
@@ -10,7 +11,8 @@ export interface Offer { kind: DealKind; amount?: number; from: string; title: s
 export interface Deal { id: number; kind: DealKind; amount?: number; from: string; title: string; need: string; pay: number; penalty: number; due: number; }
 
 const NATIONS = ['India', 'Japan', 'Brazil', 'Kenya', 'the Emirates', 'Canada', 'South Korea', 'Nigeria'];
-const FIRMS = ['Selene Metals', 'Kestrel Propulsion', 'Mare Glassworks', 'Aldrin Volatiles', 'Tycho Robotics'];
+const MOON_FIRMS = ['Selene Metals', 'Kestrel Propulsion', 'Mare Glassworks', 'Aldrin Volatiles', 'Tycho Robotics'];
+const MARS_FIRMS = ['Tharsis Metals', 'Kestrel Propulsion', 'Arcadia Glassworks', 'Deimos Volatiles', 'Olympus Robotics'];
 const ASHA = 0, KENJI = 1, LENA = 2, RAFAEL = 3;
 const RESERVE = 100;   // hours of breathing kept back before any oxygen is sold
 /** Real minutes an offer stays open in the world. Chetan, 21 November 2026: thirty to forty-five. */
@@ -31,6 +33,13 @@ function freeIndustryLot(s: State): [number, number] | null {
 }
 
 function makeOffer(s: State): Offer | null {
+  const o = draftOffer(s);
+  if (!o) return null;
+  // in the words of the world the town stands on
+  return { ...o, title: words(o.title), text: words(o.text), need: words(o.need), pro: { ...o.pro, say: words(o.pro.say) }, con: { ...o.con, say: words(o.con.say) } };
+}
+
+function draftOffer(s: State): Offer | null {
   const f = s.flows, pop = population(s), cap = support(s);
   const has = (k: DealKind) => s.deals.some(d => d.kind === k);
   const kinds: DealKind[] = (['team', 'oxygen', 'works', 'broadcast'] as DealKind[]).filter(k => !has(k)
@@ -50,15 +59,15 @@ function makeOffer(s: State): Offer | null {
       con: { who: KENJI, say: cap.limit - pop < 4 ? `Right now we can keep ${cap.limit} people alive and we are ${pop}. The limit is ${cap.why}. Fix that first or we pay the penalty.` : 'Four more people breathing our air through the night. I can carry them, but only just.' } };
   }
   if (kind === 'oxygen') {
-    const from = pick(s, FIRMS);
+    const from = pick(s, world().id === 'mars' ? MARS_FIRMS : MOON_FIRMS);
     return { kind, from, expires, pay: pay(120), penalty: pay(30), hours: fit(220), amount: kg, title: `Sell ${kg} kg of oxygen to ${from}`,
       text: `${from} will buy ${kg} kg of liquid oxygen for an engine test. A shuttle collects it in daylight, the moment the tanks can spare it.`,
       need: `${kg} kg of oxygen in the tanks, above a ${RESERVE} hour reserve for breathing`,
-      pro: { who: RAFAEL, say: 'Oxygen is the one thing we make out of dirt. This is what the foundry was always going to become.' },
+      pro: { who: RAFAEL, say: world().id === 'mars' ? 'Oxygen is the one thing we make out of thin air. Every engine that leaves this planet could burn ours.' : 'Oxygen is the one thing we make out of dirt. This is what the foundry was always going to become.' },
       con: { who: KENJI, say: `That is ${Math.max(1, Math.round(kg / (0.035 * pop)))} hours of breath for everyone here. We hold ${Math.round(s.o2)} kg and the tanks take ${Math.round(f.o2Cap)}. I want more tanks before I sell a gram.` } };
   }
   if (kind === 'works') {
-    const from = pick(s, FIRMS);
+    const from = pick(s, world().id === 'mars' ? MARS_FIRMS : MOON_FIRMS);
     return { kind, from, expires, pay: pay(100), penalty: pay(30), hours: fit(160), title: `Lease an Industry lot to ${from}`,
       text: `${from} wants a serviced Industry lot. They will build a two-deck works on it at their own cost and pay on the day they break ground.`,
       need: 'One empty, linked Industry lot of two tiles by two',

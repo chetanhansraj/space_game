@@ -49,8 +49,8 @@ const hour = steward(apply);
 function play(name: string, hours: number, follow: boolean, on: WorldId = 'moon', seed = 1969) {
   const s = createState(seed, on);
   if (REMOTE) mirror(s, http('POST', '/api/town/found', {}));
-  const log: string[] = [];
-  let next = 0, lastMission = -1;
+  const log: string[] = [], said: string[] = [];
+  let next = 0, lastMission = -1, heard = 0;
   while (s.phase === 'playing' && s.t < hours) {
     if (follow && s.t >= next) {
       next = s.t + 1;
@@ -58,6 +58,7 @@ function play(name: string, hours: number, follow: boolean, on: WorldId = 'moon'
       hour(s);
     }
     tick(s);
+    for (const a of s.alerts) if (a.id > heard) { heard = a.id; said.push(a.msg); }
     if (follow && process.env.DEALS && hours > 1000) for (const a of s.alerts) if (a.id > (s as any)._seen || !(s as any)._seen) { if (/ontract|offer|Survey find|storm|scrubbed|came in hard|breach/.test(a.msg)) log.push(`      t=${s.t.toFixed(0)} ${a.msg}`); (s as any)._seen = a.id; }
     if (follow && process.env.DUMP && hours > 1000 && [200, 843, 1150, 1500].some(q => Math.abs(s.t - q) < 0.05)) require('fs').writeFileSync(`/tmp/state-${Math.round(s.t)}.json`, JSON.stringify(s));
     if (follow && Math.abs(s.t / 177 - Math.round(s.t / 177)) < 0.0004) log.push(`    t=${s.t.toFixed(0)} ${isNight(s.t) ? 'night' : 'day  '} pop ${population(s)} (${s.residents} res, ${s.tourists} vis) credits ${s.materials.toFixed(0)} ${s.flows.income >= 0 ? '+' : ''}${s.flows.income.toFixed(1)}/h jobs ${s.flows.jobs}/${s.flows.workers} charge ${s.charge.toFixed(0)}/${s.flows.battCap} o2 ${s.o2.toFixed(0)} food ${s.food.toFixed(0)} | want R${s.want.r.toFixed(1)} I${s.want.i.toFixed(1)} V${s.want.v.toFixed(1)} | block ${ZONES.map(z => s.block[z.key] ? z.key + ':' + s.block[z.key] : '').filter(Boolean).join(', ') || 'none'} | grown ${s.stats.grown} up ${s.stats.upgrades} deals ${s.stats.deals}/${s.stats.broken} finds ${s.stats.finds} events ${s.stats.events} lost ${s.stats.lost} evac ${s.stats.evacuated}`);
@@ -66,7 +67,7 @@ function play(name: string, hours: number, follow: boolean, on: WorldId = 'moon'
   console.log(`\n== ${name}: ${s.phase} at t=${s.t.toFixed(0)}h · crew ${aliveCount(s)}/4 · pop ${population(s)} (${tierOf(population(s))}) · credits ${s.materials.toFixed(0)} · mission ${s.mission}/${missions(s).length} · flights ${s.stats.flights} · trips ${s.stats.trips} · grown ${s.stats.grown} · upgrades ${s.stats.upgrades} · hab homes ${s.flows.habHomes.toFixed(0)} lodges ${s.flows.habLodges.toFixed(0)}`);
   if (follow) console.log('   ' + JSON.stringify(c));
   if (log.length) console.log(log.join('\n'));
-  return s;
+  return Object.assign(s, { said });
 }
 
 if (REMOTE) {
@@ -110,7 +111,7 @@ expect(day3.stats.events >= 3, 'storms, breaches and delays came and the town ca
 expect(day3.materials < 4000, 'and credits have not piled up out of reach of any cost');
 
 // Mars. The same rules with another world's numbers: a sol of 24.66 hours, dust storms instead of a long night,
-// nothing to eat or drink off the transports, eight berths every 120 hours.
+// nothing to eat or drink off the transports, eight berths every fourth sol.
 const marsIdle = play('Mars: do nothing', 400, false, 'mars', 2199);
 const mars = play('Mars: follow the crew for 600 hours', 600, true, 'mars', 2199);
 const made = (type: BuildingType) => mars.buildings.some(b => b.type === type && b.progress >= 1);
@@ -118,8 +119,31 @@ console.log('');
 expect(marsIdle.phase === 'lost', 'on Mars, doing nothing loses');
 expect(mars.phase === 'playing' && aliveCount(mars) === 4, 'on Mars, following the crew keeps all four alive for 600 hours');
 expect((mars.stats.hazes ?? 0) >= 1, 'through at least one dust storm');
+expect(mars.stats.evacuated === 0 && mars.stats.lost === 0, 'and nobody was lost or sent home in it');
 expect(made('drill') && made('greenhouse'), 'on water from an ice drill and food from a Bio-Dome, since transports bring neither');
-expect(mars.stats.flights >= 2 && mars.residents >= 8, 'transports have landed and eight or more settlers stayed');
+expect(mars.stats.flights >= 3 && mars.residents >= 16, 'three or more transports have landed and sixteen or more settlers stayed');
 expect(made('sabatier'), 'and a Sabatier plant is making propellant');
 expect(mars.mission >= 17, 'seventeen or more of the Mars missions are complete');
+// Every line the crew and the world say on Mars is in Mars's words (D95).
+const moonish = mars.said.concat(marsIdle.said).filter(m => /shuttle|foundr|Tranquil|lodge|Oxygen Plant|Recycler|Greenhouse|Concourse|[Cc]linic|Micrometeorite|\b[Aa] [AEIO][a-z]/.test(m));
+expect(moonish.length === 0, `nothing said on Mars uses the Moon's words${moonish.length ? ': ' + moonish[0] : ''}`);
+
+// The storm forecast has to be true (D95). Orbit says whether life support will last. When it says it will,
+// nobody may be left without a powered bed while that storm is overhead.
+function forecasts(seed: number) {
+  const s = createState(seed, 'mars'), act = steward(localApply);
+  let next = 0, heard = 0, told = 0, promised = false, cold = 0;
+  while (s.phase === 'playing' && s.t < 1200) {
+    if (s.t >= next) { next = s.t + 1; act(s); }
+    localTick(s);
+    for (const a of s.alerts) if (a.id > heard) { heard = a.id; if (/Orbit reports a dust storm/.test(a.msg)) { told++; promised = /will come through/.test(a.msg); } }
+    const e = s.event;
+    if (promised && e && e.kind === 'haze' && s.t >= e.from && s.flows.exposed + s.flows.atRisk > 0) cold++;
+  }
+  return { told, cold, alive: aliveCount(s) };
+}
+const sky = [2199, 7, 42].map(forecasts);
+console.log(`\nMars forecasts on three maps: ${sky.map(f => `${f.told} storms forecast, ${f.cold} ticks anyone was cold in a storm called safe`).join(' · ')}`);
+expect(sky.every(f => f.told >= 2), 'on three maps, two or more dust storms were forecast a sol ahead');
+expect(sky.every(f => f.cold === 0 && f.alive === 4), 'and when Orbit said life support would last, it did');
 process.exit(fail ? 1 : 0);

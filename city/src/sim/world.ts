@@ -159,8 +159,23 @@ export function eventLine(s: State): { text: string; tone: string } | null {
   if (e.kind === 'storm') return s.t < e.from ? { text: `Solar storm in ${h(e.from)} h`, tone: 'warn' } : { text: `Solar storm · ${h(e.to)} h left`, tone: 'bad' };
   if (e.kind === 'scrub') return { text: `Shuttle delayed · ${h(e.to)} h`, tone: 'warn' };
   if (e.kind === 'dust') return { text: world().haze < 1 ? `Dust on the arrays · ${h(e.to)} h` : `Dust around the pad · ${h(e.to)} h`, tone: 'warn' };
-  if (e.kind === 'haze') return s.t < e.from ? { text: `Dust storm in ${h(e.from)} h`, tone: 'warn' } : { text: `Dust storm · ${h(e.to)} h left`, tone: 'bad' };
+  if (e.kind === 'haze') {
+    const cover = stormCover(s), short = cover !== Infinity;
+    if (s.t < e.from) return { text: `Dust storm in ${h(e.from)} h · ${short ? `power for ${Math.round(cover)} of ${Math.round(e.to - e.from)} h` : 'ready'}`, tone: short ? 'bad' : 'warn' };
+    return { text: `Dust storm · ${h(e.to)} h left${short ? ` · power for ${Math.round(cover)} h` : ''}`, tone: 'bad' };
+  }
   return null;
+}
+/** What would see life support through the dust storm that is forecast or overhead, in buildings. */
+export function stormFix(s: State): string {
+  const pack = BUILDINGS.battery, mill = BUILDINGS.wind;
+  let packs = 0, mills = 0;
+  for (let k = 1; k <= 8 && !packs; k++) if (stormCover(s, k * pack.battery) === Infinity) packs = k;
+  for (let k = 1; k <= 16 && !mills; k++) if (stormCover(s, 0, k * mill.gen) === Infinity) mills = k;
+  const many = (n: number, name: string) => `${n} more ${n > 1 ? name.replace(/y$/, 'ie') + 's' : name}`;
+  // storage only helps if there is still sun to fill it; steady power always does
+  const say = [packs ? many(packs, pack.name) : '', mills ? many(mills, mill.name) : ''].filter(Boolean);
+  return say.length ? `${say.join(', or ')} would see it through.` : `It needs steady power the dust cannot touch: ${mill.name}s or a ${BUILDINGS.reactor.name}.`;
 }
 export const repairCost = (b: Building) => Math.max(8, Math.round(BUILDINGS[b.type].cost * 0.15)) * b.level;
 
@@ -192,11 +207,13 @@ export function tickEvents(s: State) {
     // On Mars the weather is what goes wrong, most of the time: every other trouble is a dust storm.
     const first = !s.stats.hazes && s.lastEvent !== 'haze';
     if (first || s.lastEvent !== 'haze') {
-      const hours = first ? HAZE_FIRST : HAZE_MIN + rnd(s) * HAZE_MORE, cover = stormCover(s);
+      const hours = first ? HAZE_FIRST : HAZE_MIN + rnd(s) * HAZE_MORE;
       s.lastEvent = 'haze'; s.stats.events++;
       s.event = { kind: 'haze', from: s.t + HAZE_WARNING, to: s.t + HAZE_WARNING + hours, hit: false };
-      pushAlert(s, cover >= hours ? 'info' : 'warn', `Orbit reports a dust storm ${HAZE_WARNING} hours out, about ${Math.round(hours / w.day)} sols long. The arrays will give a quarter of their power. `
-        + (cover === Infinity ? 'Life support can run through it on what does not need the Sun.' : cover >= hours ? `Life support can run ${Math.round(cover)} hours on what we have, which is enough.` : `Life support can run ${Math.round(cover)} hours on what we have. That is not enough: more batteries, a reactor or wind, before it arrives.`), LENA);
+      const cover = stormCover(s);
+      pushAlert(s, cover === Infinity ? 'info' : 'bad', `Orbit reports a dust storm ${HAZE_WARNING} hours out, about ${Math.round(hours / w.day)} sols long. The arrays will give a quarter of their power. `
+        + (cover === Infinity ? 'Life support will come through it on what we have. Everything else rests until the batteries are full.'
+          : `Life support has power for ${Math.round(cover)} of its ${Math.round(hours)} hours. ${stormFix(s)}`), LENA);
       return;
     }
   }
@@ -218,7 +235,7 @@ export function tickEvents(s: State) {
   } else if (kind === 'scrub') {
     s.nextShuttle = Math.max(s.nextShuttle, s.t) + SCRUB_HOURS;
     s.event = { kind, from: s.t, to: s.nextShuttle, hit: true };
-    pushAlert(s, 'warn', `Earth has scrubbed a launch. The next ${w.ship} is ${SCRUB_HOURS} hours late. We have ${left('food', s.food, s.flows.foodRate)} and ${left('water', s.water, s.flows.waterRate)}.`, ASHA);
+    pushAlert(s, 'warn', `Earth has scrubbed a launch. The next ${w.ship} is ${SCRUB_HOURS} hours late.${w.shuttleFood || w.shuttleWater ? ` We have ${left('food', s.food, s.flows.foodRate)} and ${left('water', s.water, s.flows.waterRate)}.` : ''}`, ASHA);
   } else if (kind === 'dust') {
     s.event = { kind, from: s.t, to: s.t + DUST_HOURS, hit: true };
     const hit = s.buildings.filter(b => dusty(s, b)).length;

@@ -5,10 +5,10 @@
 // The player lays infrastructure by hand and zones land. Habitats, foundries, lodges and concourses
 // then build themselves where demand, habitability and life support allow.
 
-import { BUILDINGS, BuildingType, WorldId, useWorld, ZONE, ZONE_BUILDS, ZONE_COST, ZONES } from './buildings';
+import { BUILDINGS, BuildingType, WorldId, useWorld, words, ZONE, ZONE_BUILDS, ZONE_COST, ZONES } from './buildings';
 import { missions } from './missions';
 import { Offer, Deal, tickContracts, answerOffer } from './contracts';
-import { Grader, Find, GameEvent, EventKind, initWorld, lotLevel, tickGraders, richOf, oreLot, maybeFind, stormActive, dusty, hazeNow, tickEvents, repairCost, useOres } from './world';
+import { Grader, Find, GameEvent, EventKind, initWorld, lotLevel, tickGraders, richOf, oreLot, maybeFind, stormActive, hazeActive, dusty, hazeNow, tickEvents, repairCost, useOres } from './world';
 
 export const LUNAR_DAY = 708;       // hours, sunrise to sunrise
 export const HALF = 354;            // hours of light, then hours of dark
@@ -73,14 +73,25 @@ export interface World {
   haze: number;
   /** What comes down to the pad, and what the people who visit are. */
   ship: string; Ship: string; guests: string;
+  /** Kilograms of water and food the crew lands with. */
+  water0: number; food0: number;
+  /** Credits an hour Earth grants a founding crew of four. It fades by 0.04 for each person after them. */
+  grant: number;
 }
 export const WORLDS: Record<WorldId, World> = {
   moon: { id: 'moon', day: LUNAR_DAY, dark: HALF, minDark: 24, dusk: DARK - HALF, shuttleEvery: SHUTTLE_EVERY, shuttleFood: SHUTTLE_FOOD, shuttleWater: SHUTTLE_WATER, berths: 4,
-    nightFlights: true, firstEvent: LUNAR_DAY, warn: 60, dawnNews: true, haze: 1, ship: 'shuttle', Ship: 'Shuttle', guests: 'visitors' },
-  // A sol is 24 h 39 min. Transports are half as often and carry twice as many, and bring nothing to eat or drink.
-  // A dust storm leaves a quarter of the light. All invented but the sol; D94.
-  mars: { id: 'mars', day: 24.66, dark: 12.33, minDark: 1, dusk: 1.6, shuttleEvery: 120, shuttleFood: 0, shuttleWater: 0, berths: 8,
-    nightFlights: false, firstEvent: 120, warn: 0, dawnNews: false, haze: 0.25, ship: 'transport', Ship: 'Transport', guests: 'visiting scientists' },
+    nightFlights: true, firstEvent: LUNAR_DAY, warn: 60, dawnNews: true, haze: 1, ship: 'shuttle', Ship: 'Shuttle', guests: 'visitors', water0: 220, food0: 60, grant: 0.8 },
+  // A sol is 24 h 39 min. A dust storm leaves a quarter of the light. All invented but the sol; D94, D95.
+  //  - A transport comes every fourth sol, counted from landing (11 hours on the pad), so always at the same hour
+  //    of the morning. It carries twice what a shuttle does and brings nothing to eat or drink.
+  //  - The crew lands with water for three sols and food for eight if nothing is built. On the Moon the first
+  //    stores are generous because a shuttle tops them up. Here nothing will.
+  //  - Earth grants a founding crew half as much again as on the Moon, so it lasts to 34 people, not 24: power
+  //    costs more than twice as much under a weak sun, and without it a town of eight sat for an hour with nothing
+  //    it could afford to do.
+  mars: { id: 'mars', day: 24.66, dark: 12.33, minDark: 1, dusk: 1.6, shuttleEvery: 4 * 24.66 - 11, shuttleFood: 0, shuttleWater: 0, berths: 8,
+    nightFlights: false, firstEvent: 216, warn: 0, dawnNews: false, haze: 0.25, ship: 'transport', Ship: 'Transport', guests: 'visiting scientists',
+    water0: 50, food0: 20, grant: 1.2 },
 };
 /** Water an Ice Drill brings up in an hour, and what a Sabatier Plant takes and pays. Mars only. Invented; D94. */
 export const DRILL = 0.5, SABATIER = 0.9, SABATIER_WATER = 0.2;
@@ -336,7 +347,7 @@ export function createState(seed = 1969, on: WorldId = 'moon'): State {
     view: new Array(N).fill(0), hab: new Array(N).fill(50), habRev: -1, pois: [],
     prep: new Array(N).fill(0), rough: new Array(N).fill(3), ore: new Array(N).fill(0), finds: [], graders: [], event: null, nextEvent: 0, lastEvent: '',
     buildings: [], nextUid: 1, rev: 1, netDirty: true,
-    t: 0, o2: 45, water: 220, food: 60, materials: 160, charge: 40, canisters: 160,
+    t: 0, o2: 45, water: WORLDS[on].water0, food: WORLDS[on].food0, materials: 160, charge: 40, canisters: 160,
     crew: [
       { name: 'Asha Rao', role: 'Commander', health: 100, alive: true, grit: 1.1 },
       { name: 'Kenji Mori', role: 'Flight surgeon', health: 100, alive: true, grit: 1.0 },
@@ -383,7 +394,7 @@ export function createState(seed = 1969, on: WorldId = 'moon'): State {
   recomputeNetwork(s);
   computeHab(s);
   computeFlows(s);
-  pushAlert(s, 'info', 'Touchdown in Mare Tranquillitatis. Sunset in 354 hours.');
+  pushAlert(s, 'info', mars ? `Touchdown in Arcadia Planitia. Sunset in ${Math.round(hoursToSunset(s.t))} hours.` : 'Touchdown in Mare Tranquillitatis. Sunset in 354 hours.');
   return s;
 }
 
@@ -398,7 +409,7 @@ export function addBuilding(s: State, type: BuildingType, x: number, y: number, 
 
 // ---------- alerts and money ----------
 export function pushAlert(s: State, level: AlertLevel, msg: string, who?: number) {
-  s.alerts.push({ id: s.nextAlert++, t: s.t, level, msg, who });
+  s.alerts.push({ id: s.nextAlert++, t: s.t, level, msg: words(msg), who });
   if (s.alerts.length > 40) s.alerts.splice(0, s.alerts.length - 40);
 }
 function alertOnce(s: State, key: string, level: AlertLevel, msg: string, every = 80) {
@@ -595,22 +606,60 @@ export const habAt = (s: State, x: number, y: number, w = 2, hgt = 2) => {
 /** kWh of storage needed to carry life support through a whole night. */
 export const nightNeed = (s: State) => Math.max(0, s.flows.essentialDeficit) * CARRY;
 /**
- * Hours life support could run in a dust storm: steady power, what little the arrays still give, and
- * then the batteries. Infinity where the first two are enough, and on a world with no dust storms.
+ * Hours life support would last in a dust storm before the batteries are empty, or Infinity if it comes through.
+ *
+ * It is worked out by walking the hours forward, because an average lies: what matters is whether the charge
+ * survives each night on what a quarter of the Sun put back the day before. Only life support is counted, and
+ * the oxygen plants when the tank runs low, since everything else rests in a storm (see computeFlows).
+ *  - With a storm forecast or overhead: from this hour, on the charge there is, to the hour it ends.
+ *    The answer is hours into the storm (or from now, once it has begun).
+ *  - With none: the case the crew plans for, a storm that begins at sunset on full batteries. Infinity past 400 h.
+ * `extraCap` and `extraSteady` ask the same question of a town with that much more storage or steady power.
+ * Infinity on a world with no dust storms.
  */
-export function stormCover(s: State): number {
+export function stormCover(s: State, extraCap = 0, extraSteady = 0): number {
   if (W.haze >= 1) return Infinity;
-  let peak = 0, steady = 0, essDay = 0, essNight = 0, cap = 0;
+  let peak = 0, steady = extraSteady, essDay = 0, essNight = 0, cap = 0, plants = 0, o2Cap = 0;
   for (const b of s.buildings) {
     const d = BUILDINGS[b.type];
     if (d.priority <= ESSENTIAL) { essDay += drawOf(b, false); essNight += drawOf(b, true); }
     if (!working(b)) continue;
-    cap += d.battery;
-    if (b.on) { if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen; }
+    cap += d.battery; o2Cap += d.o2Store;
+    if (b.on) { if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen; if (b.type === 'o2plant') plants++; }
+  }
+  const e = s.event && s.event.kind === 'haze' ? s.event : null;
+  const t0 = e ? s.t : s.t + hoursToSunset(s.t), from = e ? e.from : t0, STEP = 0.5;
+  const breath = O2_USE * population(s), plant = BUILDINGS.o2plant;
+  let charge = (e ? s.charge : cap) + extraCap * (e ? 0 : 1), o2 = s.o2;
+  cap += extraCap;
+  for (let h = 0; h < 400; h += STEP) {
+    const t = t0 + h;
+    if (e && t >= e.to) return Infinity;
+    const sun = sunFactor(t + STEP / 2), night = sun <= 0;
+    let draw = night ? essNight : essDay;
+    // the plants run by day when the tank holds less than a sol of breathing, as they do in the rules
+    o2 -= breath * STEP;
+    if (!night && plants && o2 < Math.min(o2Cap * 0.97, breath * W.day)) { draw += plants * plant.drawDay; o2 += plants * O2_PLANT * STEP; }
+    charge = Math.min(cap, charge + STEP * (steady + peak * sun * (t >= from ? W.haze : 1) - draw));
+    if (charge < 0) return Math.max(0, t - Math.max(from, s.t));
+  }
+  return Infinity;
+}
+
+/**
+ * Kilowatt-hours life support will draw from the batteries over this many hours of dust storm: what a quarter
+ * of the Sun and the steady power fall short by each sol, and one night on top, with a margin.
+ */
+function stormNeed(s: State, hours: number): number {
+  let peak = 0, steady = 0, essDay = 0, essNight = 0;
+  for (const b of s.buildings) {
+    const d = BUILDINGS[b.type];
+    if (d.priority <= ESSENTIAL) { essDay += drawOf(b, false); essNight += drawOf(b, true); }
+    if (working(b) && b.on) { if (d.solar) peak += d.gen * gain(s, 'sun'); else steady += d.gen; }
   }
   const dark = W.day - LIGHT;
-  const short = (essDay * LIGHT + essNight * dark) / W.day - steady - peak * W.haze * 0.6366 * (LIGHT / W.day);
-  return short <= 0.001 ? Infinity : cap / short;
+  const perSol = Math.max(0, essDay * LIGHT + essNight * dark - steady * W.day - peak * W.haze * 0.6366 * LIGHT);
+  return 1.15 * (perSol * (hours / W.day) + Math.max(0, essNight - steady) * CARRY);
 }
 
 /** Hours of night the batteries cover. Infinity when no deficit. */
@@ -718,7 +767,10 @@ function computeFlows(s: State, dt = 0) {
   // Oxygen plants keep going until the tanks hold enough to reach the next morning.
   const need = Math.max(0, planned - steady) * CARRY;
   // By day they also rest whenever running them would leave the batteries short at sunset.
-  f.saving = night || sunsetCharge(s) < Math.min(need * (s.flows.saving ? 1.12 : 1.06), f.battCap * 0.995);
+  // With a dust storm forecast or overhead, tonight is not enough: they rest until the batteries hold what life
+  // support will take out of them before the sky clears. A town with steady power to spare keeps working.
+  const dustNeed = W.haze < 1 && s.event && s.event.kind === 'haze' ? stormNeed(s, s.event.to - Math.max(s.t, s.event.from)) : 0;
+  f.saving = night || sunsetCharge(s) < Math.min(Math.max(need * (s.flows.saving ? 1.12 : 1.06), dustNeed), f.battCap * 0.995);
   const o2Short = night ? s.o2 < O2_USE * pop * toDawn + 6 : s.o2 < Math.min(f.o2Cap * 0.97, O2_USE * pop * (sunset + W.day - LIGHT + span(30)));
 
   const storm = stormActive(s), haze = hazeNow(s);
@@ -773,7 +825,7 @@ function computeFlows(s: State, dt = 0) {
   f.earn.rent = s.residents * RENT * s.price * (0.5 + f.habHomes / 100) * (0.6 + 0.4 * employed);
   f.earn.visitors = s.tourists * VISITOR_RATE * gain(s, 'view') * s.price * (0.5 + f.habLodges / 100) * (s.mood / 100) * (0.5 + 0.5 * f.staff);
   f.earn.shops = Math.min(aliveCount(s) + s.residents, shops * 16) * 0.035 * s.price * f.staff;   // people spend their wages
-  f.earn.grant = Math.max(0, 0.8 - 0.04 * (pop - 4));
+  f.earn.grant = Math.max(0, W.grant - 0.04 * (pop - 4));
   f.upkeep += (suppliesRate(pop) / gain(s, 'ice')) * Math.max(0, pop - 4);
   f.income = f.earn.foundry + f.earn.rent + f.earn.visitors + f.earn.shops + f.earn.grant - f.upkeep;
   s.flows = f;
@@ -883,8 +935,10 @@ function tickShuttle(s: State, dt: number) {
   const pad = s.buildings.find(b => b.type === 'pad');
   const open = !!pad && working(pad) && pad.powered;
   if (sh.phase === 'away') {
+    // Nothing lands blind: a ship that is due while a dust storm is overhead holds in orbit until it clears.
+    if (open && s.nextShuttle > 0 && s.t >= s.nextShuttle && hazeActive(s)) alertOnce(s, 'hold', 'info', `${W.Ship} ${sh.flight + 1} is holding in orbit until the dust clears.`, 400);
     // Where the night is short a ship waits for morning rather than land in the dark with cargo only.
-    if (open && s.nextShuttle > 0 && s.t >= s.nextShuttle && !stormActive(s) && (W.nightFlights || !isNight(s.t))) { sh.phase = 'landing'; sh.timer = 3; sh.flight++; }
+    if (open && s.nextShuttle > 0 && s.t >= s.nextShuttle && !stormActive(s) && !hazeActive(s) && (W.nightFlights || (!isNight(s.t) && hoursToSunset(s.t) > 3.5))) { sh.phase = 'landing'; sh.timer = 3; sh.flight++; }
     return;
   }
   sh.timer -= dt;
@@ -1068,7 +1122,8 @@ export function tick(s: State) {
     if (!targets.length) continue;
     const hit = targets[Math.floor(rnd(s) * targets.length)];
     hit.damaged = true; hit.repair = 0; s.rev++; s.stats.strikes++;
-    pushAlert(s, 'bad', `Micrometeorite strike. ${BUILDINGS[hit.type].name} is offline until repaired.`);
+    // Mars has air enough to stop the small ones. What crosses a base there is a dust devil.
+    pushAlert(s, 'bad', `${W.haze < 1 ? 'A dust devil went through the base' : 'Micrometeorite strike'}. ${BUILDINGS[hit.type].name} is offline until repaired.`);
   }
   if (!W.dawnNews && !s.strikes.length) s.strikes.push(s.t + 600 + rnd(s) * 500);   // where no sunrise brings the next ones
 

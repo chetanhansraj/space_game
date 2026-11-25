@@ -217,7 +217,7 @@ const MARS: Partial<Record<BuildingType, Partial<BuildingDef>>> = {
   printer: { name: 'Basalt Printer', desc: 'Sinters Martian basalt into parts. Contractors build these on land you zone for Industry. They need workers, and they are dusty neighbours.' },
   greenhouse: { name: 'Bio-Dome', desc: 'Food, a little oxygen, and the only green for a hundred million kilometres. No ship brings food to Mars, so the town eats what it grows, and people want to live beside one.',
     effect: '+0.6 kg food per hour by day · feeds about 9 people · raises habitability nearby · 1 job' },
-  pad: { desc: 'A sintered pad with a beacon. Transports come half as often as a shuttle does to the Moon and carry twice as many: up to eight settlers at a time, and nothing to eat or drink. It is the dustiest, loudest thing in the town, so keep homes away from it.', effect: 'Transport every 120 hours' },
+  pad: { desc: 'A sintered pad with a beacon. A transport comes every fourth sol, at the same hour of the morning, and carries up to eight settlers and nothing to eat or drink. It holds in orbit while a dust storm is overhead. It is the dustiest, loudest thing in the town, so keep homes away from it.', effect: 'A transport every fourth sol · up to 8 settlers · 1 job' },
   lodge: { name: 'Areology Lab', desc: 'Scientists on rotation pay to work here. Institutes build labs on Commercial land when there is something to study, and they pay more for a good spot: quiet, green, near a crater.', effect: '6 visiting scientists per level · income rises with habitability' },
   garage: { desc: 'Two pressurised rovers. With visiting scientists in town they run paid field trips to the craters. With none, the geologist takes them on survey runs for a small science grant, and they sweep the arrays after a storm.', effect: '2 rovers · field trips pay 5 credits per scientist · sweeps dust off arrays · 2 jobs' },
   clinic: { name: 'Med-Bay', desc: 'A surgery, a pharmacy and a storm shelter. People settle more readily where there is one, and the crew recovers faster.' },
@@ -235,6 +235,34 @@ export function useWorld(id: WorldId): void {
   if (id === current) return;
   current = id;
   for (const k of Object.keys(BUILDINGS) as BuildingType[]) Object.assign(BUILDINGS[k], MOON[k], id === 'mars' ? MARS[k] : undefined);
+}
+
+/**
+ * The words of the world the town stands on. The rules and the crew were written on the Moon and say
+ * "shuttle", "foundry" and "Tranquility"; on Mars those are a transport, a printer and Arcadia. Every line
+ * a player reads goes through here: alerts, the crew's advice, contract offers and what blocks a zone.
+ * On the Moon it returns what it was given. Most specific first. (root docs/DECISIONS.md D95)
+ */
+const MARS_WORDS: [RegExp, string][] = [
+  [/Mare Tranquillitatis/g, 'Arcadia Planitia'], [/Regolith Foundries/g, 'Basalt Printers'], [/Regolith Foundry/g, 'Basalt Printer'], [/Concourses/g, 'Commons'],
+  [/\bPlain regolith\b/g, 'Plain basalt'], [/\bregolith\b/g, 'basalt'], [/\bmoon dust\b/g, 'basalt dust'],
+  [/Tranquility Base/g, 'Arcadia'], [/Tranquility/g, 'Arcadia'],
+  [/Visitor Lodges?/g, 'Areology Lab'], [/\bLodge\b/g, 'Areology Lab'], [/\blodges\b/g, 'labs'], [/\blodge\b/g, 'lab'],
+  [/Battery Bank/g, 'Megapack'], [/Fission Reactor/g, 'Twin Kilopower'],
+  [/Oxygen Plant/g, 'MOXIE Plant'], [/oxygen plants/g, 'MOXIE plants'],
+  [/Water Recycler/g, 'Water Scrubber'], [/\bRecycler\b/g, 'Scrubber'], [/\brecycler\b/g, 'scrubber'],
+  [/\bGreenhouse/g, 'Bio-Dome'], [/\bgreenhouse/g, 'Bio-Dome'],
+  [/\bConcourse\b/g, 'Commons'], [/\b[Cc]linic\b/g, 'Med-Bay'],
+  [/\bFoundries\b/g, 'Printers'], [/\bfoundries\b/g, 'printers'], [/\bFoundry\b/g, 'Printer'], [/\bfoundry\b/g, 'printer'],
+  [/\bShuttle/g, 'Transport'], [/\bshuttle/g, 'transport'],
+  [/\bLander canisters/g, 'Command module canisters'], [/\bthe lander\b/g, 'the command module'],
+  [/\bVisitors\b/g, 'Visiting scientists'], [/\bvisitors\b/g, 'visiting scientists'], [/\bvisitor\b/g, 'visiting scientist'], [/\btourists\b/g, 'scientists'],
+  [/\b([Aa]) (?=[AEIO][a-z])/g, '$1n '],   // "a Areology Lab", "a Ice Drill"
+];
+export function words(text: string): string {
+  if (current !== 'mars' || !text) return text;
+  for (const [from, to] of MARS_WORDS) text = text.replace(from, to);
+  return text;
 }
 
 export const BUILD_MENU: BuildingType[] = [

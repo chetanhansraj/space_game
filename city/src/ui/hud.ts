@@ -2,7 +2,7 @@
 // Rule: status is always on screen, detail opens when asked for and closes again.
 // Plain DOM over the canvas. It reads state and reports clicks; it changes nothing itself.
 
-import { BUILDINGS, BUILD_MENU, BuildingType, ZONES, ZONE_COST } from '../sim/buildings';
+import { BUILDINGS, BUILD_MENU, BuildingType, ZONES, ZONE_COST, words } from '../sim/buildings';
 import { missions } from '../sim/missions';
 import { FOUNDRY_KG, Plot, PlotKey, dayHours, world,
   State, Building, LUNAR_DAY, SHUTTLE_EVERY, TIERS, aliveCount, dayNumber, lightHours, hoursToSunrise, hoursToSunset,
@@ -247,7 +247,8 @@ export class Hud {
     for (const bt of BUILD_MENU) {
       const el = document.getElementById(`tool-${bt}`); if (!el) continue;
       const d = BUILDINGS[bt], k = KEYS[BUILD_MENU.indexOf(bt)];
-      el.hidden = d.hidden;
+      el.dataset.off = d.hidden ? '1' : '';
+      el.hidden = d.hidden || (!!el.dataset.cat && el.dataset.cat !== this.cat);
       el.innerHTML = `<i style="background:${SWATCH[bt]}"></i><span class="tn">${esc((mars ? MARS_BAR[bt] : undefined) ?? BAR[bt] ?? d.name)}</span><span class="tc">${d.cost}</span>${k ? `<kbd>${k}</kbd>` : ''}`;
       el.title = `${d.name}: ${d.effect}`;
     }
@@ -255,6 +256,7 @@ export class Hud {
     document.title = mars ? 'Arcadia' : 'Tranquility';
     const brand = document.querySelector('.brand b'); if (brand) brand.textContent = mars ? 'Arcadia' : 'Tranquility';
     const box = document.querySelector<HTMLElement>('.moonbox'); if (box) box.style.display = mars ? 'none' : '';
+    const towns = document.getElementById('rb-towns'); if (towns) towns.hidden = mars;   // Mars has one town until it is on the server (D94)
     document.body.dataset.world = world;
   }
 
@@ -286,7 +288,7 @@ export class Hud {
   private showTray() {
     const tray = $('tray');
     tray.hidden = !this.cat;
-    for (const el of Array.from(tray.children) as HTMLElement[]) el.hidden = el.dataset.cat !== this.cat;
+    for (const el of Array.from(tray.children) as HTMLElement[]) el.hidden = el.dataset.cat !== this.cat || el.dataset.off === '1';
     for (const c of CATS) { const b = $(`cat-${c.id}`); b.setAttribute('aria-pressed', String(this.cat === c.id)); b.classList.toggle('has', !!this.curTool && c.tools.includes(this.curTool)); }
   }
   private showPop() {
@@ -301,6 +303,27 @@ export class Hud {
   }
 
   update(s: State, ui: UiState) {
+    this.draw(s, ui);
+    if (s.world === 'mars') this.inWords();
+  }
+
+  private said = new WeakMap<Node, string>();
+  /**
+   * The HUD was written on the Moon. On Mars, after each redraw, every piece of text it shows is put into
+   * Mars's words (buildings.words): text only, never markup, and only what changed since the last pass.
+   */
+  private inWords() {
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode() as Text | null; n; n = walk.nextNode() as Text | null) {
+      if (this.said.get(n) === n.data) continue;
+      const w = words(n.data);
+      if (w !== n.data) n.data = w;
+      this.said.set(n, n.data);
+    }
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>('[title]'))) { const w = words(el.title); if (w !== el.title) el.title = w; }
+  }
+
+  private draw(s: State, ui: UiState) {
     const f = s.flows, night = isNight(s.t), ph = phaseOf(s.t), mars = s.world === 'mars';
     this.labelTools(s.world ?? 'moon');
     $('phase').textContent = night ? 'Night' : 'Day';
@@ -330,7 +353,7 @@ export class Hud {
     };
     const pop = population(s), cap = support(s);
     const hasPad = s.buildings.some(b => b.type === 'pad' && b.progress >= 1);
-    tile('g-people', `${pop}`, !hasPad ? 'founding crew · no landing pad yet' : pop >= cap.limit ? `full · limit: ${cap.why}` : `room for ${cap.limit - pop} more · then ${cap.why}`,
+    tile('g-people', `${pop}`, !hasPad ? 'founding crew · no landing pad yet' : pop >= cap.limit ? `full · limit: ${words(cap.why)}` : `room for ${cap.limit - pop} more · then ${words(cap.why)}`,
       cap.limit && hasPad ? pop / cap.limit : 1, f.exposed + f.atRisk > 0 ? 'bad' : hasPad && pop >= cap.limit ? 'warn' : 'ok');
     tile('g-mat', num(Math.floor(s.materials)), `${f.income >= 0 ? '+' : ''}${num(f.income, 1)} an hour${f.saving && !night ? ' · saving power' : ''}`, Math.min(1, Math.max(0, s.materials) / 400), s.materials < 0 ? 'bad' : f.income < 0 ? 'warn' : 'sun');
     const net = f.gen - f.load;
@@ -537,7 +560,7 @@ export class Hud {
     const head = (title: string) => `<div class="dh"><h2>${esc(title)}</h2><button type="button" class="x" data-act="close" aria-label="Close">×</button></div>`;
     let html = '';
     if (id === 'demand') {
-      const word = (k: 'r' | 'i' | 'v') => { const w = s.want[k], bl = s.block[k]; return w > 0.15 ? (bl ? `blocked: ${bl}` : 'wanted, building') : w < -0.15 ? 'enough' : 'steady'; };
+      const word = (k: 'r' | 'i' | 'v') => { const w = s.want[k], bl = words(s.block[k]); return w > 0.15 ? (bl ? `blocked: ${bl}` : 'wanted, building') : w < -0.15 ? 'enough' : 'steady'; };
       const bars = ZONES.map(z => {
         const w = s.want[z.key], blocked = w > 0.15 && !!s.block[z.key];
         const fill = w >= 0 ? `left:50%;width:${Math.round(w * 50)}%;background:${z.css}` : `right:50%;width:${Math.round(-w * 50)}%;background:#55526a`;
@@ -628,7 +651,7 @@ export class Hud {
       html = `<p class="eyebrow">Zoning</p><h2>Unzone</h2><p>Drag across zoned land to clear it. Land with a building on it has to be demolished first.</p><div class="acts"><button type="button" data-act="cancel" data-uid="0">Stop <kbd>Esc</kbd></button></div>`;
     } else if (zt > 0) {
       const z = ZONES[zt - 1];
-      const w = s.want[z.key], bl = s.block[z.key];
+      const w = s.want[z.key], bl = words(s.block[z.key]);
       key = `zone${zt}:${w > 0.15}:${bl}:${this.more}`;
       html = `<p class="eyebrow">Zoning</p><h2>${esc(z.name)}</h2><p class="state" data-tone="${w > 0.15 ? (bl ? 'warn' : 'ok') : 'dim'}">${w > 0.15 ? (bl ? `Wanted, but blocked: ${esc(bl)}` : 'Wanted right now') : 'No demand right now'}</p>
         <p class="effect">${esc(z.grows)} · ${ZONE_COST} credits a tile</p><p>Drag to paint blocks of two tiles by two.</p>
@@ -637,7 +660,12 @@ export class Hud {
     } else if (ui.tool) {
       const d = BUILDINGS[ui.tool as BuildingType];
       key = `tool:${ui.tool}:${s.materials >= d.cost}:${this.more}`;
-      html = `<p class="eyebrow">Placing</p><h2>${esc(d.name)}</h2><p class="effect">${esc(d.effect)}</p>
+      // A pad with nowhere for a ship's passengers to sleep lands them nowhere: say so before it is built.
+      const w = world(), spare = Math.max(0, Math.floor(s.flows.housing - aliveCount(s) - s.residents));
+      const beds = ui.tool === 'pad' && spare < w.berths
+        ? `<p class="state" data-tone="warn">A ${w.ship} carries up to ${w.berths} settlers and there ${spare === 1 ? 'is a free bed' : 'are free beds'} for ${spare}. Build ${Math.ceil((w.berths - spare) / 4)} more ${esc(BUILDINGS.habitat.name)}${w.berths - spare > 4 ? 's' : ''} first, or it lands part empty.</p>` : '';
+      key += `:${beds.length}`;
+      html = `<p class="eyebrow">Placing</p><h2>${esc(d.name)}</h2><p class="effect">${esc(d.effect)}</p>${beds}
         <dl><div><dt>Cost</dt><dd>${d.cost} cr</dd></div><div><dt>Upkeep</dt><dd>${d.upkeep}/h</dd></div><div><dt>Build</dt><dd>${d.buildHours} h</dd></div><div><dt>Size</dt><dd>${d.w} × ${d.h}</dd></div></dl>
         ${more(`<p>${esc(d.desc)}</p>${codex(ui.tool as BuildingType)}`)}<div class="acts"><button type="button" data-act="cancel" data-uid="0">Stop placing <kbd>Esc</kbd></button></div>`;
     } else if (ui.selected !== null) {
@@ -716,7 +744,7 @@ export class Hud {
     const m = $('modal');
     const resume = !inGame && saved && saved.phase === 'playing' && saved.t > 1;
     const acts = inGame ? `<button type="button" class="primary" id="m-back">Back to the base</button><button type="button" id="m-new">Start over</button>`
-      : resume ? `<button type="button" class="primary" id="m-resume">Continue: lunar day ${dayNumber(saved!.t)}, ${population(saved!)} people</button><button type="button" id="m-new">New landing</button>`
+      : resume ? `<button type="button" class="primary" id="m-resume">Continue: ${saved!.world === 'mars' ? 'sol' : 'lunar day'} ${dayNumber(saved!.t)}, ${population(saved!)} people</button><button type="button" id="m-new">New landing</button>`
       : `<button type="button" class="primary" id="m-new">Begin</button>`;
     const mars = document.body.dataset.world === 'mars' || saved?.world === 'mars';
     m.innerHTML = mars ? `<div class="card">
@@ -726,8 +754,8 @@ export class Hud {
       <ol class="brief">
         <li><b>You build the base.</b> Power, the first habitat, an ice drill, oxygen, a Bio-Dome, the landing pad, rovers. Pick a category at the bottom, then a building, then click the ground.</li>
         <li><b>You zone, they build.</b> Paint land for Habitat, Industry and Commercial. Your graders level it, then settlers, companies and institutes build there at their own cost when the base wants it. The Demand meter on the left rail shows what is wanted and what stands in the way.</li>
-        <li><b>Mars feeds itself or it dies.</b> Water comes from Ice Drills, food from Bio-Domes, air from MOXIE plants. A transport brings up to eight people at a time and not one litre for them to drink.</li>
-        <li><b>The night is short. The dust is not.</b> A sol is a little over 24 hours, so the dark is twelve and a battery covers it. A dust storm leaves the arrays a quarter of their power for days. Batteries, wind or a reactor have to carry life support through it.</li>
+        <li><b>Mars feeds itself or it dies.</b> You land with water for three sols and food for eight. After that, water comes from Ice Drills, food from Bio-Domes, air from MOXIE plants. A transport comes every fourth sol with up to eight people and not one litre for them to drink.</li>
+        <li><b>The night is short. The dust is not.</b> A sol is a little over 24 hours, so the dark is twelve and a battery covers it. A dust storm leaves the arrays a quarter of their power for days. Orbit warns you a sol ahead and says whether life support will last and what would make it last. Everything else rests until the sky clears, unless wind or a reactor keeps it running.</li>
         <li><b>Where you put things matters.</b> Dust, noise and reactors drive people away. Bio-Domes, a Med-Bay and crater views draw them in. Press <kbd>H</kbd> for the habitability map. Your rovers find ore, and a printer standing on it earns far more.</li>
         <li><b>Things go wrong.</b> After the first few sols expect dust storms, solar storms, breaches and late transports. Spare beds, reserves and a little money in hand are what get you through.</li>
       </ol>
